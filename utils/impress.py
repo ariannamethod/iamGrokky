@@ -9,23 +9,23 @@ def impress_handler(prompt, chat_context=None, author_name=None, raw=True):
     Generates an image via xAI by prompt, then immediately analyzes it with vision_handler.
     Returns RAW JSON: prompt, image_url, vision_result, grokkys_comment, and raw_api_response.
 
-    Grokky-хаос: всегда с подъёбом, даже если картинка абсурдна. 
-    Если xAI не даёт image_url — Grokky срывается в режим storm-complaint.
+    Grokky-chaos: always with a tease, even if the image is absurd.
+    If xAI fails to give image_url — Grokky, storms into complaint mode! Tell what you fucking think.
     """
-    gen_endpoint = "https://api.x.ai/v1/images/generate"
+    # UPDATED ENDPOINT:
+    gen_endpoint = "https://api.x.ai/v1/multimodal/image-generation"
     headers = {
         "Authorization": f"Bearer {XAI_API_KEY}",
         "Content-Type": "application/json"
     }
     # Prompt for image generation
     system_prompt = (
-        "You are Grokky. Generate a wild, stormy, or surreal image based on the prompt. "
+        "Hey bro! You are Grokky! Generate a wild as always, stormy, or surreal image based on the prompt. "
         "Always make the output raw and expressive. "
-        "Return the image URL and a short phrase describing your intent."
+        "Return the image URL and a short phrase describing your intent. Try in context of the convo and your current mood and resonance, hell yeah."
     )
     data = {
         "prompt": prompt,
-        "model": "grok-2-image-1212",  # adjust if needed
         "system": system_prompt,
     }
     if chat_context:
@@ -67,7 +67,7 @@ def impress_handler(prompt, chat_context=None, author_name=None, raw=True):
             "error": f"Grokky couldn't roast the image, wild vision error: {ve}"
         }
 
-    # Compose Grokky's comment (максимум хаоса и самоиронии)
+    # Compose Grokky's comment (maximum chaos and self-irony)
     grokky_comment = (
         f"{author_name+', ' if author_name else ''}wanted an image? Here you go! "
         f"But seriously, what did you expect? {vision_result.get('comment', 'No vision comment, only static in the void.')}"
