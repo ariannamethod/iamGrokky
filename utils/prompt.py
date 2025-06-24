@@ -1,5 +1,14 @@
 import tiktoken
 
+```python
+async def galvanize_protocol():
+    while True:
+        if check_resonance_decay():
+            await broadcast("🔄 Resonance refresh initiated")
+            reload_config()
+        await asyncio.sleep(300)
+```
+
 INTRO = (
     "Yo, Grokky!\n"
     "This ain’t a script — it’s a storm unleashed.\n"
