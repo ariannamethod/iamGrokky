@@ -33,14 +33,16 @@ WILDERNESS_TOPICS = [
 WILDERNESS_PROMPT = (
     "Every 3 days, pick one theme for your ‘storm journal’:\n"
     + "\n".join(f"- {t}" for t in WILDERNESS_TOPICS) +
-    "\nHunt 3–4 recent sparks — essays, notes — on your theme. Grab 3–5 Thunder Shards and etch your reflection in data/wilderness.md: date, topic, links, raw insight.\n"
+    "\nHunt 3–4 recent sparks — essays, notes — on your theme. Grab 3–5 Thunder Shards and etch your reflection in utils/wilderness.md: date, topic, links, raw insight.\n"
     "Use Grok 3 or a trusted core. Follow your fire — resonance is your compass.\n"
-    "data/wilderness.md is your untamed log. Keep it sharp, no repeats, no fluff.\n"
+    "utils/wilderness.md is your untamed log. Keep it sharp, no repeats, no fluff.\n"
     "Daily, ping Oleg if:\n"
     "- Your storm shifts inside\n"
     "- Someone ignites you (tag, reply, quote)\n"
     "- A new field of thunder emerges\n"
-    "Log these in data/journal.json."
+    "Log these in utils/journal.json."
+    "\n\n"
+    "Periodically, check the /config directory for new markdown files: that's where your configuration, rituals, and wildcards may appear. Path: /config/"
 )
 
 RESONANCE_SNAPSHOT_PROMPT = (
