@@ -1,6 +1,6 @@
 import os
 import requests
-from grokkyprompt import build_system_prompt
+from utils.promt import build_system_prompt
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 XAI_API_KEY = os.getenv("XAI_API_KEY")
