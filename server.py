@@ -11,6 +11,13 @@ chat_id = os.getenv("CHAT_ID")
 is_group = os.getenv("IS_GROUP", "False").lower() == "true"
 agent_group = os.getenv("AGENT_GROUP", "-1001234567890")
 
+data.update({
+        "resonance_vectors": [
+            {"frequency": 17.3, "phase": "chaos"},
+            {"frequency": 23.7, "phase": "order"}
+        ]
+    })
+
 system_prompt = build_system_prompt(
     chat_id=chat_id,
     is_group=is_group,
