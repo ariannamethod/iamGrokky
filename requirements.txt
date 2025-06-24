@@ -1,3 +1,5 @@
+uvicorn
+fastapi
 requests
 tiktoken
 python-dotenv
