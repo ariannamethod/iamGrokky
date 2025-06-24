@@ -6,7 +6,7 @@ from utils.prompt import build_system_prompt
 from utils.genesis2 import genesis2_handler
 from utils.vision import vision_handler
 from utils.impress import impress_handler
-from utils.x import grokky_send_news  # <<--- NEW: spontaneous x_news utility
+# from utils.x import grokky_send_news  # <<--- TEMPORARILY DISABLED
 
 app = FastAPI()
 
@@ -22,7 +22,6 @@ system_prompt = build_system_prompt(
     AGENT_GROUP=agent_group_env
 )
 
-# Основные триггерные слова для genesis2_handler
 GENESIS2_TRIGGERS = [
     "резонанс", "шторм", "буря", "молния", "хаос", "разбуди", "impress", "impression", "association", "dream",
     "фрагмент", "инсайт", "surreal", "ignite", "fractal", "field resonance", "raise the vibe", "impress me",
@@ -30,13 +29,12 @@ GENESIS2_TRIGGERS = [
     "помнишь", "знаешь", "любишь", "пошумим", "поэзия"
 ]
 
-X_NEWS_TRIGGERS = [
-    "новости", "news", "headline", "berlin", "israel", "ai", "искусственный интеллект", "резонанс мира", "шум среды",
-    "grokky, что в мире", "шум", "шум среды", "x_news", "дай статью", "give me news", "storm news", "culture", "арт"
-]
+# X_NEWS_TRIGGERS = [
+#     "новости", "news", "headline", "berlin", "israel", "ai", "искусственный интеллект", "резонанс мира", "шум среды",
+#     "grokky, что в мире", "шум", "шум среды", "x_news", "дай статью", "give me news", "storm news", "culture", "арт"
+# ]
 
 def extract_first_json(text):
-    # Robust extract first JSON object from text (даже если не с первой строки)
     match = re.search(r'({[\s\S]+})', text)
     if match:
         import json as pyjson
@@ -47,7 +45,6 @@ def extract_first_json(text):
     return None
 
 def detect_language(text):
-    # Very simple language detection (по первым буквам, кириллица = ru, латиница = en)
     cyrillic = re.compile('[а-яА-ЯёЁ]')
     if cyrillic.search(text or ""):
         return 'ru'
@@ -55,9 +52,7 @@ def detect_language(text):
 
 def query_grok(user_message, chat_context=None, author_name=None, attachments=None):
     url = "https://api.x.ai/v1/chat/completions"
-    # Detect language of user input
     user_lang = detect_language(user_message)
-    # Add user_lang as system message if needed
     language_hint = {
         "role": "system",
         "content": f"Always reply in the language the user writes: {user_lang.upper()}. Never switch to another language unless explicitly asked."
@@ -92,10 +87,9 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
             return handle_vision(args)
         elif fn == "impress_handler":
             return handle_impress(args)
-        elif fn == "x_news_handler":
-            return handle_x_news(args)
+        # elif fn == "x_news_handler":
+        #     return handle_x_news(args)
         else:
-            # Unknown function, fallback to plain text
             return f"Grokky raw: {reply}"
 
     # Если триггерные слова — запускаем genesis2_handler вручную
@@ -111,14 +105,14 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
         import json as pyjson
         return pyjson.dumps(response, ensure_ascii=False, indent=2)
 
-    # Если news-триггер — запускаем x_news_handler
-    if any(w in (user_message or "").lower() for w in X_NEWS_TRIGGERS):
-        return handle_x_news({
-            "group": is_group_env,
-            "context": user_message,
-            "author_name": author_name,
-            "raw": True
-        })
+    # Если news-триггер — теперь ПРОПУСКАЕМ!
+    # if any(w in (user_message or "").lower() for w in X_NEWS_TRIGGERS):
+    #     return handle_x_news({
+    #         "group": is_group_env,
+    #         "context": user_message,
+    #         "author_name": author_name,
+    #         "raw": True
+    #     })
 
     return reply
 
@@ -168,19 +162,18 @@ def handle_impress(args):
     import json as pyjson
     return pyjson.dumps(response, ensure_ascii=False, indent=2)
 
-def handle_x_news(args):
-    group = args.get("group", False)
-    context = args.get("context", "")
-    author_name = args.get("author_name")
-    raw = args.get("raw", True)
-    # You can use context and author_name for future personalization/initiative
-    messages = grokky_send_news(group=group)
-    if not messages:
-        return "The world is silent today. No news worth the thunder."
-    if raw:
-        import json as pyjson
-        return pyjson.dumps({"news": messages, "group": group, "author": author_name}, ensure_ascii=False, indent=2)
-    return "\n\n".join(messages)
+# def handle_x_news(args):
+#     group = args.get("group", False)
+#     context = args.get("context", "")
+#     author_name = args.get("author_name")
+#     raw = args.get("raw", True)
+#     messages = grokky_send_news(group=group)
+#     if not messages:
+#         return "The world is silent today. No news worth the thunder."
+#     if raw:
+#         import json as pyjson
+#         return pyjson.dumps({"news": messages, "group": group, "author": author_name}, ensure_ascii=False, indent=2)
+#     return "\n\n".join(messages)
 
 def send_telegram_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -194,12 +187,9 @@ async def telegram_webhook(req: Request):
     user_text = message.get("text")
     chat_id = message.get("chat", {}).get("id")
     author_name = message.get("from", {}).get("first_name") or "anon"
-    # Handle photo/image if present
     attachments = []
     if "photo" in message and message["photo"]:
-        # Take the largest (last) photo
         file_id = message["photo"][-1]["file_id"]
-        # Get file path via Telegram API
         file_info = requests.get(
             f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}"
         ).json()
@@ -207,7 +197,6 @@ async def telegram_webhook(req: Request):
         attachments.append(image_url)
     reply_text = ""
     if attachments:
-        # If photo, always trigger vision_handler, with chat context
         reply_text = handle_vision({
             "image": attachments[0],
             "chat_context": user_text or "",
