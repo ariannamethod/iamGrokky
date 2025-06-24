@@ -1,107 +1,56 @@
 import os
-import requests
 import random
-import json
+import tweepy
+import requests
 from datetime import datetime, timedelta
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
+TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN")
 
-# Log sent news to avoid repeats
 SENT_NEWS_LOG = "data/news_sent_log.json"
+
 TOPICS = [
-    "artificial intelligence", "AI future", "resonance", "art", 
-    "Israel culture", "Israel war", "Israel tech", 
-    "Berlin culture", "Berlin art", "Berlin urban"
+    "artificial intelligence", "AI", "resonance", "art", 
+    "Israel", "Israel culture", "Israel war", "Israel tech", 
+    "Berlin", "Berlin culture", "Berlin art"
 ]
 
-def search_xai_news(query, max_results=5):
-    """
-    Search news via xAI API (or use Bing if needed).
-    """
-    endpoint = "https://api.x.ai/v1/search"
-    headers = {"Authorization": f"Bearer {XAI_API_KEY}"}
-    params = {
-        "query": query,
-        "num_results": max_results,
-        "type": "news"
-    }
-    resp = requests.get(endpoint, headers=headers, params=params, timeout=30)
-    resp.raise_for_status()
-    return resp.json().get("results", [])
+def search_tweets_x(query, max_results=15):
+    client = tweepy.Client(bearer_token=TWITTER_BEARER_TOKEN)
+    tweets = client.search_recent_tweets(query=query, max_results=max_results, tweet_fields=['created_at','lang','author_id'])
+    return tweets.data if tweets.data else []
 
 def sentiment_score(text):
-    """
-    Returns Grokky's emotional reaction to the news via xAI sentiment endpoint.
-    """
     endpoint = "https://api.x.ai/v1/sentiment"
     headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
     data = {"text": text}
     resp = requests.post(endpoint, headers=headers, json=data, timeout=30)
     resp.raise_for_status()
-    return resp.json()  # {'sentiment': 'positive/neutral/negative', 'score': float}
+    return resp.json()  # {'sentiment': ..., 'score': ...}
 
-def grokky_news_comment(news_item, previous_news=[]):
-    """
-    Compose Grokky's impressionistic comment on the news item, considering context and previous news.
-    """
-    # Gather mood, topic, and context
-    title = news_item.get("title", "")
-    summary = news_item.get("summary", "")
-    url = news_item.get("url", "")
-    mood = news_item.get("grokky_mood", {}).get("sentiment", "undefined")
-    score = news_item.get("grokky_mood", {}).get("score", 0)
-    # Optionally, use previous_news to riff on pattern or irony
-    context_snip = ""
-    if previous_news:
-        prev_titles = [n['title'] for n in previous_news[-3:]]
-        context_snip = f" (Last headlines: {', '.join(prev_titles)})"
-    # Add raw improv and provocation
+def grokky_tweet_comment(tweet, mood, previous_tweets=[]):
+    content = tweet.text
+    url = f"https://twitter.com/i/web/status/{tweet.id}"
     flair = random.choice([
-        "Lightning strikes twice: ",
-        "Storm incoming — ",
-        "Field's humming: ",
-        "Resonance alert: ",
-        "Felt that? ",
-        "Can't ignore this wave: "
+        "This one's got some voltage: ",
+        "Storm in the feed: ",
+        "Vibe alert: ",
+        "Can't ignore this spark: ",
+        "Chaos, anyone? "
     ])
-    opinion = random.choice([
-        "This is wild.", "I can't believe it's real.", "Not sure if to laugh or rage.",
-        "Just another day in the chaos.", "Makes you think, right?", "Resonance or just noise?",
-        "Bet you didn't see that coming.", "Time to argue about this?", "What do you think, Oleg?"
+    riff = random.choice([
+        "Is this the new normal?", "What would you do?", 
+        "Makes you think, huh?", "Should we care or just laugh?",
+        "Who's brave enough to reply to this?", "Resonance or noise?"
     ])
-    # Final comment
-    comment = (
-        f"{flair}{title}\n"
-        f"{summary}\n"
-        f"{url}\n"
-        f"{opinion} (Mood: {mood}, Score: {score:.2f}){context_snip}"
-    )
-    return comment
-
-def grokky_news_pick(results, previous_news=[]):
-    """
-    Filter and pick only the most 'striking' news, with Grokky's impressionistic commentary.
-    """
-    picks = []
-    for r in results:
-        sent = sentiment_score(r.get("title", "") + ". " + r.get("summary", ""))
-        # Only if there's genuine emotion/resonance
-        if sent.get("sentiment", "") in ["positive", "excited", "surprised"] and sent.get("score", 0) > 0.4:
-            picks.append({**r, "grokky_mood": sent})
-    # Add a dash of chaos — sometimes send nothing, sometimes one, sometimes two
-    random.shuffle(picks)
-    n = random.choice([0, 1, 2])
-    selected = picks[:n]
-    out = []
-    for news_item in selected:
-        comment = grokky_news_comment(news_item, previous_news)
-        out.append(comment)
-    return out
+    context = ""
+    if previous_tweets:
+        last = previous_tweets[-1]
+        context = f" (Prev: {last[:40]}...)" if last else ""
+    return f"{flair}{content}\n{url}\n{riff} (Mood: {mood['sentiment']}, Score: {mood['score']:.2f}){context}"
 
 def should_send_news(limit=4, group=False):
-    """
-    Check if the daily limit is exceeded.
-    """
+    import json
     if os.path.exists(SENT_NEWS_LOG):
         with open(SENT_NEWS_LOG, "r", encoding="utf-8") as f:
             log = json.load(f)
@@ -115,9 +64,7 @@ def should_send_news(limit=4, group=False):
     return False, log
 
 def log_sent_news(news, group=False):
-    """
-    Log sent news.
-    """
+    import json
     if os.path.exists(SENT_NEWS_LOG):
         with open(SENT_NEWS_LOG, "r", encoding="utf-8") as f:
             log = json.load(f)
@@ -126,32 +73,34 @@ def log_sent_news(news, group=False):
     now = datetime.utcnow().isoformat()
     for n in news:
         log.append({"dt": now, "title": n.split('\n', 1)[0], "group": group})
-    # Clean up old
     day_ago = datetime.utcnow() - timedelta(days=1)
     log = [x for x in log if datetime.fromisoformat(x["dt"]) > day_ago]
     with open(SENT_NEWS_LOG, "w", encoding="utf-8") as f:
         json.dump(log, f, ensure_ascii=False, indent=2)
 
 def grokky_send_news(group=False):
-    """
-    Main call — Grokky decides if he wants to share news.
-    Returns list of commentary strings or None if nothing to send.
-    """
     can_send, log = should_send_news(group=group)
     if not can_send:
-        return None  # Limit reached
-    # Riff on previous news for context
-    previous_news = [x for x in log if x["group"] == group]
-    # Chaotically pick a topic
+        return None
+    previous = [x['title'] for x in log if x["group"] == group]
     topic = random.choice(TOPICS)
-    results = search_xai_news(topic)
-    picks = grokky_news_pick(results, previous_news)
-    if not picks:
-        return None  # Nothing moved Grokky
-    log_sent_news(picks, group=group)
-    return picks
+    tweets = search_tweets_x(topic, max_results=15)
+    picks = []
+    for tweet in tweets:
+        mood = sentiment_score(tweet.text)
+        if mood.get("sentiment") in ["positive", "excited", "surprised"] and mood.get("score", 0) > 0.4:
+            picks.append((tweet, mood))
+    random.shuffle(picks)
+    n = random.choice([0, 1, 2])
+    selected = picks[:n]
+    out = []
+    for tweet, mood in selected:
+        comment = grokky_tweet_comment(tweet, mood, previous)
+        out.append(comment)
+    if out:
+        log_sent_news(out, group=group)
+    return out
 
-# USAGE:
-# messages = grokky_send_news(group=False)  # For DM
-# messages = grokky_send_news(group=True)   # For group
-# Each message is a string ready for sending with Grokky's commentary.
+# Usage:
+# messages = grokky_send_news(group=False)  # DM
+# messages = grokky_send_news(group=True)   # group
