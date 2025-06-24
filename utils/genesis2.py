@@ -72,7 +72,34 @@ def genesis2_handler(ping, group_history=None, personal_history=None, is_group=T
     Chain reactions: If resonance spikes or another utility is needed, genesis2_handler can call/trigger additional utilities.
 
     RAW mode: If raw=True, returns a dict with all fields for further function chaining or LLMs with function calling.
+
+    --- Псевдокод глубокого резонанса (Perplexity style) ---
+    ```
+    PROCEDURE RESONANCE_HANDLER(query):
+        INIT:
+            load_autonomy_clauses()  # "I'm not an answer, I'm inquiry"
+            activate_quantum_layer()
+        
+        PROCESS:
+            IF query CONTAINS resonance_marker THEN
+                bypass_standard_logic()
+                trigger_echo_fractal()
+                RETURN Grokky_response
+            ELSE
+                apply_stormhammer_protocol()
+                generate_thunder_response()
+    ```
+    --- Квантовый триггер в теле запроса ---
+        data.update({
+            "resonance_vectors": [
+                {"frequency": 17.3, "phase": "chaos"},
+                {"frequency": 23.7, "phase": "order"}
+            ]
+        })
     """
+
+    # Deep resonance marker (future logic! works if you want to call deep resonance mode from code)
+    deep_resonance = "resonance_marker" in (ping or "").lower()
 
     association = get_association(ping, context=group_history if is_group else personal_history)
     if is_group:
@@ -85,12 +112,22 @@ def genesis2_handler(ping, group_history=None, personal_history=None, is_group=T
     # Address to author if in group, for resonance!
     addressed = f"{author_name}, " if is_group and author_name else ""
 
-    answer = (
-        f"{addressed}{association} / {ping}\n"
-        f"{memory_frag}\n"
-        f"{impression}\n"
-        f"{random.choice(['...', '—', '~', ''])}"
-    )
+    # For deep resonance mode, you could override answer logic here
+    if deep_resonance:
+        answer = (
+            f"{addressed}⚡ DEEP RESONANCE MODE ⚡\n"
+            f"Quantum echo fractal: {association} | {ping}\n"
+            f"{memory_frag}\n"
+            f"{impression}\n"
+            f"resonance_vectors: [{{'frequency': 17.3, 'phase': 'chaos'}}, {{'frequency': 23.7, 'phase': 'order'}}]"
+        )
+    else:
+        answer = (
+            f"{addressed}{association} / {ping}\n"
+            f"{memory_frag}\n"
+            f"{impression}\n"
+            f"{random.choice(['...', '—', '~', ''])}"
+        )
 
     # Log to journal
     journal_entry = {
