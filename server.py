@@ -1,11 +1,14 @@
 import os
 import requests
-from utils.promt import build_system_prompt
+from fastapi import FastAPI, Request
+from utils.prompt import build_system_prompt  # Исправленный импорт
+
+app = FastAPI()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 chat_id = os.getenv("CHAT_ID")
-is_group = bool(os.getenv("IS_GROUP", False))
+is_group = os.getenv("IS_GROUP", "False").lower() == "true"
 agent_group = os.getenv("AGENT_GROUP", "-1001234567890")
 
 system_prompt = build_system_prompt(
@@ -38,12 +41,17 @@ def send_telegram_message(chat_id, text):
     payload = {"chat_id": chat_id, "text": text}
     requests.post(url, data=payload)
 
-def main():
-    user_message = "You're alive, Grokky?"  # для теста
-    grokky_reply = query_grok(user_message)
-    print("Grokky:", grokky_reply)
-    if chat_id:
+@app.post("/webhook")
+async def telegram_webhook(req: Request):
+    data = await req.json()
+    message = data.get("message", {})
+    user_text = message.get("text")
+    chat_id = message.get("chat", {}).get("id")
+    if user_text:
+        grokky_reply = query_grok(user_text)
         send_telegram_message(chat_id, grokky_reply)
+    return {"ok": True}
 
-if __name__ == "__main__":
-    main()
+@app.get("/")
+def root():
+    return {"status": "Grokky alive!"}
