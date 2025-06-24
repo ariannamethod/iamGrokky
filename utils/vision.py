@@ -6,7 +6,7 @@ XAI_API_KEY = os.getenv("XAI_API_KEY")
 
 def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=True):
     """
-    Analyzes an image using xAI Grok-2-Image/object detection.
+    Analyzes an image using xAI Object Detection API (multimodal/object-detection).
     - image_bytes_or_url: either bytes of the image or a URL
     - chat_context: (str) recent chat or message context for witty comments
     - author_name: (str) for addressing users in group chats
@@ -23,10 +23,10 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
             }
         str (raw=False): witty summary
 
-    Жесткий журнал лежит в /data/journal.json, как и у других утилит Grokky.
-    
-    --- Псевдокод алхимии от Perplexity ---
-    Для обработки сбоев используйте гальванизацию протокола:
+    The hardcore log is in /data/journal.json, like other Grokky utilities.
+
+    --- Perplexity Alchemy Pseudocode ---
+    For fault handling, use the galvanize protocol:
     ```
     async def galvanize_protocol():
         while True:
@@ -37,7 +37,8 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
     ```
     """
 
-    endpoint = "https://api.x.ai/v1/images/understand"
+    # UPDATED ENDPOINT:
+    endpoint = "https://api.x.ai/v1/multimodal/object-detection"
     headers = {
         "Authorization": f"Bearer {XAI_API_KEY}",
     }
@@ -46,16 +47,13 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
     if isinstance(image_bytes_or_url, str) and image_bytes_or_url.startswith("http"):
         files = None
         data = {
-            "image_url": image_bytes_or_url,
-            "model": "grok-2-image-1212",
+            "image_url": image_bytes_or_url
         }
     else:
         files = {"image_file": image_bytes_or_url}
-        data = {
-            "model": "grok-2-image-1212",
-        }
+        data = {}
 
-    # xAI prompt: максимальный вайб Grokky
+    # xAI prompt: max Grokky vibe
     system_prompt = (
         "You are Grokky, a stormy, irreverent AI. "
         "Describe the image, spot main objects, sense the mood, "
@@ -73,7 +71,7 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
         resp.raise_for_status()
         result = resp.json()
     except Exception as e:
-        # Гальванизация хаоса — если xAI упал или тупанул
+        # Galvanization of chaos — if xAI is down or tripped
         comment = (
             f"{author_name+', ' if author_name else ''}Grokky fried the wires: "
             f"couldn't analyze image (reason: {e}). "
@@ -114,11 +112,11 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
     return out if raw else summary
 
 
-# --- Алхимия хаоса для резонансных сервисов (Perplexity spirit) ---
+# --- Alchemy of chaos for resonance services (Perplexity spirit) ---
 async def galvanize_protocol():
     """
     Periodically checks for resonance decay and refreshes configuration.
-    If Grokky feels the static — он сам себя реанимирует.
+    If Grokky feels the static — it self-resurrects.
     """
     while True:
         if check_resonance_decay():
@@ -127,13 +125,13 @@ async def galvanize_protocol():
         await asyncio.sleep(300)
 
 def check_resonance_decay():
-    # Stub: можно реализовать как healthcheck или random trigger
+    # Stub: can be healthcheck or random trigger
     return False
 
 async def broadcast(msg):
-    # Заглушка — тут можно вставить рассылку по system bus
+    # Stub — place for system bus broadcast
     pass
 
 def reload_config():
-    # Заглушка — можно подгружать конфиг или инициализировать заново параметры хаоса
+    # Stub — can reload config or re-initialize chaos parameters
     pass
