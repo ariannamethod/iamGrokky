@@ -6,6 +6,7 @@ from utils.prompt import build_system_prompt
 from utils.genesis2 import genesis2_handler
 from utils.vision import vision_handler
 from utils.impress import impress_handler
+from utils.x import grokky_send_news  # <<--- NEW: spontaneous x_news utility
 
 app = FastAPI()
 
@@ -27,6 +28,11 @@ GENESIS2_TRIGGERS = [
     "фрагмент", "инсайт", "surreal", "ignite", "fractal", "field resonance", "raise the vibe", "impress me",
     "give me chaos", "озарение", "ассоциация", "намёк", "give me a spark", "разорви тишину", "волну", "взрыв",
     "помнишь", "знаешь", "любишь", "пошумим", "поэзия"
+]
+
+X_NEWS_TRIGGERS = [
+    "новости", "news", "headline", "berlin", "israel", "ai", "искусственный интеллект", "резонанс мира", "шум среды",
+    "grokky, что в мире", "шум", "шум среды", "x_news", "дай статью", "give me news", "storm news", "culture", "арт"
 ]
 
 def extract_first_json(text):
@@ -86,6 +92,8 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
             return handle_vision(args)
         elif fn == "impress_handler":
             return handle_impress(args)
+        elif fn == "x_news_handler":
+            return handle_x_news(args)
         else:
             # Unknown function, fallback to plain text
             return f"Grokky raw: {reply}"
@@ -102,6 +110,15 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
         )
         import json as pyjson
         return pyjson.dumps(response, ensure_ascii=False, indent=2)
+
+    # Если news-триггер — запускаем x_news_handler
+    if any(w in (user_message or "").lower() for w in X_NEWS_TRIGGERS):
+        return handle_x_news({
+            "group": is_group_env,
+            "context": user_message,
+            "author_name": author_name,
+            "raw": True
+        })
 
     return reply
 
@@ -150,6 +167,20 @@ def handle_impress(args):
     )
     import json as pyjson
     return pyjson.dumps(response, ensure_ascii=False, indent=2)
+
+def handle_x_news(args):
+    group = args.get("group", False)
+    context = args.get("context", "")
+    author_name = args.get("author_name")
+    raw = args.get("raw", True)
+    # You can use context and author_name for future personalization/initiative
+    messages = grokky_send_news(group=group)
+    if not messages:
+        return "The world is silent today. No news worth the thunder."
+    if raw:
+        import json as pyjson
+        return pyjson.dumps({"news": messages, "group": group, "author": author_name}, ensure_ascii=False, indent=2)
+    return "\n\n".join(messages)
 
 def send_telegram_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
