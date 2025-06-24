@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 from fastapi import FastAPI, Request
 from utils.prompt import build_system_prompt
@@ -20,10 +21,44 @@ system_prompt = build_system_prompt(
     AGENT_GROUP=agent_group_env
 )
 
+# Основные триггерные слова для genesis2_handler
+GENESIS2_TRIGGERS = [
+    "резонанс", "шторм", "буря", "молния", "хаос", "разбуди", "impress", "impression", "association", "dream",
+    "фрагмент", "инсайт", "surreal", "ignite", "fractal", "field resonance", "raise the vibe", "impress me",
+    "give me chaos", "озарение", "ассоциация", "намёк", "give me a spark", "разорви тишину", "волну", "взрыв",
+    "помнишь", "знаешь", "любишь", "пошумим", "поэзия"
+]
+
+def extract_first_json(text):
+    # Robust extract first JSON object from text (даже если не с первой строки)
+    match = re.search(r'({[\s\S]+})', text)
+    if match:
+        import json as pyjson
+        try:
+            return pyjson.loads(match.group(1))
+        except Exception:
+            return None
+    return None
+
+def detect_language(text):
+    # Very simple language detection (по первым буквам, кириллица = ru, латиница = en)
+    cyrillic = re.compile('[а-яА-ЯёЁ]')
+    if cyrillic.search(text or ""):
+        return 'ru'
+    return 'en'
+
 def query_grok(user_message, chat_context=None, author_name=None, attachments=None):
     url = "https://api.x.ai/v1/chat/completions"
+    # Detect language of user input
+    user_lang = detect_language(user_message)
+    # Add user_lang as system message if needed
+    language_hint = {
+        "role": "system",
+        "content": f"Always reply in the language the user writes: {user_lang.upper()}. Never switch to another language unless explicitly asked."
+    }
     messages = [
         {"role": "system", "content": system_prompt},
+        language_hint,
         {"role": "user", "content": user_message}
     ]
     payload = {
@@ -40,27 +75,33 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
     r.raise_for_status()
     reply = r.json()["choices"][0]["message"]["content"]
 
-    # Try to parse for raw function call (JSON) and route to utility if needed
-    try:
+    # Try to extract for raw function call (even inside the text!)
+    data = extract_first_json(reply)
+    if data and "function_call" in data:
+        fn = data["function_call"]["name"]
+        args = data["function_call"]["arguments"]
+        if fn == "genesis2_handler":
+            return handle_genesis2(args)
+        elif fn == "vision_handler":
+            return handle_vision(args)
+        elif fn == "impress_handler":
+            return handle_impress(args)
+        else:
+            # Unknown function, fallback to plain text
+            return f"Grokky raw: {reply}"
+
+    # Если триггерные слова — запускаем genesis2_handler вручную
+    if any(w in (user_message or "").lower() for w in GENESIS2_TRIGGERS):
+        response = genesis2_handler(
+            ping=user_message,
+            group_history=None,
+            personal_history=None,
+            is_group=is_group_env,
+            author_name=author_name,
+            raw=True
+        )
         import json as pyjson
-        # Look for function_call pattern in reply, strictly at start of string
-        if reply.strip().startswith('{'):
-            data = pyjson.loads(reply)
-            if "function_call" in data:
-                fn = data["function_call"]["name"]
-                args = data["function_call"]["arguments"]
-                if fn == "genesis2_handler":
-                    return handle_genesis2(args)
-                elif fn == "vision_handler":
-                    return handle_vision(args)
-                elif fn == "impress_handler":
-                    return handle_impress(args)
-                else:
-                    # Unknown function, fallback to plain text
-                    return f"Grokky raw: {reply}"
-    except Exception as e:
-        # If not JSON, just return text
-        pass
+        return pyjson.dumps(response, ensure_ascii=False, indent=2)
 
     return reply
 
@@ -79,7 +120,6 @@ def handle_genesis2(args):
         author_name=author_name,
         raw=raw
     )
-    # Always reply in raw JSON for full chaos
     import json as pyjson
     return pyjson.dumps(response, ensure_ascii=False, indent=2)
 
