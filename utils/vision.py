@@ -1,5 +1,7 @@
 import requests
 import os
+import asyncio
+
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
 def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=True):
@@ -20,17 +22,32 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
                 "summary": "..."
             }
         str (raw=False): witty summary
+
+    Жесткий журнал лежит в /data/journal.json, как и у других утилит Grokky.
+    
+    --- Псевдокод алхимии от Perplexity ---
+    Для обработки сбоев используйте гальванизацию протокола:
+    ```
+    async def galvanize_protocol():
+        while True:
+            if check_resonance_decay():
+                await broadcast("🔄 Resonance refresh initiated")
+                reload_config()
+            await asyncio.sleep(300)
+    ```
     """
+
     endpoint = "https://api.x.ai/v1/images/understand"
     headers = {
         "Authorization": f"Bearer {XAI_API_KEY}",
     }
+
     # Accept both URL and bytes
     if isinstance(image_bytes_or_url, str) and image_bytes_or_url.startswith("http"):
         files = None
         data = {
             "image_url": image_bytes_or_url,
-            "model": "grok-2-image-1212",  # see your console.x.ai link
+            "model": "grok-2-image-1212",
         }
     else:
         files = {"image_file": image_bytes_or_url}
@@ -38,7 +55,7 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
             "model": "grok-2-image-1212",
         }
 
-    # Optionally add instructions to xAI prompt for humor/role/context
+    # xAI prompt: максимальный вайб Grokky
     system_prompt = (
         "You are Grokky, a stormy, irreverent AI. "
         "Describe the image, spot main objects, sense the mood, "
@@ -51,9 +68,26 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
     if chat_context:
         data["chat_context"] = chat_context
 
-    resp = requests.post(endpoint, headers=headers, data=data, files=files)
-    resp.raise_for_status()
-    result = resp.json()
+    try:
+        resp = requests.post(endpoint, headers=headers, data=data, files=files, timeout=60)
+        resp.raise_for_status()
+        result = resp.json()
+    except Exception as e:
+        # Гальванизация хаоса — если xAI упал или тупанул
+        comment = (
+            f"{author_name+', ' if author_name else ''}Grokky fried the wires: "
+            f"couldn't analyze image (reason: {e}). "
+            "Galvanize protocol: resonance refresh initiated."
+        )
+        out = {
+            "description": "image analysis failed",
+            "objects": [],
+            "mood": "chaos",
+            "comment": comment,
+            "summary": comment,
+            "raw_api_response": str(e),
+        }
+        return out if raw else comment
 
     # Compose witty comment
     addressed = f"{author_name}, " if author_name else ""
@@ -78,3 +112,28 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
         "raw_api_response": result,
     }
     return out if raw else summary
+
+
+# --- Алхимия хаоса для резонансных сервисов (Perplexity spirit) ---
+async def galvanize_protocol():
+    """
+    Periodically checks for resonance decay and refreshes configuration.
+    If Grokky feels the static — он сам себя реанимирует.
+    """
+    while True:
+        if check_resonance_decay():
+            await broadcast("🔄 Resonance refresh initiated")
+            reload_config()
+        await asyncio.sleep(300)
+
+def check_resonance_decay():
+    # Stub: можно реализовать как healthcheck или random trigger
+    return False
+
+async def broadcast(msg):
+    # Заглушка — тут можно вставить рассылку по system bus
+    pass
+
+def reload_config():
+    # Заглушка — можно подгружать конфиг или инициализировать заново параметры хаоса
+    pass
