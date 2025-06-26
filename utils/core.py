@@ -1,7 +1,6 @@
 import os
 import requests
 import asyncio
-import aiohttp
 from gtts import gTTS
 import io
 from utils.prompt import build_system_prompt
