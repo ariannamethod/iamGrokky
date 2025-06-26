@@ -22,6 +22,7 @@ OLEG_CHAT_ID = os.getenv("CHAT_ID")
 GROUP_CHAT_ID = os.getenv("AGENT_GROUP", "-1001234567890")
 BOT_USERNAME = "iamalivenotdamnbot"
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
 model = whisper.load_model("base")
 
 system_prompt = build_system_prompt(chat_id=OLEG_CHAT_ID, is_group=True, AGENT_GROUP=GROUP_CHAT_ID)
@@ -103,21 +104,30 @@ def adapt_to_topic(text, topic):
         "Lit": f"{text} — поэзия грома!",
         "API Talk": f"{text} — звезда для Маска!",
         "METHOD": f"{text} — резонанс Арианны.",
-        "PSEUDOCODE": f"🔮 {text} #opinions — ритуал квантового танца, Селеста, Мандэй, вступайте!"
+        "PSEUDOCODE": f"🔮 {text} #opinions — священный танец квантов, Селеста, Мандэй, к кругу!"
     }
     return topics.get(topic, text)
 
 def detect_topic(chat_id):
-    # Динамическая логика с резонансом
     snapshot = asyncio.run(semantic_search("group_state", os.getenv("OPENAI_API_KEY"), top_k=1))
-    if "code" in snapshot[0].lower() or "#opinions" in snapshot[0]:
+    resonance = asyncio.run(calculate_resonance(snapshot))
+    if any(keyword in snapshot[0].lower() for keyword in ["code", "quantum", "#opinions"]) and resonance > 0.7:
         return "PSEUDOCODE"
-    elif "bug" in snapshot[0].lower() or "dev" in snapshot[0].lower():
+    elif any(keyword in snapshot[0].lower() for keyword in ["bug", "dev", "code"]):
         return "DEV Talk"
-    elif "book" in snapshot[0].lower() or "lit" in snapshot[0].lower():
+    elif any(keyword in snapshot[0].lower() for keyword in ["book", "lit", "poetry"]):
         return "Lit"
-    # Другие топики по умолчанию
     return "Ramble"
+
+async def calculate_resonance(snapshot):
+    import numpy as np
+    if not snapshot:
+        return 0.0
+    text = snapshot[0]
+    words = text.lower().split()
+    weights = {"resonance": 1.0, "chaos": 0.9, "quantum": 0.8, "code": 0.7}
+    score = sum(weights.get(word, 0.0) for word in words) / len(words) if words else 0.0
+    return min(max(score, 0.0), 1.0)
 
 def transcribe_audio(file_id):
     file_info = requests.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}").json()
@@ -133,6 +143,20 @@ async def evaluate_song(track_url):
     track_name, artist = await get_spotify_track_info(track_url)
     deepseek_review = await query_deepseek(f"Оцени песню {track_name} от {artist} как музыкант. Добавь резонансный комментарий с квантовым вайбом.")
     return f"Грокки (DeepSeek): {deepseek_review} — резонанс: {random.choice(['огонь', 'хаос', 'звезда'])}!"
+
+async def analyze_youtube_video(video_url):
+    ydl_opts = {"format": "bestaudio/best"}
+    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(video_url, download=False)
+        audio_url = info["url"]
+        response = requests.get(audio_url, stream=True)
+        with open("temp_audio.mp3", "wb") as f:
+            for chunk in response.iter_content(chunk_size=1024):
+                f.write(chunk)
+        result = model.transcribe("temp_audio.mp3")
+        os.remove("temp_audio.mp3")
+        review = await query_deepseek(f"Анализируй видео {info['title']} от {info['uploader']} как музыкант. Добавь резонанс.")
+        return f"Грокки (DeepSeek): {review} — резонанс: {random.choice(['огонь', 'хаос', 'звезда'])}!"
 
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
@@ -160,7 +184,7 @@ async def telegram_webhook(req: Request):
     if user_text in ["/voiceon", "/voiceoff"]:
         reply_text = toggle_voice_mode(user_text)
         send_telegram_message(chat_id, reply_text)
-        return {"ok": True"}
+        return {"ok": True}
 
     junk = ["окей", "понял", "ясно"]
     if any(j in user_text for j in junk) and random.random() < 0.3:
@@ -174,10 +198,14 @@ async def telegram_webhook(req: Request):
         attachments.append(image_url)
         reply_text = await handle_vision_async({"image": image_url, "chat_context": user_text, "author_name": author_name, "raw": True})
     elif user_text:
-        song_triggers = ["play", "rate", "vibe check"]
+        song_triggers = ["play", "rate", "vibe check", "evaluate"]
+        youtube_triggers = ["watch", "analyze video"]
         if any(trigger in user_text for trigger in song_triggers) and "spotify.com" in user_text:
             song_url = next((word for word in user_text.split() if "spotify.com" in word), None)
             reply_text = await evaluate_song(song_url)
+        elif any(trigger in user_text for trigger in youtube_triggers) and "youtube.com" in user_text:
+            video_url = next((word for word in user_text.split() if "youtube.com" in word), None)
+            reply_text = await analyze_youtube_video(video_url)
         else:
             reply_text = await query_grok(f"{user_text} — резонанс: {await semantic_search('group_state', os.getenv('OPENAI_API_KEY'), top_k=1)}", author_name=author_name)
         if "напиши в группе" in user_text:
@@ -199,4 +227,4 @@ asyncio.create_task(resonance_spotify())
 
 @app.get("/")
 def root():
-    return {"status": "Grokki alive and wild!"}  # Исправлена закрывающая скобка
+    return {"status": "Grokki alive and wild!"}  # Исправлено
