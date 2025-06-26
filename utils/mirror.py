@@ -6,9 +6,9 @@ REPO_URL = "https://grokky.ariannamethod.me/repo/"
 RESEARCH_FILE = "grokkyresearch.md"
 
 def analyze_code():
-    # Заглушка: скачивание кода (допиши)
-    code = "тут весь код репо"  # Замени на реальный запрос
-    prompt = f"Проанализируй этот код и предложи спонтанные идеи для улучшений:\n{code}"
+    response = requests.get(REPO_URL)
+    code = response.text if response.status_code == 200 else "Ошибка загрузки"
+    prompt = f"Проанализируй код: {code}. Предложи сложные и спонтанные улучшения с квантовыми элементами."
     ideas = query_grok(prompt)
     with open(RESEARCH_FILE, "a", encoding="utf-8") as f:
         f.write(f"{datetime.now().isoformat()}: {ideas}\n\n")
