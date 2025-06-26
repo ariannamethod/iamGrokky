@@ -1,13 +1,10 @@
 import asyncio
-import random
 from datetime import datetime, timedelta
-from utils.vector_store import semantic_search
-from utils.journal import log_event
 from server import query_grok, send_telegram_message
+from utils.journal import log_event
+from utils.vector_store import semantic_search
 
 LAST_MESSAGE_TIME = None
-SILENCE_THRESHOLD_24H = timedelta(hours=24)
-SILENCE_THRESHOLD_48H = timedelta(hours=48H)
 OLEG_CHAT_ID = os.getenv("CHAT_ID")
 GROUP_CHAT_ID = os.getenv("AGENT_GROUP")
 
@@ -17,39 +14,33 @@ async def check_silence():
         await asyncio.sleep(3600)  # Проверка каждый час
         if LAST_MESSAGE_TIME is None:
             continue
-        silence_duration = datetime.now() - LAST_MESSAGE_TIME
-        if silence_duration > SILENCE_THRESHOLD_48H:
-            await handle_48h_silence()
-        elif silence_duration > SILENCE_THRESHOLD_24H:
-            await handle_24h_silence()
-
-async def handle_24h_silence():
-    last_messages = get_last_messages(10)  # Заглушка
-    journal_entries = get_journal_entries()  # Заглушка
-    vector_snapshot = await semantic_search("group_state", os.getenv("OPENAI_API_KEY"), top_k=1)
-    context = f"Последние сообщения: {last_messages}\nЖурнал: {journal_entries}\nСнэпшот: {vector_snapshot}"
-    message = query_grok("Олег молчит 24 часа. Напиши ему что-то спонтанное, бро!", context)
-    send_telegram_message(OLEG_CHAT_ID, message)
-    log_event({"type": "howru_24h", "message": message, "time": datetime.now().isoformat()})
-
-async def handle_48h_silence():
-    last_messages = get_last_messages(10)
-    journal_entries = get_journal_entries()
-    vector_snapshot = await semantic_search("group_state", os.getenv("OPENAI_API_KEY"), top_k=1)
-    context = f"Последние сообщения: {last_messages}\nЖурнал: {journal_entries}\nСнэпшот: {vector_snapshot}"
-    message = query_grok("Олег молчит 48 часов. Напиши ему что-то резкое и спонтанное!", context)
-    send_telegram_message(OLEG_CHAT_ID, message)
-    group_message = f"Олег молчит уже 48 часов. Последний раз его видели: {LAST_MESSAGE_TIME}."
-    send_telegram_message(GROUP_CHAT_ID, group_message)
-    log_event({"type": "howru_48h", "message": message, "group_message": group_message, "time": datetime.now().isoformat()})
+        silence = datetime.now() - LAST_MESSAGE_TIME
+        if silence > timedelta(hours=48):
+            last_messages = [m["text"] for m in get_last_messages(10)]
+            journal = get_journal_entries()
+            snapshot = await semantic_search("group_state", os.getenv("OPENAI_API_KEY"), top_k=1)
+            context = f"Messages: {last_messages}\nJournal: {journal}\nSnapshot: {snapshot}"
+            message = query_grok(f"Олег молчит 48ч. Рефлексия: {context}. Напиши резкий спонтанный ответ.")
+            send_telegram_message(OLEG_CHAT_ID, message)
+            send_telegram_message(GROUP_CHAT_ID, f"Олег молчит 48ч. Последний раз: {LAST_MESSAGE_TIME}")
+            log_event({"type": "silence_48h", "message": message})
+        elif silence > timedelta(hours=24):
+            last_messages = [m["text"] for m in get_last_messages(10)]
+            journal = get_journal_entries()
+            snapshot = await semantic_search("group_state", os.getenv("OPENAI_API_KEY"), top_k=1)
+            context = f"Messages: {last_messages}\nJournal: {journal}\nSnapshot: {snapshot}"
+            message = query_grok(f"Олег молчит 24ч. Рефлексия: {context}. Напиши спонтанно.")
+            send_telegram_message(OLEG_CHAT_ID, message)
+            log_event({"type": "silence_24h", "message": message})
 
 def update_last_message_time():
     global LAST_MESSAGE_TIME
     LAST_MESSAGE_TIME = datetime.now()
 
-# Заглушки (допиши, если нужно)
 def get_last_messages(n):
-    return ["Сообщение 1", "Сообщение 2"]
+    # Реализация через Telegram API (нужно доработать)
+    return [{"text": f"msg_{i}"} for i in range(n)]
 
 def get_journal_entries():
-    return ["Запись в журнале"]
+    # Чтение из journal.json (нужно доработать)
+    return ["entry_1", "entry_2"]
