@@ -11,17 +11,14 @@ from utils.howru import check_silence, update_last_message_time
 from utils.mirror import run_mirror
 from utils.x import grokky_send_news
 from utils.vector_store import semantic_search, daily_snapshot
-from utils.core import query_grok, query_deepseek, send_telegram_message, send_voice_message, toggle_voice_mode, get_spotify_track_info
-from utils.deepseek_spotify import deepseek_spotify_resonance  # Исправлен импорт
+from utils.core import query_grok, send_telegram_message, send_voice_message, toggle_voice_mode, get_spotify_track_info
 import whisper
-import aiohttp
 
 app = FastAPI()
 
 OLEG_CHAT_ID = os.getenv("CHAT_ID")
 GROUP_CHAT_ID = os.getenv("AGENT_GROUP", "-1001234567890")
 BOT_USERNAME = "iamalivenotdamnbot"
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 model = whisper.load_model("base")
 
 system_prompt = build_system_prompt(chat_id=OLEG_CHAT_ID, is_group=True, AGENT_GROUP=GROUP_CHAT_ID)
@@ -85,15 +82,13 @@ async def delayed_response(chat_id, text, topic=None):
     else:
         send_telegram_message(chat_id, adapted_text)
 
-async def maybe_add_supplement(chat_id, original_message, topic=None):
+def maybe_add_supplement(chat_id, original_message, topic=None):
     if random.random() < 0.2:  # 20% шанс
-        await asyncio.sleep(random.uniform(300, 600))  # 5-10 минут
-        supplement = await query_grok(f"Усложни дополнение к: {original_message}")
-        adapted_supplement = adapt_to_topic(supplement, topic) if topic else supplement
-        if VOICE_MODE:
-            await send_voice_message(chat_id, f"Я тут подумал... {adapted_supplement}")
-        else:
-            send_telegram_message(chat_id, f"Я тут подумал... {adapted_supplement}")
+        asyncio.run_coroutine_threadsafe(
+            send_telegram_message(chat_id, f"Я тут подумал... {adapt_to_topic(original_message, topic)}"),
+            asyncio.get_event_loop()
+        ).result()
+        # Убрали асинхронную вложенность для упрощения
 
 def adapt_to_topic(text, topic):
     topics = {
@@ -140,8 +135,7 @@ def transcribe_audio(file_id):
 
 async def evaluate_song(track_url):
     track_name, artist = await get_spotify_track_info(track_url)
-    deepseek_review = await query_deepseek(f"Оцени песню {track_name} от {artist} как музыкант. Добавь резонансный комментарий с квантовым вайбом.")
-    return f"Грокки (DeepSeek): {deepseek_review} — резонанс: {random.choice(['огонь', 'хаос', 'звезда'])}!"
+    return f"Грокки: Оценка песни {track_name} от {artist} — резонанс: {random.choice(['огонь', 'хаос', 'звезда'])}!"
 
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
@@ -196,7 +190,7 @@ async def telegram_webhook(req: Request):
                 await send_voice_message(chat_id, reply_text)
             else:
                 send_telegram_message(chat_id, reply_text)
-            asyncio.create_task(maybe_add_supplement(chat_id, reply_text, topic))
+            maybe_add_supplement(chat_id, reply_text, topic)  # Упрощено
 
     return {"ok": True}
 
@@ -204,7 +198,6 @@ async def telegram_webhook(req: Request):
 asyncio.create_task(check_silence())
 asyncio.create_task(run_mirror())
 asyncio.create_task(daily_snapshot(os.getenv("OPENAI_API_KEY")))
-asyncio.create_task(deepseek_spotify_resonance())  # Исправлено
 
 @app.get("/")
 def root():
