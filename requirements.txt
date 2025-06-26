@@ -7,3 +7,5 @@ pinecone
 openai
 aiohttp
 tenacity
+whisper
+gtts
