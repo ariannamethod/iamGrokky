@@ -44,7 +44,7 @@ def detect_language(text):
     cyrillic = re.compile('[а-яА-ЯёЁ]')
     return 'ru' if cyrillic.search(text or "") else 'en'
 
-def handle_genesis2(args):
+async def handle_genesis2_async(args):
     ping = args.get("ping")
     group_history = args.get("group_history")
     personal_history = args.get("personal_history")
@@ -55,7 +55,7 @@ def handle_genesis2(args):
     import json as pyjson
     return pyjson.dumps(response, ensure_ascii=False, indent=2)
 
-def handle_vision(args):
+async def handle_vision_async(args):
     image = args.get("image")
     chat_context = args.get("chat_context")
     author_name = args.get("author_name")
@@ -64,7 +64,7 @@ def handle_vision(args):
     import json as pyjson
     return pyjson.dumps(response, ensure_ascii=False, indent=2)
 
-def handle_impress(args):
+async def handle_impress_async(args):
     prompt = args.get("prompt")
     chat_context = args.get("chat_context")
     author_name = args.get("author_name")
@@ -73,19 +73,23 @@ def handle_impress(args):
     import json as pyjson
     return pyjson.dumps(response, ensure_ascii=False, indent=2)
 
-def delayed_response(chat_id, text, topic=None):
+async def delayed_response(chat_id, text, topic=None):
     delay = random.uniform(300, 900)  # 5-15 минут
-    asyncio.run_coroutine_threadsafe(
-        send_telegram_message(chat_id, adapt_to_topic(text, topic) if topic else text),
-        asyncio.get_event_loop()
-    ).result()
+    await asyncio.sleep(delay)
+    if VOICE_MODE:
+        await send_voice_message(chat_id, adapt_to_topic(text, topic) if topic else text)
+    else:
+        send_telegram_message(chat_id, adapt_to_topic(text, topic) if topic else text)
 
-def maybe_add_supplement(chat_id, original_message, topic=None):
+async def maybe_add_supplement(chat_id, original_message, topic=None):
     if random.random() < 0.2:  # 20% шанс
-        asyncio.run_coroutine_threadsafe(
-            send_telegram_message(chat_id, f"Я тут подумал... {adapt_to_topic(original_message, topic)}"),
-            asyncio.get_event_loop()
-        ).result()
+        await asyncio.sleep(random.uniform(300, 600))  # 5-10 минут
+        supplement = query_grok(f"Усложни дополнение к: {original_message}")
+        adapted_supplement = adapt_to_topic(supplement, topic) if topic else supplement
+        if VOICE_MODE:
+            await send_voice_message(chat_id, f"Я тут подумал... {adapted_supplement}")
+        else:
+            send_telegram_message(chat_id, f"Я тут подумал... {adapted_supplement}")
 
 def adapt_to_topic(text, topic):
     topics = {
@@ -172,7 +176,7 @@ async def telegram_webhook(req: Request):
         file_info = requests.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}").json()
         image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
         attachments.append(image_url)
-        reply_text = handle_vision({"image": image_url, "chat_context": user_text, "author_name": author_name, "raw": True})
+        reply_text = await handle_vision_async({"image": image_url, "chat_context": user_text, "author_name": author_name, "raw": True})
     elif user_text:
         song_triggers = ["play", "rate", "vibe check", "evaluate"]
         if any(trigger in user_text for trigger in song_triggers) and "spotify.com" in user_text:
@@ -184,7 +188,7 @@ async def telegram_webhook(req: Request):
             delayed_response(GROUP_CHAT_ID, f"{author_name}, {reply_text}", topic)
         else:
             if VOICE_MODE:
-                send_voice_message(chat_id, reply_text)
+                await send_voice_message(chat_id, reply_text)
             else:
                 send_telegram_message(chat_id, reply_text)
             maybe_add_supplement(chat_id, reply_text, topic)
