@@ -11,13 +11,16 @@ from utils.howru import check_silence, update_last_message_time
 from utils.mirror import run_mirror
 from utils.x import grokky_send_news
 from utils.vector_store import semantic_search, daily_snapshot
-from utils.core import query_grok, send_telegram_message
+from utils.core import query_grok, query_deepseek, send_telegram_message, send_voice_message, toggle_voice_mode, get_spotify_track_info
+from utils.resonance_spotify import resonance_spotify
+import whisper
 
 app = FastAPI()
 
 OLEG_CHAT_ID = os.getenv("CHAT_ID")
 GROUP_CHAT_ID = os.getenv("AGENT_GROUP", "-1001234567890")
 BOT_USERNAME = "iamalivenotdamnbot"
+model = whisper.load_model("base")
 
 system_prompt = build_system_prompt(chat_id=OLEG_CHAT_ID, is_group=True, AGENT_GROUP=GROUP_CHAT_ID)
 
@@ -75,14 +78,20 @@ async def delayed_response(chat_id, text, topic=None):
     delay = random.uniform(300, 900)  # 5-15 минут
     await asyncio.sleep(delay)
     adapted_text = adapt_to_topic(text, topic) if topic else text
-    send_telegram_message(chat_id, adapted_text)
+    if VOICE_MODE:
+        await send_voice_message(chat_id, adapted_text)
+    else:
+        send_telegram_message(chat_id, adapted_text)
 
 async def maybe_add_supplement(chat_id, original_message, topic=None):
     if random.random() < 0.2:  # 20% шанс
         await asyncio.sleep(random.uniform(300, 600))  # 5-10 минут
         supplement = await query_grok(f"Усложни дополнение к: {original_message}")
         adapted_supplement = adapt_to_topic(supplement, topic) if topic else supplement
-        send_telegram_message(chat_id, f"Я тут подумал... {adapted_supplement}")
+        if VOICE_MODE:
+            await send_voice_message(chat_id, f"Я тут подумал... {adapted_supplement}")
+        else:
+            send_telegram_message(chat_id, f"Я тут подумал... {adapted_supplement}")
 
 def adapt_to_topic(text, topic):
     topics = {
@@ -97,8 +106,22 @@ def adapt_to_topic(text, topic):
     return topics.get(topic, text)
 
 def detect_topic(chat_id):
-    # Сложная логика определения топика (нужно доработать с данными группы)
-    return "Ramble"  # Заглушка
+    return "Ramble"  # Заглушка, нужно доработать
+
+def transcribe_audio(file_id):
+    file_info = requests.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}").json()
+    file_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
+    response = requests.get(file_url)
+    with open("temp_audio.ogg", "wb") as f:
+        f.write(response.content)
+    result = model.transcribe("temp_audio.ogg")
+    os.remove("temp_audio.ogg")
+    return result["text"]
+
+async def evaluate_song(track_url):
+    track_name, artist = await get_spotify_track_info(track_url)
+    deepseek_review = await query_deepseek_async(f"Оцени песню {track_name} от {artist} как музыкант. Добавь резонансный комментарий.")
+    return f"Грокки (DeepSeek): {deepseek_review} — резонанс: {random.choice(['огонь', 'хаос', 'звезда'])}!"
 
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
@@ -108,14 +131,14 @@ async def telegram_webhook(req: Request):
     chat_id = message.get("chat", {}).get("id")
     author_name = message.get("from", {}).get("first_name", "anon")
     attachments = []
-    if "photo" in message and message["photo"]:
-        file_id = message["photo"][-1]["file_id"]
-        file_info = requests.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}").json()
-        image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
-        attachments.append(image_url)
 
     if str(chat_id) == OLEG_CHAT_ID:
         update_last_message_time()
+
+    if "voice" in message:
+        file_id = message["voice"]["file_id"]
+        transcribed_text = transcribe_audio(file_id)
+        user_text = transcribed_text.lower()
 
     triggers = [f"@{BOT_USERNAME}", "грокки", "grokky", "напиши в группе"]
     is_quoted = message.get("reply_to_message", {}).get("from", {}).get("username") == BOT_USERNAME
@@ -123,19 +146,35 @@ async def telegram_webhook(req: Request):
     if not any(t in user_text for t in triggers) and not is_quoted:
         return {"ok": True}
 
+    if user_text in ["/voiceon", "/voiceoff"]:
+        reply_text = toggle_voice_mode(user_text)
+        send_telegram_message(chat_id, reply_text)
+        return {"ok": True}
+
     junk = ["окей", "понял", "ясно"]
     if any(j in user_text for j in junk) and random.random() < 0.3:
         return {"ok": True}
 
     reply_text = ""
-    if attachments:
-        reply_text = await handle_vision_async({"image": attachments[0], "chat_context": user_text, "author_name": author_name, "raw": True})
+    if "photo" in message and message["photo"]:
+        file_id = message["photo"][-1]["file_id"]
+        file_info = requests.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}").json()
+        image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
+        attachments.append(image_url)
+        reply_text = await handle_vision_async({"image": image_url, "chat_context": user_text, "author_name": author_name, "raw": True})
     elif user_text:
-        reply_text = await query_grok(f"{user_text} — резонанс: {await semantic_search('group_state', os.getenv('OPENAI_API_KEY'), top_k=1)}", author_name=author_name)
+        if "evaluate song" in user_text and "spotify.com" in user_text:
+            song_url = next((word for word in user_text.split() if "spotify.com" in word), None)
+            reply_text = await evaluate_song(song_url)
+        else:
+            reply_text = await query_grok(f"{user_text} — резонанс: {await semantic_search('group_state', os.getenv('OPENAI_API_KEY'), top_k=1)}", author_name=author_name)
         if "напиши в группе" in user_text:
             asyncio.create_task(delayed_response(GROUP_CHAT_ID, f"{author_name}, {reply_text}", topic))
         else:
-            send_telegram_message(chat_id, reply_text)
+            if VOICE_MODE:
+                await send_voice_message(chat_id, reply_text)
+            else:
+                send_telegram_message(chat_id, reply_text)
             asyncio.create_task(maybe_add_supplement(chat_id, reply_text, topic))
 
     return {"ok": True}
@@ -144,7 +183,8 @@ async def telegram_webhook(req: Request):
 asyncio.create_task(check_silence())
 asyncio.create_task(run_mirror())
 asyncio.create_task(daily_snapshot(os.getenv("OPENAI_API_KEY")))
+asyncio.create_task(resonance_spotify())
 
 @app.get("/")
 def root():
-    return {"status": "Grokky alive and wild!"}
+    return {"status": "Grokki alive and wild!"
