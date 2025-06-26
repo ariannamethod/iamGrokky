@@ -9,4 +9,3 @@ aiohttp
 tenacity
 whisper
 gtts
-youtube-dl
