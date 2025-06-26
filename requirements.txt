@@ -6,3 +6,4 @@ python-dotenv
 pinecone
 openai
 aiohttp
+tenacity
