@@ -1,5 +1,7 @@
-uvicorn
 fastapi
+uvicorn
 requests
 tiktoken
 python-dotenv
+pinecone
+openai
