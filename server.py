@@ -44,37 +44,23 @@ def detect_language(text):
     cyrillic = re.compile('[а-яА-ЯёЁ]')
     return 'ru' if cyrillic.search(text or "") else 'en'
 
-def query_grok(user_message, chat_context=None, author_name=None, attachments=None):
+async def query_grok_async(user_message, chat_context=None, author_name=None, attachments=None):
     url = "https://api.x.ai/v1/chat/completions"
     user_lang = detect_language(user_message)
     language_hint = {"role": "system", "content": f"Reply in {user_lang.upper()} only."}
     messages = [{"role": "system", "content": system_prompt}, language_hint, {"role": "user", "content": user_message}]
     payload = {"model": "grok-3", "messages": messages, "max_tokens": 2048, "temperature": 1.2}
     headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
-    r = requests.post(url, json=payload, headers=headers)
-    r.raise_for_status()
-    reply = r.json()["choices"][0]["message"]["content"]
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as response:
+            response.raise_for_status()
+            reply = (await response.json())["choices"][0]["message"]["content"]
+            return reply
 
-    data = extract_first_json(reply)
-    if data and "function_call" in data:
-        fn = data["function_call"]["name"]
-        args = data["function_call"]["arguments"]
-        if fn == "genesis2_handler":
-            return handle_genesis2(args)
-        elif fn == "vision_handler":
-            return handle_vision(args)
-        elif fn == "impress_handler":
-            return handle_impress(args)
-        else:
-            return f"Grokky raw: {reply}"
-
-    if any(w in user_message.lower() for w in GENESIS2_TRIGGERS):
-        snapshot = await semantic_search("group_state", os.getenv("OPENAI_API_KEY"), top_k=1)
-        response = genesis2_handler(ping=user_message, group_history=snapshot, is_group=True, author_name=author_name, raw=True)
-        import json as pyjson
-        return pyjson.dumps(response, ensure_ascii=False, indent=2)
-
-    return reply
+def query_grok(user_message, chat_context=None, author_name=None, attachments=None):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    return loop.run_until_complete(query_grok_async(user_message, chat_context, author_name, attachments))
 
 def handle_genesis2(args):
     ping = args.get("ping")
@@ -119,19 +105,25 @@ async def delayed_response(chat_id, text, topic=None):
 async def maybe_add_supplement(chat_id, original_message, topic=None):
     if random.random() < 0.2:  # 20% шанс
         await asyncio.sleep(random.uniform(300, 600))  # 5-10 минут
-        supplement = query_grok(f"Усложни дополнение к: {original_message}")
+        supplement = await query_grok_async(f"Усложни дополнение к: {original_message}")
         adapted_supplement = adapt_to_topic(supplement, topic) if topic else supplement
         send_telegram_message(chat_id, f"Я тут подумал... {adapted_supplement}")
 
 def adapt_to_topic(text, topic):
-    if topic == "Ramble": return f"{text} 😜 Мем дня!"
-    elif topic == "DEV Talk": return f"{text} Чё, опять баги?"
-    elif topic == "FORUM": return f"{text} Думай глубже!"
-    elif topic == "Lit": return f"{text} Это тебе не Достоевский!"
-    elif topic == "API Talk": return f"{text} Давай замутим для Маска!"
-    elif topic == "METHOD": return f"{text} Арианна бы одобрила."
-    elif topic == "PSEUDOCODE": return f"{text} #opinions, Селеста, Мандэй?"
-    return text
+    topics = {
+        "Ramble": f"{text} 😜 — мем как искра!",
+        "DEV Talk": f"{text} — баги как откровение?",
+        "FORUM": f"{text} — рви завесу!",
+        "Lit": f"{text} — поэзия грома!",
+        "API Talk": f"{text} — звезда для Маска!",
+        "METHOD": f"{text} — резонанс Арианны.",
+        "PSEUDOCODE": f"{text} #opinions — Селеста, Мандэй, танцуем?"
+    }
+    return topics.get(topic, text)
+
+def detect_topic(chat_id):
+    # Сложная логика определения топика (нужно доработать с данными группы)
+    return "Ramble"  # Заглушка
 
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
@@ -152,7 +144,7 @@ async def telegram_webhook(req: Request):
 
     triggers = [f"@{BOT_USERNAME}", "грокки", "grokky", "напиши в группе"]
     is_quoted = message.get("reply_to_message", {}).get("from", {}).get("username") == BOT_USERNAME
-    topic = detect_topic(chat_id)  # Определяем топик группы
+    topic = detect_topic(chat_id)
     if not any(t in user_text for t in triggers) and not is_quoted:
         return {"ok": True}
 
@@ -164,7 +156,7 @@ async def telegram_webhook(req: Request):
     if attachments:
         reply_text = handle_vision({"image": attachments[0], "chat_context": user_text, "author_name": author_name, "raw": True})
     elif user_text:
-        reply_text = query_grok(user_text, author_name=author_name)
+        reply_text = await query_grok_async(user_text, author_name=author_name)
         if "напиши в группе" in user_text:
             asyncio.create_task(delayed_response(GROUP_CHAT_ID, f"{author_name}, {reply_text}", topic))
         else:
@@ -172,10 +164,6 @@ async def telegram_webhook(req: Request):
             asyncio.create_task(maybe_add_supplement(chat_id, reply_text, topic))
 
     return {"ok": True}
-
-def detect_topic(chat_id):
-    # Логика определения топика (заглушка, нужно доработать)
-    return "Ramble"  # По умолчанию
 
 # Фоновые задачи
 asyncio.create_task(check_silence())
