@@ -158,5 +158,5 @@ def run_snapshots():
     async def snapshots():
         while True:
             await daily_snapshot(os.getenv("OPENAI_API_KEY"))
-            await was_asyncio.sleep(86400)  # Раз в день
+            await asyncio.sleep(86400)  # Раз в день
     return snapshots()
