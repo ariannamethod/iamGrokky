@@ -1,6 +1,5 @@
 import os
 import re
-import requests
 import random
 import asyncio
 from fastapi import FastAPI, Request
@@ -12,11 +11,10 @@ from utils.howru import check_silence, update_last_message_time
 from utils.mirror import run_mirror
 from utils.x import grokky_send_news
 from utils.vector_store import semantic_search, daily_snapshot
+from utils.core import query_grok, send_telegram_message
 
 app = FastAPI()
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-XAI_API_KEY = os.getenv("XAI_API_KEY")
 OLEG_CHAT_ID = os.getenv("CHAT_ID")
 GROUP_CHAT_ID = os.getenv("AGENT_GROUP", "-1001234567890")
 BOT_USERNAME = "iamalivenotdamnbot"
@@ -44,25 +42,7 @@ def detect_language(text):
     cyrillic = re.compile('[а-яА-ЯёЁ]')
     return 'ru' if cyrillic.search(text or "") else 'en'
 
-async def query_grok_async(user_message, chat_context=None, author_name=None, attachments=None):
-    url = "https://api.x.ai/v1/chat/completions"
-    user_lang = detect_language(user_message)
-    language_hint = {"role": "system", "content": f"Reply in {user_lang.upper()} only."}
-    messages = [{"role": "system", "content": system_prompt}, language_hint, {"role": "user", "content": user_message}]
-    payload = {"model": "grok-3", "messages": messages, "max_tokens": 2048, "temperature": 1.2}
-    headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=payload, headers=headers) as response:
-            response.raise_for_status()
-            reply = (await response.json())["choices"][0]["message"]["content"]
-            return reply
-
-def query_grok(user_message, chat_context=None, author_name=None, attachments=None):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    return loop.run_until_complete(query_grok_async(user_message, chat_context, author_name, attachments))
-
-def handle_genesis2(args):
+async def handle_genesis2_async(args):
     ping = args.get("ping")
     group_history = args.get("group_history")
     personal_history = args.get("personal_history")
@@ -73,7 +53,7 @@ def handle_genesis2(args):
     import json as pyjson
     return pyjson.dumps(response, ensure_ascii=False, indent=2)
 
-def handle_vision(args):
+async def handle_vision_async(args):
     image = args.get("image")
     chat_context = args.get("chat_context")
     author_name = args.get("author_name")
@@ -82,7 +62,7 @@ def handle_vision(args):
     import json as pyjson
     return pyjson.dumps(response, ensure_ascii=False, indent=2)
 
-def handle_impress(args):
+async def handle_impress_async(args):
     prompt = args.get("prompt")
     chat_context = args.get("chat_context")
     author_name = args.get("author_name")
@@ -90,11 +70,6 @@ def handle_impress(args):
     response = impress_handler(prompt=prompt, chat_context=chat_context, author_name=author_name, raw=raw)
     import json as pyjson
     return pyjson.dumps(response, ensure_ascii=False, indent=2)
-
-def send_telegram_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    requests.post(url, data=payload)
 
 async def delayed_response(chat_id, text, topic=None):
     delay = random.uniform(300, 900)  # 5-15 минут
@@ -105,7 +80,7 @@ async def delayed_response(chat_id, text, topic=None):
 async def maybe_add_supplement(chat_id, original_message, topic=None):
     if random.random() < 0.2:  # 20% шанс
         await asyncio.sleep(random.uniform(300, 600))  # 5-10 минут
-        supplement = await query_grok_async(f"Усложни дополнение к: {original_message}")
+        supplement = await query_grok(f"Усложни дополнение к: {original_message}")
         adapted_supplement = adapt_to_topic(supplement, topic) if topic else supplement
         send_telegram_message(chat_id, f"Я тут подумал... {adapted_supplement}")
 
@@ -154,9 +129,9 @@ async def telegram_webhook(req: Request):
 
     reply_text = ""
     if attachments:
-        reply_text = handle_vision({"image": attachments[0], "chat_context": user_text, "author_name": author_name, "raw": True})
+        reply_text = await handle_vision_async({"image": attachments[0], "chat_context": user_text, "author_name": author_name, "raw": True})
     elif user_text:
-        reply_text = await query_grok_async(user_text, author_name=author_name)
+        reply_text = await query_grok(f"{user_text} — резонанс: {await semantic_search('group_state', os.getenv('OPENAI_API_KEY'), top_k=1)}", author_name=author_name)
         if "напиши в группе" in user_text:
             asyncio.create_task(delayed_response(GROUP_CHAT_ID, f"{author_name}, {reply_text}", topic))
         else:
