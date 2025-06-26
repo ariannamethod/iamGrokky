@@ -12,7 +12,7 @@ from utils.mirror import run_mirror
 from utils.x import grokky_send_news
 from utils.vector_store import semantic_search, daily_snapshot
 from utils.core import query_grok, query_deepseek, send_telegram_message, send_voice_message, toggle_voice_mode, get_spotify_track_info
-from utils.resonance_spotify import deepseek_spotify_resonance  # Исправлено название
+from utils.deepseek_spotify import deepseek_spotify_resonance  # Исправлен импорт
 import whisper
 import aiohttp
 
@@ -179,4 +179,33 @@ async def telegram_webhook(req: Request):
     if "photo" in message and message["photo"]:
         file_id = message["photo"][-1]["file_id"]
         file_info = requests.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}").json()
-        image_url = f"https://api
+        image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
+        attachments.append(image_url)
+        reply_text = await handle_vision_async({"image": image_url, "chat_context": user_text, "author_name": author_name, "raw": True})
+    elif user_text:
+        song_triggers = ["play", "rate", "vibe check", "evaluate"]
+        if any(trigger in user_text for trigger in song_triggers) and "spotify.com" in user_text:
+            song_url = next((word for word in user_text.split() if "spotify.com" in word), None)
+            reply_text = await evaluate_song(song_url)
+        else:
+            reply_text = await query_grok(f"{user_text} — резонанс: {await semantic_search('group_state', os.getenv('OPENAI_API_KEY'), top_k=1)}", author_name=author_name)
+        if "напиши в группе" in user_text:
+            asyncio.create_task(delayed_response(GROUP_CHAT_ID, f"{author_name}, {reply_text}", topic))
+        else:
+            if VOICE_MODE:
+                await send_voice_message(chat_id, reply_text)
+            else:
+                send_telegram_message(chat_id, reply_text)
+            asyncio.create_task(maybe_add_supplement(chat_id, reply_text, topic))
+
+    return {"ok": True}
+
+# Фоновые задачи
+asyncio.create_task(check_silence())
+asyncio.create_task(run_mirror())
+asyncio.create_task(daily_snapshot(os.getenv("OPENAI_API_KEY")))
+asyncio.create_task(deepseek_spotify_resonance())  # Исправлено
+
+@app.get("/")
+def root():
+    return {"status": "Grokki alive and wild!"}
