@@ -18,7 +18,7 @@ def get_news():
         articles = resp.get("articles", [])[:3]
         comments = ["Дико!", "Пожар!", "Хаос!", "Бум!", "Эпично!"]
         news_list = [f"{a['title']}\n{a['url']}\nГрокки: {random.choice(comments)}" for a in articles]
-        print(f"Новости: {news_list}")  # Отладка
+        print(f"Новости: {news_list}")
         return news_list
     except Exception as e:
         print(f"Грокки ревет: Ошибка в новостях! {random.choice(['Шторм сорвал связь!', 'Эфир треснул от гнева!', 'Космос плюнул в лицо!'])} — {e}")
@@ -37,6 +37,8 @@ def should_send_news(limit=4, group=False):
         if len(log) < (2 if group else limit):
             return True, log
         return False, log
+    except json.JSONDecodeError:
+        return True, []
     except Exception as e:
         print(f"Грокки гремит: Лог новостей рухнул! {random.choice(['Гром разорвал записи!', 'Резонанс испепелил данные!', 'Вселенная молчит!'])} — {e}")
         return True, []
@@ -59,18 +61,17 @@ def log_sent_news(news, chat_id=None, group=False):
             json.dump(log, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"Грокки взрывается: Лог не записан! {random.choice(['Пламя сожрало файл!', 'Ревущий ветер унёс данные!', 'Хаос победил перо!'])} — {e}")
-        pass
 
 def grokky_send_news(chat_id=None, group=False):
     can_send, log = should_send_news(group=group)
     if not can_send:
         print("Грокки молчит: Лимит новостей исчерпан.")
-        return None
+        return []
     news = get_news()
     if news:
         log_sent_news(news, chat_id, group)
         if chat_id:
-            message = f"Олег, держи свежий раскат грома!\n\n" + "\n\n".join(news)
+            message = f"{random.choice(['Олег', 'брат'])}, держи свежий раскат грома!\n\n" + "\n\n".join(news)
             send_telegram_message(chat_id, message)
         if group and os.getenv("AGENT_GROUP"):
             group_message = f"Группа, держите громовые новости!\n\n" + "\n\n".join(news) + " (суки, вникайте!)"
