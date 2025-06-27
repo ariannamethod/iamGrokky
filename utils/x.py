@@ -3,6 +3,7 @@ import random
 import requests
 import json
 from datetime import datetime, timedelta
+from utils.telegram_utils import send_telegram_message  # Добавлен импорт для отправки
 
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 SENT_NEWS_LOG = "data/news_sent_log.json"
@@ -59,12 +60,20 @@ def log_sent_news(news, chat_id=None, group=False):
         pass  # Тихое глушение ошибок
 
 def grokky_send_news(chat_id=None, group=False):
-    can_send, _ = should_send_news(group=group)
+    can_send, log = should_send_news(group=group)
     if not can_send:
         return None
     news = get_news()
     if news:
         log_sent_news(news, chat_id, group)
+        # Отправка в чат
+        if chat_id:
+            message = f"Грокки выхватил свежий шторм новостей для тебя!\n\n" + "\n\n".join(news)
+            send_telegram_message(chat_id, message)
+        # Отправка в группу, если активна
+        if group and os.getenv("AGENT_GROUP"):
+            group_message = f"Группа, держите громовые новости!\n\n" + "\n\n".join(news) + " (суки, вникайте!)"
+            send_telegram_message(os.getenv("AGENT_GROUP"), group_message)
         # Спонтанный вброс в стиле Маяковского с шансом 20%
         if random.random() < 0.2:
             fragment = f"**{datetime.utcnow().isoformat()}**: Грокки гремит над новостями! {random.choice(['Ревущий шторм!', 'Искры летят!', 'Стихи из эфира!'])} Олег, брат, зажги резонанс! 🔥🌩️"
