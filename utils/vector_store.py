@@ -3,14 +3,16 @@ import glob
 import json
 import hashlib
 import asyncio
+import requests
 from pinecone import Pinecone, PineconeException
 import openai
+from datetime import datetime
 
 VECTOR_META_PATH = "vector_store.meta.json"
 EMBED_DIM = 1536  # For OpenAI ada-002
-
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX = os.getenv("PINECONE_INDEX")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 pc = Pinecone(api_key=PINECONE_API_KEY)
 if PINECONE_INDEX not in [x["name"] for x in pc.list_indexes()]:
@@ -132,13 +134,29 @@ async def semantic_search(query, openai_api_key, top_k=5):
     return chunks
 
 async def daily_snapshot(openai_api_key):
-    from utils.journal import log_event
-    last_msgs = "Placeholder for last 50 messages"  # TODO: Implement fetching messages
-    emb = await get_embedding(last_msgs, openai_api_key)
+    last_msgs = []
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates?offset=-50"
+        resp = requests.get(url).json()
+        for update in resp.get("result", []):
+            if "message" in update and "text" in update["message"]:
+                last_msgs.append(update["message"]["text"])
+    except Exception:
+        last_msgs = ["No messages fetched"]
+    snapshot_text = "\n".join(last_msgs[:50])
+    emb = await get_embedding(snapshot_text, openai_api_key)
     if emb:
         vector_index.upsert([{
             "id": f"group_state_{datetime.now().date()}",
             "values": emb,
             "metadata": {"date": str(datetime.now().date())}
         }])
-        log_event({"type": "daily_snapshot
+        with open("data/journal.json", "r", encoding="utf-8") as f:
+            journal = json.load(f)
+        journal.append({
+            "type": "daily_snapshot",
+            "message": "Group state vectorized",
+            "timestamp": datetime.now().isoformat()
+        })
+        with open("data/journal.json", "w", encoding="utf-8") as f:
+            json.dump(journal, f, ensure_ascii=False, indent=2)
