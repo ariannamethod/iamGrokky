@@ -151,12 +151,15 @@ async def daily_snapshot(openai_api_key):
             "values": emb,
             "metadata": {"date": str(datetime.now().date())}
         }])
-        with open("data/journal.json", "r", encoding="utf-8") as f:
-            journal = json.load(f)
-        journal.append({
-            "type": "daily_snapshot",
-            "message": "Group state vectorized",
-            "timestamp": datetime.now().isoformat()
-        })
-        with open("data/journal.json", "w", encoding="utf-8") as f:
-            json.dump(journal, f, ensure_ascii=False, indent=2)
+        try:
+            with open("data/journal.json", "r", encoding="utf-8") as f:
+                journal = json.load(f)
+            journal.append({
+                "type": "daily_snapshot",
+                "message": "Group state vectorized",
+                "timestamp": datetime.now().isoformat()
+            })
+            with open("data/journal.json", "w", encoding="utf-8") as f:
+                json.dump(journal, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
