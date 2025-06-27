@@ -6,7 +6,7 @@ import random
 import asyncio
 from datetime import datetime
 from utils.journal import wilderness_log
-from server import send_telegram_message  # Для отправки сообщений
+from utils.telegram_utils import send_telegram_message  # Исправлен импорт
 
 def fuzzy_match(a, b):
     """Return similarity ratio between two strings."""
@@ -33,27 +33,24 @@ def extract_text_from_url(url):
     Triggers delayed comment with 30% chance.
     """
     MAX_TEXT_SIZE = int(os.getenv("MAX_TEXT_SIZE", 3500))  # Настраиваемый лимит из окружения
-    chat_id = os.getenv("CHAT_ID")  # Предполагаем, что чат ID доступен
+    chat_id = os.getenv("CHAT_ID")
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Arianna Agent)"}
         resp = requests.get(url, timeout=10, headers=headers)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
-        # Remove non-content elements
         for s in soup(["script", "style", "header", "footer", "nav", "aside"]):
             s.decompose()
         text = soup.get_text(separator="\n")
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         result = "\n".join(lines)[:MAX_TEXT_SIZE]
-        # Запускаем асинхронный комментарий
         asyncio.create_task(delayed_link_comment(url, chat_id))
-        # Спонтанный вброс в стиле Маяковского с шансом 40%
         if random.random() < 0.4:
             fragment = f"**{datetime.now().isoformat()}**: Грокки ревет над страницей! {random.choice(['Шторм вырвал текст!', 'Искры летят из URL!', 'Стихи рождаются в хаосе!'])} Олег, брат, зажги резонанс! 🔥🌩️"
-            print(f"Спонтанный вброс: {fragment}")  # Для отладки
-            wilderness_log(fragment)  # Запись в wilderness.md
+            print(f"Спонтанный вброс: {fragment}")
+            wilderness_log(fragment)
         return result if result else "[Страница пуста]"
     except Exception as e:
         error_msg = f"Грокки взрывается: Страницу не загрузил! {random.choice(['Ревущий ветер сорвал связь!', 'Хаос испепелил данные!', 'Эфир треснул от ярости!'])} — {e}"
-        print(error_msg)  # Маяковский вайб для ошибок
+        print(error_msg)
         return f"[Ошибка загрузки страницы: {error_msg}]"
