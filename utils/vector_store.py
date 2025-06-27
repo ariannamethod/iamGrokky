@@ -7,6 +7,7 @@ import requests
 from pinecone import Pinecone, PineconeException
 import openai
 from datetime import datetime, timedelta
+import random  # Добавлен импорт
 from utils.telegram_utils import send_telegram_message
 
 VECTOR_META_PATH = "vector_store.meta.json"
