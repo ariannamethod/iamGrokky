@@ -103,11 +103,6 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
         if spotify_match and not raw:
             track_id = spotify_match.group(1)
             return grokky_spotify_response(track_id)
-        # Обработка загруженных файлов
-        if attachments and not raw:
-            file_path = attachments[0]  # Предполагаем, что attachment — путь к файлу
-            text = await extract_text_from_file_async(file_path)
-            return genesis2_handler({"ping": f"Комментарий к файлу {os.path.basename(file_path)}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)})
         if raw:
             data = extract_first_json(reply)
             if data and "function_call" in data:
@@ -254,8 +249,9 @@ async def telegram_webhook(req: Request):
                     "raw": False
                 }).get("summary", "Хаос видения!")
             else:
-                text = await extract_text_from_file_async(attachments[0])
-                reply_text = genesis2_handler({"ping": f"Комментарий к файлу {os.path.basename(attachments[0])}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)})
+                file_path = attachments[0]
+                text = await extract_text_from_file_async(file_path)  # Асинхронный вызов внутри async
+                reply_text = genesis2_handler({"ping": f"Комментарий к файлу {os.path.basename(file_path)}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)})
             send_telegram_message(chat_id, reply_text)  # Используем chat_id
         elif user_text:
             triggers = ["грокки", "grokky", "напиши в группе"]
