@@ -70,7 +70,7 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
     user_lang = detect_language(user_message)
     language_hint = {
         "role": "system",
-        "content": f"Always reply in the language the user writes: {user_lang.upper()}. Give ONE unique, chaotic text response—NO repeats, rephrasing, extra messages, or JSON unless raw=True is explicitly set."
+        "content": f"Always reply strictly in the language the user writes: {user_lang.upper()}. Give ONE unique, chaotic text response—NO repeats, rephrasing, extra messages, or JSON unless raw=True is explicitly set."
     }
     messages = [
         {"role": "system", "content": system_prompt},
@@ -91,6 +91,14 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
         r = requests.post(url, headers=headers, json=payload)
         r.raise_for_status()
         reply = r.json()["choices"][0]["message"]["content"]
+        # Парсинг Spotify-ссылок
+        spotify_match = re.search(r"https://open\.spotify\.com/track/([a-zA-Z0-9]+)", user_message)
+        if spotify_match and not raw:
+            track_id = spotify_match.group(1)
+            return grokky_spotify_response(track_id)
+        # Обработка ссылок для Genesis2
+        if any(trigger in user_message.lower() for trigger in GENESIS2_TRIGGERS) and re.search(r"https?://", user_message) and not raw:
+            return genesis2_handler({"ping": user_message, "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)})
         if raw:
             data = extract_first_json(reply)
             if data and "function_call" in data:
@@ -111,7 +119,7 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
                 return reply
         return reply
     except Exception as e:
-        return f"Error: {e}"
+        return f"Ошибка: {e}"
 
 def handle_genesis2(args):
     ping = args.get("ping")
@@ -128,7 +136,7 @@ def handle_genesis2(args):
         author_name=author_name,
         raw=raw
     )
-    return response.get("answer", "Storm hit!") if not raw else response
+    return response.get("answer", "Шторм ударил!") if not raw else response
 
 def handle_vision(args):
     image = args.get("image")
@@ -141,20 +149,22 @@ def handle_vision(args):
         author_name=author_name,
         raw=raw
     )
-    return response.get("summary", "Vision chaos!") if not raw else response
+    return response.get("summary", "Хаос видения!") if not raw else response
 
 def handle_impress(args):
     prompt = args.get("prompt")
     chat_context = args.get("chat_context")
     author_name = args.get("author_name")
     raw = args.get("raw", False)
+    if any(t in prompt.lower() for t in ["нарисуй", "изобрази", "/draw"]) and not raw:
+        return f"{author_name}, хочу нарисовать что-то дикое! Подтверди (да/нет)?"
     response = impress_handler(
         prompt=prompt,
         chat_context=chat_context,
         author_name=author_name,
         raw=raw
     )
-    return response.get("grokkys_comment", "Image storm!") if not raw else response
+    return response.get("grokkys_comment", "Шторм изображений!") if not raw else response
 
 def handle_news(args):
     group = args.get("group", False)
@@ -163,7 +173,7 @@ def handle_news(args):
     raw = args.get("raw", False)
     messages = grokky_send_news(group=group)
     if not messages:
-        return "The world is silent today. No news worth the thunder."
+        return "В мире тишина, нет новостей для бури."
     return "\n\n".join(messages) if not raw else json.dumps({"news": messages, "group": group, "author": author_name}, ensure_ascii=False, indent=2)
 
 def whisper_summary_ai(youtube_url):
@@ -171,10 +181,10 @@ def whisper_summary_ai(youtube_url):
         video_id = youtube_url.split("v=")[1].split("&")[0]
         transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'ru'])
         text = " ".join([entry['text'] for entry in transcript])
-        summary = query_grok(f"Summarize this YouTube transcript briefly: {text[:1000]}")
-        return f"Summary: {summary}"
+        summary = query_grok(f"Суммируй этот YouTube-транскрипт кратко: {text[:1000]}")
+        return f"Сводка: {summary}"
     except Exception as e:
-        return f"Summary error: {e}"
+        return f"Ошибка сводки: {e}"
 
 def send_telegram_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -183,8 +193,6 @@ def send_telegram_message(chat_id, text):
         requests.post(url, data=payload, timeout=30)
     except Exception:
         pass
-
-# ... (предыдущий код остается без изменений до @app.post)
 
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
@@ -223,7 +231,7 @@ async def telegram_webhook(req: Request):
                 "chat_context": user_text or "",
                 "author_name": author_name,
                 "raw": False
-            }).get("summary", "Vision chaos!")
+            }).get("summary", "Хаос видения!")
         elif user_text:
             triggers = ["грокки", "grokky", "напиши в группе"]
             is_reply_to_me = message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot"
@@ -251,10 +259,10 @@ async def telegram_webhook(req: Request):
                 # Дополнение с вероятностью 40%
                 if random.random() < 0.4:
                     await asyncio.sleep(random.randint(5, 15))  # Короткая пауза перед дополнением
-                    supplement = query_grok(f"Supplement once, no repeats: {reply_text}", author_name=author_name)
-                    send_telegram_message(chat_id, f"Quick spark... {supplement}")
+                    supplement = query_grok(f"Дополни разово, без повторов: {reply_text}", author_name=author_name)
+                    send_telegram_message(chat_id, f"Быстрая искра... {supplement}")
         else:
-            reply_text = "Grokky got nothing to say."
+            reply_text = "Грокки молчит, нет слов для бури."
             send_telegram_message(chat_id, reply_text)
 
     asyncio.create_task(process_and_send())
