@@ -14,6 +14,7 @@ from utils.howru import check_silence, update_last_message_time
 from utils.mirror import mirror_task
 from utils.vector_store import daily_snapshot
 from utils.journal import log_event
+from utils.x import grokky_send_news
 
 app = FastAPI()
 
@@ -89,6 +90,8 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
             return handle_vision(args)
         elif fn == "impress_handler":
             return handle_impress(args)
+        elif fn == "grokky_send_news":
+            return handle_news(args)
         return f"Grokky raw: {reply}"
 
     if any(w in (user_message or "").lower() for w in GENESIS2_TRIGGERS):
@@ -146,6 +149,18 @@ def handle_impress(args):
         raw=raw
     )
     return json.dumps(response, ensure_ascii=False, indent=2)
+
+def handle_news(args):
+    group = args.get("group", False)
+    context = args.get("context", "")
+    author_name = args.get("author_name")
+    raw = args.get("raw", True)
+    messages = grokky_send_news(group=group)
+    if not messages:
+        return "The world is silent today. No news worth the thunder."
+    if raw:
+        return json.dumps({"news": messages, "group": group, "author": author_name}, ensure_ascii=False, indent=2)
+    return "\n\n".join(messages)
 
 def send_telegram_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -222,7 +237,7 @@ async def check_config_updates():
                 json.dump(current, f)
         await asyncio.sleep(86400)
 
-# Запуск фоновых задач
+# Start background tasks
 asyncio.create_task(check_silence())
 asyncio.create_task(mirror_task())
 asyncio.create_task(check_config_updates())
