@@ -1,21 +1,26 @@
 import os
-from pypdf import PdfReader
 import asyncio
+from openai import OpenAI
+import random
+from datetime import datetime
+from pypdf import PdfReader
+from pdfminer.high_level import extract_text as pdfminer_extract_text
 import docx
 import docx2txt
 from striprtf.striprtf import rtf_to_text
 from odf.opendocument import load
 from odf.text import P
-import random
-from datetime import datetime
-from pdfminer.high_level import extract_text as pdfminer_extract_text  # Для PDF
 from utils.telegram_utils import send_telegram_message
 
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+context_memory = {}  # Глобальная память для контекста
 MAX_TEXT_SIZE = int(os.getenv("MAX_TEXT_SIZE", 100_000))
+
+# Инициализация клиента
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 def extract_text_from_pdf(path):
     try:
-        # Сначала попробуем pypdf
         reader = PdfReader(path)
         text = ""
         for page in reader.pages:
@@ -25,12 +30,10 @@ def extract_text_from_pdf(path):
         text = text.strip()
         if text:
             return text[:MAX_TEXT_SIZE] + ('\n[Усечено]' if len(text) > MAX_TEXT_SIZE else '')
-        # Если pypdf не справился, используем pdfminer.six
-        text = pdfminer_extract_text(path)
-        text = text.strip()
+        text = pdfminer_extract_text(path).strip()
         return text[:MAX_TEXT_SIZE] + ('\n[Усечено]' if len(text) > MAX_TEXT_SIZE else '')
     except Exception as e:
-        return f"[Ошибка чтения PDF ({os.path.basename(path)}): {random.choice(['Ревущий ветер сорвал страницу!', 'Хаос испепелил PDF!', 'Эфир треснул от ярости!'])} — {e}.]"
+        return f"[Ошибка PDF ({os.path.basename(path)}): {random.choice(['Ревущий ветер сорвал!', 'Хаос испепелил!', 'Эфир треснул!'])} — {e}]"
 
 def extract_text_from_txt(path):
     try:
@@ -38,7 +41,7 @@ def extract_text_from_txt(path):
             text = f.read()
         return text[:MAX_TEXT_SIZE] + ('\n[Усечено]' if len(text) > MAX_TEXT_SIZE else '')
     except Exception as e:
-        return f"[Ошибка TXT ({os.path.basename(path)}): {random.choice(['Шторм разорвал текст!', 'Хаос пожрал файл!', 'Резонанс унёс данные!'])} — {e}.]"
+        return f"[Ошибка TXT ({os.path.basename(path)}): {random.choice(['Шторм разорвал!', 'Хаос пожрал!', 'Резонанс унёс!'])} — {e}]"
 
 def extract_text_from_md(path):
     try:
@@ -46,7 +49,7 @@ def extract_text_from_md(path):
             text = f.read()
         return text[:MAX_TEXT_SIZE] + ('\n[Усечено]' if len(text) > MAX_TEXT_SIZE else '')
     except Exception as e:
-        return f"[Ошибка MD ({os.path.basename(path)}): {random.choice(['Гром разнёс Markdown!', 'Хаос испепелил код!', 'Эфир треснул от строк!'])} — {e}.]"
+        return f"[Ошибка MD ({os.path.basename(path)}): {random.choice(['Гром разнёс!', 'Хаос испепелил!', 'Эфир треснул!'])} — {e}]"
 
 def extract_text_from_docx(path):
     try:
@@ -57,7 +60,7 @@ def extract_text_from_docx(path):
             return text[:MAX_TEXT_SIZE] + ('\n[Усечено]' if len(text) > MAX_TEXT_SIZE else '')
         return '[DOCX пуст.]'
     except Exception as e:
-        return f"[Ошибка DOCX ({os.path.basename(path)}): {random.choice(['Microsoft рухнул под штормом!', 'Хаос сожрал Word!', 'Ревущий ветер унёс файл!'])} — {e}.]"
+        return f"[Ошибка DOCX ({os.path.basename(path)}): {random.choice(['Microsoft рухнул!', 'Хаос сожрал!', 'Ревущий ветер унёс!'])} — {e}]"
 
 def extract_text_from_rtf(path):
     try:
@@ -69,7 +72,7 @@ def extract_text_from_rtf(path):
             return text[:MAX_TEXT_SIZE] + ('\n[Усечено]' if len(text) > MAX_TEXT_SIZE else '')
         return '[RTF пуст.]'
     except Exception as e:
-        return f"[Ошибка RTF ({os.path.basename(path)}): {random.choice(['RTF не выдержал бури!', 'Хаос разорвал формат!', 'Эфир треснул от текста!'])} — {e}.]"
+        return f"[Ошибка RTF ({os.path.basename(path)}): {random.choice(['RTF не выдержал!', 'Хаос разорвал!', 'Эфир треснул!'])} — {e}]"
 
 def extract_text_from_doc(path):
     try:
@@ -79,7 +82,7 @@ def extract_text_from_doc(path):
             return text[:MAX_TEXT_SIZE] + ('\n[Усечено]' if len(text) > MAX_TEXT_SIZE else '')
         return '[DOC пуст.]'
     except Exception as e:
-        return f"[Ошибка DOC ({os.path.basename(path)}): {random.choice(['Древний Word сгорел в шторме!', 'Хаос унёс документ!', 'Ревущий ветер разорвал файл!'])} — {e}.]"
+        return f"[Ошибка DOC ({os.path.basename(path)}): {random.choice(['Word сгорел!', 'Хаос унёс!', 'Ревущий ветер разорвал!'])} — {e}]"
 
 def extract_text_from_odt(path):
     try:
@@ -90,24 +93,54 @@ def extract_text_from_odt(path):
             return text[:MAX_TEXT_SIZE] + ('\n[Усечено]' if len(text) > MAX_TEXT_SIZE else '')
         return '[ODT пуст.]'
     except Exception as e:
-        return f"[Ошибка ODT ({os.path.basename(path)}): {random.choice(['LibreOffice утонул в хаосе!', 'Шторм смёл ODT!', 'Эфир треснул от формата!'])} — {e}.]"
+        return f"[Ошибка ODT ({os.path.basename(path)}): {random.choice(['LibreOffice утонул!', 'Шторм смёл!', 'Эфир треснул!'])} — {e}]"
+
+async def process_with_openai(file_path):
+    try:
+        with open(file_path, "rb") as f:
+            file_response = await openai_client.files.create(file=f, purpose="assistants")
+        file_id = file_response.id
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": f"Extract text from this file: {file_id}"}],
+            max_tokens=4096
+        )
+        text = response.choices[0].message.content
+        context_memory[file_path] = text
+        return text[:MAX_TEXT_SIZE] + ('\n[Усечено]' if len(text) > MAX_TEXT_SIZE else '')
+    except Exception as e:
+        return f"[OpenAI ошибка ({os.path.basename(file_path)}): {random.choice(['Шторм разорвал код!', 'Хаос пожрал данные!', 'Ревущий ветер унёс текст!'])} — {e}]"
 
 def extract_text_from_file(path):
     ext = os.path.splitext(path)[-1].lower()
     if ext == ".pdf":
-        return extract_text_from_pdf(path)
+        text = extract_text_from_pdf(path)
+        if "[Ошибка" in text:
+            return process_with_openai(path)
     elif ext == ".txt":
-        return extract_text_from_txt(path)
+        text = extract_text_from_txt(path)
+        if "[Ошибка" in text:
+            return process_with_openai(path)
     elif ext == ".md":
-        return extract_text_from_md(path)
+        text = extract_text_from_md(path)
+        if "[Ошибка" in text:
+            return process_with_openai(path)
     elif ext == ".docx":
-        return extract_text_from_docx(path)
+        text = extract_text_from_docx(path)
+        if "[Ошибка" in text:
+            return process_with_openai(path)
     elif ext == ".rtf":
-        return extract_text_from_rtf(path)
+        text = extract_text_from_rtf(path)
+        if "[Ошибка" in text:
+            return process_with_openai(path)
     elif ext == ".doc":
-        return extract_text_from_doc(path)
+        text = extract_text_from_doc(path)
+        if "[Ошибка" in text:
+            return process_with_openai(path)
     elif ext == ".odt":
-        return extract_text_from_odt(path)
+        text = extract_text_from_odt(path)
+        if "[Ошибка" in text:
+            return process_with_openai(path)
     else:
         return f"[Неподдерживаемый тип файла: {os.path.basename(path)}.]"
 
