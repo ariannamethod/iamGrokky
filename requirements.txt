@@ -18,7 +18,7 @@ pyyaml
 rich
 tenacity
 python-docx
-docx2txt  # Альтернатива python-docx для .doc
+docx2txt
 striprtf
 odfpy
 textblob
