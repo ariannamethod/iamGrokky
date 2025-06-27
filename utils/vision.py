@@ -2,7 +2,7 @@ import os
 import requests
 import asyncio
 import random
-from server import send_telegram_message  # Импорт для broadcast
+from utils.telegram_utils import send_telegram_message  # Исправлен импорт
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
@@ -140,4 +140,4 @@ def reload_config():
     # Здесь можно добавить реальную логику перезагрузки
 
 # Запуск галванизации
-asyncio.create_task(galvanize_protocol())
+# asyncio.create_task(galvanize_protocol())  # Временно закомментируем, чтобы избежать раннего вызова
