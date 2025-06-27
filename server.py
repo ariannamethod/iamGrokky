@@ -25,6 +25,7 @@ from utils.file_handling import extract_text_from_file_async
 from utils.text_helpers import extract_text_from_url, delayed_link_comment
 from utils.grok_utils import query_grok, detect_language
 from utils.limit_paragraphs import limit_paragraphs
+from utils.telegram_utils import send_telegram_message  # Импорт из нового модуля
 
 app = FastAPI()
 
@@ -117,14 +118,6 @@ def whisper_summary_ai(youtube_url):
         return f"Сводка: {summary}"
     except Exception as e:
         return f"Ошибка сводки: {e}"
-
-def send_telegram_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    try:
-        requests.post(url, data=payload, timeout=30)
-    except Exception:
-        pass
 
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
