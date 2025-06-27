@@ -203,7 +203,7 @@ async def telegram_webhook(req: Request):
     data = await req.json()
     message = data.get("message", {})
     user_text = message.get("text", "").lower()
-    chat_id = str(message.get("chat", {}).get("id", ""))
+    chat_id = str(message.get("chat", {}).get("id", ""))  # Передаём chat_id
     author_name = message.get("from", {}).get("first_name", "anon")
     chat_title = message.get("chat", {}).get("title", "").lower()
     attachments = []
@@ -220,7 +220,7 @@ async def telegram_webhook(req: Request):
         attachments.append(image_url)
 
     # Асинхронная обработка с паузой
-    async def process_and_send():
+    async def process_and_send(chat_id):  # Добавлен аргумент chat_id
         if chat_id == CHAT_ID:
             delay = random.randint(5, 10)  # 5-10 секунд для личных сообщений
         elif chat_id == AGENT_GROUP:
@@ -269,7 +269,7 @@ async def telegram_webhook(req: Request):
             reply_text = "Грокки молчит, нет слов для бури."
             send_telegram_message(chat_id, reply_text)
 
-    asyncio.create_task(process_and_send())
+    asyncio.create_task(process_and_send(chat_id))  # Передаём chat_id
     return {"ok": True}
 
 async def check_config_updates():
