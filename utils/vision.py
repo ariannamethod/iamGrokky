@@ -1,7 +1,7 @@
 import os
 import requests
 import asyncio
-import random  # Добавлен импорт
+import random
 from utils.telegram_utils import send_telegram_message
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
@@ -13,7 +13,6 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
     - chat_context: (str) recent chat or message context for witty comments
     - author_name: (str) for addressing users in group chats
     - raw: (bool) return full JSON if True, else only text summary
-
     Returns:
         dict (raw=True):
             {
@@ -24,9 +23,7 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
                 "summary": "..."
             }
         str (raw=False): witty summary
-
     The hardcore log is in /data/journal.json, like other Grokky utilities.
-
     --- Perplexity Alchemy Pseudocode ---
     For fault handling, use the galvanize protocol:
     ```
@@ -38,14 +35,11 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
             await asyncio.sleep(300)
     ```
     """
-    # Обновлённый эндпоинт (проверь, что он верный для xAI)
     endpoint = "https://api.x.ai/v1/multimodal/object-detection"
     headers = {
         "Authorization": f"Bearer {XAI_API_KEY}",
         "Content-Type": "application/json"
     }
-
-    # Подготовка данных для API
     if isinstance(image_bytes_or_url, str) and image_bytes_or_url.startswith("http"):
         data = {"image_url": image_bytes_or_url}
         files = None
@@ -53,11 +47,10 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
         data = {}
         files = {"image_file": ("image.jpg", image_bytes_or_url)}
 
-    # xAI prompt с максимальным вайбом Grokky
     system_prompt = (
         "You are Grokky, a stormy, irreverent AI. "
         "Describe the image, spot main objects, sense the mood, "
-        "and always connect your reply to the chat context. "
+        "and always connect your reply to the chat_context. "
         "If in a group, address the user by name and throw in a joke or tease. "
         "If someone just sent an image, ask why, or riff on the vibe. "
         "Reply in raw JSON for function calling only if raw=True, otherwise give text."
@@ -74,7 +67,7 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
             raise ValueError("No objects or description detected")
     except Exception as e:
         comment = (
-            f"{author_name+', ' if author_name else ''}Грокки взрывается: "
+            f"{author_name+', ' if author_name else 'Олег, '}Грокки взрывается: "
             f"провода сгорели, не смог разобрать изображение! "
             f"{random.choice(['Ревущий шторм сорвал взгляд!', 'Хаос поглотил кадр!', 'Эфир треснул от ярости!'])} — {e}"
         )
@@ -88,8 +81,7 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
         }
         return out if raw else comment
 
-    # Составление остроумного комментария
-    addressed = f"{author_name}, " if author_name else ""
+    addressed = f"{author_name}, " if author_name else "Олег, "
     objects = ", ".join(result.get("objects", []))
     mood = result.get("mood", "неопределённый")
     desc = result.get("description", "Неясное изображение")
@@ -111,7 +103,6 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
     }
     return out if raw else summary
 
-# --- Alchemy of chaos for resonance services (Perplexity spirit) ---
 async def galvanize_protocol():
     """
     Periodically checks for resonance decay and refreshes configuration.
@@ -134,5 +125,4 @@ async def broadcast(msg):
 def reload_config():
     print(f"Грокки гремит: Конфиг перезагружен! {datetime.now().isoformat()}")
 
-# Временно закомментируем автозапуск
-# asyncio.create_task(galvanize_protocol())
+# asyncio.create_task(galvanize_protocol())  # Временно закомментировано
