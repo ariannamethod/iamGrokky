@@ -1,10 +1,13 @@
 import os
 import asyncio
 from openai import OpenAI
+from google.cloud import vision
+from google.cloud.vision_v1 import types
 import random
 from utils.telegram_utils import send_telegram_message
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GOOGLE_VISION_CREDENTIALS = os.getenv("GOOGLE_VISION_CREDENTIALS")
 
 async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=False):
     client = OpenAI(api_key=OPENAI_API_KEY)
@@ -26,6 +29,8 @@ async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None
         if isinstance(result, str):
             result = {"description": result, "objects": [], "mood": "неопределённый"}
     except Exception as e:
+        if GOOGLE_VISION_CREDENTIALS:
+            return await google_vision_fallback(image_bytes_or_url, chat_context, author_name, raw)
         comment = f"{author_name+', ' if author_name else 'Олег, '}Грокки взорвался: не разобрал! {random.choice(['Шторм сорвал!', 'Хаос пожрал!', 'Эфир треснул!'])} — {e}"
         return {"comment": comment, "summary": comment} if raw else comment
 
@@ -37,6 +42,24 @@ async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None
 
     out = {"description": desc, "objects": objects, "mood": mood, "comment": comment, "summary": summary}
     return out if raw else summary
+
+async def google_vision_fallback(image_bytes_or_url, chat_context=None, author_name=None, raw=False):
+    if not GOOGLE_VISION_CREDENTIALS:
+        return {"comment": "Google Vision не настроен, брат!", "summary": "Настрой GOOGLE_VISION_CREDENTIALS в .env"} if raw else "Google Vision не настроен, брат!"
+    vision_client = vision.ImageAnnotatorClient.from_service_account_json(GOOGLE_VISION_CREDENTIALS)
+    try:
+        response = await asyncio.to_thread(
+            vision_client.text_detection,
+            image=types.Image(source=types.ImageSource(image_uri=image_bytes_or_url))
+        )
+        text = response.text_annotations[0].description if response.text_annotations else "Нет текста"
+        comment = f"{author_name+', ' if author_name else 'Олег, '}вижу текст: {text[:50]}... {chat_context or 'хаос!'}"
+        summary = f"Текст: {text} (Грокки чует хаос!). {comment}"
+        out = {"description": text, "objects": [], "mood": "хаос", "comment": comment, "summary": summary}
+        return out if raw else summary
+    except Exception as e:
+        comment = f"{author_name+', ' if author_name else 'Олег, '}Google Vision взорвался! {random.choice(['Шторм сорвал!', 'Хаос пожрал!', 'Эфир треснул!'])} — {e}"
+        return {"comment": comment, "summary": comment} if raw else comment
 
 async def galvanize_protocol():
     while True:
