@@ -7,7 +7,6 @@ import requests
 from pinecone import Pinecone, PineconeException
 import openai
 from datetime import datetime, timedelta
-from server import send_telegram_message  # Импорт из server.py
 
 VECTOR_META_PATH = "vector_store.meta.json"
 EMBED_DIM = 1536  # Для OpenAI ada-002
@@ -75,7 +74,7 @@ def chunk_text(text, chunk_size=900, overlap=120):
         start += chunk_size - overlap
     return chunks
 
-async def vectorize_all_files(openai_api_key, force=False, on_message=None):
+async def vectorize_all_files(openai_api_key, force=False, send_message=None):
     current = scan_files()
     previous = load_vector_meta()
     changed = [f for f in current if (force or current[f] != previous.get(f))]
@@ -103,12 +102,12 @@ async def vectorize_all_files(openai_api_key, force=False, on_message=None):
                     ])
                     upserted_ids.append(meta_id)
             except PineconeException as e:
-                if on_message:
-                    await on_message(f"Ошибка Pinecone: {e}")
+                if send_message:
+                    await send_message(f"Ошибка Pinecone: {e}")
                 continue
             except Exception as e:
-                if on_message:
-                    await on_message(f"Общая ошибка: {e}")
+                if send_message:
+                    await send_message(f"Общая ошибка: {e}")
                 continue
 
     deleted_ids = []
@@ -122,8 +121,8 @@ async def vectorize_all_files(openai_api_key, force=False, on_message=None):
                 pass
 
     save_vector_meta(current)
-    if on_message:
-        await on_message(
+    if send_message:
+        await send_message(
             f"Векторизация завершена. Добавлено/изменено: {', '.join(changed + new) if changed or new else '-'};"
             f" удалено: {', '.join(removed) if removed else '-'}"
         )
@@ -185,7 +184,7 @@ async def daily_snapshot(openai_api_key):
         except Exception as e:
             print(f"Ошибка сохранения: {e}")
 
-async def spontaneous_snapshot(openai_api_key):
+async def spontaneous_snapshot(openai_api_key, send_message):
     while True:
         await asyncio.sleep(random.randint(21600, 43200))  # 6-12 часов
         snapshot_log = load_snapshot_log()
@@ -212,12 +211,13 @@ async def spontaneous_snapshot(openai_api_key):
                     }])
                     snapshot_log.append({"type": "spontaneous_snapshot", "timestamp": datetime.now().isoformat()})
                     save_snapshot_log(snapshot_log)
-                    await send_telegram_message(CHAT_ID, "Грокки сделал спонтанный снимок резонанса!")
+                    if send_message:
+                        await send_message(os.getenv("CHAT_ID"), "Грокки сделал спонтанный снимок резонанса!")
                 except Exception as e:
                     print(f"Ошибка спонтанного снимка: {e}")
 
 # Start spontaneous snapshot task
-asyncio.create_task(spontaneous_snapshot(os.getenv("OPENAI_API_KEY")))
+asyncio.create_task(spontaneous_snapshot(os.getenv("OPENAI_API_KEY"), send_telegram_message))
 
 def load_snapshot_log():
     if os.path.isfile(SNAPSHOT_LOG_PATH):
