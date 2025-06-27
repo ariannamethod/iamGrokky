@@ -7,7 +7,7 @@ import random
 import glob
 import string
 import secrets
-import hashlib  # Добавлен импорт hashlib
+import hashlib
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -162,7 +162,7 @@ def send_telegram_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
     try:
-        requests.post(url, data=payload)
+        requests.post(url, data=payload, timeout=30)  # Добавлен таймаут
     except Exception:
         pass
 
@@ -187,7 +187,7 @@ async def telegram_webhook(req: Request):
         image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
         attachments.append(image_url)
 
-    delay = random.randint(300, 900)  # Задержка 5-15 минут
+    delay = random.randint(60, 300)  # Уменьшил до 1-5 минут
     await asyncio.sleep(delay)
 
     if attachments:
