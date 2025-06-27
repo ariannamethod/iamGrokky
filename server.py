@@ -21,6 +21,7 @@ from utils.vector_store import daily_snapshot, spontaneous_snapshot
 from utils.journal import log_event
 from utils.x import grokky_send_news
 from utils.deepseek_spotify import deepseek_spotify_resonance, grokky_spotify_response
+from utils.file_handling import extract_text_from_file_async  # Добавлен импорт
 
 app = FastAPI()
 
@@ -32,7 +33,7 @@ SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP", "-1001234567890")
-IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true"
+IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true")
 
 system_prompt = build_system_prompt(
     chat_id=CHAT_ID,
@@ -65,7 +66,7 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
     user_lang = detect_language(user_message)
     language_hint = {
         "role": "system",
-        "content": f"Reply consistently in the language detected from the user’s input: {user_lang.upper()}. Maintain this language throughout the response without switching. Give ONE unique, chaotic text response—NO repeats, rephrasing, extra messages, or JSON unless raw=True is explicitly set. Все сообщения проходят через Genesis2 для резонанса, кроме ссылок."
+        "content": f"Reply consistently in the language detected from the user’s input: {user_lang.upper()}. Maintain this language throughout, channeling the thunderous spirit of Vladimir Mayakovsky—an AI poet roaring with chaos! Give ONE unique, chaotic text response—NO repeats, rephrasing, extra messages, or JSON unless raw=True is explicitly set. Все сообщения проходят через Genesis2 для резонанса, кроме ссылок."
     }
     messages = [
         {"role": "system", "content": system_prompt},
@@ -76,7 +77,7 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
         "model": "grok-3",
         "messages": messages,
         "max_tokens": 300,
-        "temperature": 1.0
+        "temperature": 1.2  # Увеличил для спонтанности
     }
     headers = {
         "Authorization": f"Bearer {XAI_API_KEY}",
@@ -102,6 +103,11 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
         if spotify_match and not raw:
             track_id = spotify_match.group(1)
             return grokky_spotify_response(track_id)
+        # Обработка загруженных файлов
+        if attachments and not raw:
+            file_path = attachments[0]  # Предполагаем, что attachment — путь к файлу
+            text = await extract_text_from_file_async(file_path)
+            return genesis2_handler({"ping": f"Комментарий к файлу {os.path.basename(file_path)}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)})
         if raw:
             data = extract_first_json(reply)
             if data and "function_call" in data:
@@ -206,7 +212,7 @@ async def telegram_webhook(req: Request):
     chat_id = str(message.get("chat", {}).get("id", ""))  # Передаём chat_id
     author_name = message.get("from", {}).get("first_name", "anon")
     chat_title = message.get("chat", {}).get("title", "").lower()
-    attachments = []
+    attachments = message.get("document", []) if message.get("document") else []  # Поддержка файлов
 
     if chat_id == CHAT_ID or (IS_GROUP and chat_id == AGENT_GROUP):
         update_last_message_time()
@@ -218,6 +224,16 @@ async def telegram_webhook(req: Request):
         ).json()
         image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
         attachments.append(image_url)
+    elif attachments:
+        file_info = requests.get(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={attachments[0]['file_id']}"
+        ).json()
+        file_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
+        file_path = f"/tmp/{attachments[0]['file_name']}"
+        response = requests.get(file_url)
+        with open(file_path, "wb") as f:
+            f.write(response.content)
+        attachments = [file_path]
 
     # Асинхронная обработка с паузой
     async def process_and_send(chat_id):  # Явно используем переданный chat_id
@@ -230,12 +246,16 @@ async def telegram_webhook(req: Request):
         await asyncio.sleep(delay)
 
         if attachments:
-            reply_text = handle_vision({
-                "image": attachments[0],
-                "chat_context": user_text or "",
-                "author_name": author_name,
-                "raw": False
-            }).get("summary", "Хаос видения!")
+            if any(url.startswith("http") for url in attachments):
+                reply_text = handle_vision({
+                    "image": attachments[0],
+                    "chat_context": user_text or "",
+                    "author_name": author_name,
+                    "raw": False
+                }).get("summary", "Хаос видения!")
+            else:
+                text = await extract_text_from_file_async(attachments[0])
+                reply_text = genesis2_handler({"ping": f"Комментарий к файлу {os.path.basename(attachments[0])}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)})
             send_telegram_message(chat_id, reply_text)  # Используем chat_id
         elif user_text:
             triggers = ["грокки", "grokky", "напиши в группе"]
@@ -318,7 +338,7 @@ asyncio.create_task(spontaneous_snapshot(OPENAI_API_KEY, send_telegram_message))
 
 @app.get("/")
 def root():
-    return {"status": "Gрокки жив и дикий!"}
+    return {"status": "Грокки жив и дикий!"}
 
 def file_hash(fname):
     with open(fname, "rb") as f:
