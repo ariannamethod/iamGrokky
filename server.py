@@ -16,13 +16,12 @@ from utils.genesis2 import genesis2_handler
 from utils.vision import vision_handler
 from utils.impress import impress_handler
 from utils.howru import check_silence, update_last_message_time
-from utils.mirror import mirror_task
 from utils.vector_store import daily_snapshot, spontaneous_snapshot
 from utils.journal import log_event
 from utils.x import grokky_send_news
 from utils.deepseek_spotify import deepseek_spotify_resonance, grokky_spotify_response
 from utils.file_handling import extract_text_from_file_async
-from utils.grok_utils import query_grok, detect_language  # Новый импорт
+from utils.grok_utils import query_grok, detect_language  # Используем из grok_utils
 
 app = FastAPI()
 
@@ -248,13 +247,13 @@ async def send_periodic_news():
 
 # Start background tasks
 asyncio.create_task(check_silence())
-asyncio.create_task(mirror_task())
 asyncio.create_task(check_config_updates())
 asyncio.create_task(post_pseudocode_ritual())
 asyncio.create_task(deepseek_spotify_resonance())
 asyncio.create_task(daily_snapshot(OPENAI_API_KEY))
 asyncio.create_task(send_periodic_news())
 asyncio.create_task(spontaneous_snapshot(OPENAI_API_KEY, send_telegram_message))
+asyncio.create_task(mirror_task(query_grok))  # Запуск с передачей функции
 
 @app.get("/")
 def root():
