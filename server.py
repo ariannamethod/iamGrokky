@@ -271,7 +271,8 @@ asyncio.create_task(send_periodic_news())
 asyncio.create_task(spontaneous_snapshot(OPENAI_API_KEY, send_telegram_message))
 asyncio.create_task(mirror_task(query_grok))
 asyncio.create_task(galvanize_protocol())
-asyncio.create_task(chaotic_genesis_spark(CHAT_ID, AGENT_GROUP if IS_GROUP else None, IS_GROUP))
+# Временная заглушка запуска chaotic_genesis_spark, перенесём позже
+# asyncio.create_task(chaotic_genesis_spark(CHAT_ID, AGENT_GROUP if IS_GROUP else None, IS_GROUP))
 asyncio.create_task(wilderness_journal())
 
 @app.get("/")
