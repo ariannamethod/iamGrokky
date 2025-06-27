@@ -35,7 +35,7 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
             await asyncio.sleep(300)
     ```
     """
-    endpoint = "https://api.x.ai/v1/multimodal/object-detection"
+    endpoint = "https://api.x.ai/v1/vision/detect"  # Попробуем новый эндпоинт
     headers = {
         "Authorization": f"Bearer {XAI_API_KEY}",
         "Content-Type": "application/json"
