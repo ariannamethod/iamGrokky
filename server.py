@@ -23,7 +23,7 @@ from utils.x import grokky_send_news
 from utils.deepseek_spotify import deepseek_spotify_resonance, grokky_spotify_response
 from utils.file_handling import extract_text_from_file_async
 from utils.text_helpers import extract_text_from_url
-from utils.grok_utils import query_grok, detect_language
+from utils.grok_utils import query_grok, detect_language, chaotic_grok_spark  # Добавлен chaotic_grok_spark
 
 app = FastAPI()
 
@@ -269,6 +269,7 @@ asyncio.create_task(send_periodic_news())
 asyncio.create_task(spontaneous_snapshot(OPENAI_API_KEY, send_telegram_message))
 asyncio.create_task(mirror_task(query_grok))
 asyncio.create_task(galvanize_protocol())
+asyncio.create_task(chaotic_grok_spark(CHAT_ID, send_telegram_message))  # Добавлен вызов chaotic_grok_spark
 
 @app.get("/")
 def root():
