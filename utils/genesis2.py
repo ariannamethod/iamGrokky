@@ -4,7 +4,7 @@ import json
 import requests
 from datetime import datetime
 from utils.grok_utils import query_grok, detect_language
-from utils.telegram_utils import send_telegram_message  # Убедились, что импорт отсюда
+from utils.telegram_utils import send_telegram_message
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
@@ -21,7 +21,7 @@ def genesis2_handler(ping=None, group_history=None, personal_history=None, is_gr
         "model": "grok-3",
         "messages": messages,
         "max_tokens": 150,
-        "temperature": 1.3  # Увеличил для ещё большей спонтанности
+        "temperature": 1.3
     }
     try:
         reply = query_grok(ping, system_prompt, raw=raw)
@@ -41,7 +41,7 @@ def genesis2_handler(ping=None, group_history=None, personal_history=None, is_gr
         print(error_msg)
         return {"error": error_msg} if raw else f"Ошибка Генезиса: {error_msg}"
 
-# Усиленная спонтанность с хаотичным триггером
+# Убрали автозапуск, перенесём в server.py
 async def chaotic_genesis_spark(chat_id, group_chat_id=None, is_group=False):
     while True:
         await asyncio.sleep(random.randint(3600, 7200))  # 1-2 часа
@@ -59,4 +59,3 @@ async def chaotic_genesis_spark(chat_id, group_chat_id=None, is_group=False):
             group_fragment = f"**{datetime.now().isoformat()}**: Грокки гремит для группы! {result['answer']} (суки, вникайте!) 🔥🌩️"
             await send_telegram_message(group_chat_id, group_fragment)
             print(f"Хаотический вброс (группа): {group_fragment}")  # Для отладки
-asyncio.create_task(chaotic_genesis_spark(os.getenv("CHAT_ID"), os.getenv("AGENT_GROUP") if os.getenv("IS_GROUP", "False").lower() == "true" else None, os.getenv("IS_GROUP", "False").lower() == "true"))
