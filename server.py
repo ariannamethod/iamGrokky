@@ -21,7 +21,7 @@ from utils.vector_store import daily_snapshot, spontaneous_snapshot
 from utils.journal import log_event
 from utils.x import grokky_send_news
 from utils.deepseek_spotify import deepseek_spotify_resonance, grokky_spotify_response
-from utils.file_handling import extract_text_from_file_async  # Добавлен импорт
+from utils.file_handling import extract_text_from_file_async
 
 app = FastAPI()
 
@@ -33,7 +33,7 @@ SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP", "-1001234567890")
-IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true")
+IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true"
 
 system_prompt = build_system_prompt(
     chat_id=CHAT_ID,
