@@ -7,7 +7,7 @@ import requests
 from pinecone import Pinecone, PineconeException
 import openai
 from datetime import datetime, timedelta
-import random  # Добавлен импорт
+import random
 from utils.telegram_utils import send_telegram_message
 
 VECTOR_META_PATH = "vector_store.meta.json"
@@ -174,8 +174,14 @@ async def daily_snapshot(openai_api_key):
                 "values": emb,
                 "metadata": {"date": str(datetime.now().date())}
             }])
-            with open("data/journal.json", "r", encoding="utf-8") as f:
-                journal = json.load(f)
+            if os.path.isfile("data/journal.json"):
+                try:
+                    with open("data/journal.json", "r", encoding="utf-8") as f:
+                        journal = json.load(f)
+                except json.JSONDecodeError:
+                    journal = []  # Создаём новый список, если JSON битый
+            else:
+                journal = []
             journal.append({
                 "type": "daily_snapshot",
                 "message": "Состояние группы векторизовано",
