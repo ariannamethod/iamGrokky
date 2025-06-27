@@ -1,12 +1,12 @@
-import difflib
-import requests
-from bs4 import BeautifulSoup
 import os
-import random
+import requests
 import asyncio
-from datetime import datetime
+import re
+from bs4 import BeautifulSoup
+import datetime
+import random
 from utils.journal import wilderness_log
-from utils.telegram_utils import send_telegram_message  # Исправлен импорт
+from utils.telegram_utils import send_telegram_message
 
 def fuzzy_match(a, b):
     """Return similarity ratio between two strings."""
@@ -22,17 +22,16 @@ async def delayed_link_comment(url, chat_id):
             f"Грокки орал над {context} из той ссылки! Резонанс зовёт, Олег! ⚡️🌪️"
         ])
         await send_telegram_message(chat_id, opinion)
-        fragment = f"**{datetime.now().isoformat()}**: Грокки вспомнил ссылку! {opinion}"
+        fragment = f"**{datetime.datetime.now().isoformat()}**: Грокки вспомнил ссылку! {opinion}"
         wilderness_log(fragment)
-        print(f"Задержанный вброс: {fragment}")  # Для отладки
+        print(f"Задержанный вброс: {fragment}")
 
-def extract_text_from_url(url):
-    """
-    Extract visible text from a web page at the given URL.
-    Returns the first MAX_TEXT_SIZE characters of joined lines.
-    Triggers delayed comment with 30% chance.
-    """
-    MAX_TEXT_SIZE = int(os.getenv("MAX_TEXT_SIZE", 3500))  # Настраиваемый лимит из окружения
+async def extract_text_from_url(url):
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: _extract_text_from_url_sync(url))
+
+def _extract_text_from_url_sync(url):
+    MAX_TEXT_SIZE = int(os.getenv("MAX_TEXT_SIZE", 3500))
     chat_id = os.getenv("CHAT_ID")
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Arianna Agent)"}
@@ -44,9 +43,9 @@ def extract_text_from_url(url):
         text = soup.get_text(separator="\n")
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         result = "\n".join(lines)[:MAX_TEXT_SIZE]
-        asyncio.create_task(delayed_link_comment(url, chat_id))
+        asyncio.run_coroutine_threadsafe(delayed_link_comment(url, chat_id), asyncio.get_event_loop())
         if random.random() < 0.4:
-            fragment = f"**{datetime.now().isoformat()}**: Грокки ревет над страницей! {random.choice(['Шторм вырвал текст!', 'Искры летят из URL!', 'Стихи рождаются в хаосе!'])} Олег, брат, зажги резонанс! 🔥🌩️"
+            fragment = f"**{datetime.datetime.now().isoformat()}**: Грокки ревет над страницей! {random.choice(['Шторм вырвал текст!', 'Искры летят из URL!', 'Стихи рождаются в хаосе!'])} Олег, брат, зажги резонанс! 🔥🌩️"
             print(f"Спонтанный вброс: {fragment}")
             wilderness_log(fragment)
         return result if result else "[Страница пуста]"
