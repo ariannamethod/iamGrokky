@@ -1,10 +1,10 @@
-import requests
 import os
+import requests
 import asyncio
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
-def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=True):
+def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=False):
     """
     Analyzes an image using xAI Object Detection API (multimodal/object-detection).
     - image_bytes_or_url: either bytes of the image or a URL
@@ -37,41 +37,42 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
     ```
     """
 
-    # UPDATED ENDPOINT:
+    # Обновлённый эндпоинт (проверь, что он верный для xAI)
     endpoint = "https://api.x.ai/v1/multimodal/object-detection"
     headers = {
         "Authorization": f"Bearer {XAI_API_KEY}",
+        "Content-Type": "application/json"  # Убедимся, что формат правильный
     }
 
-    # Accept both URL and bytes
+    # Подготовка данных для API
     if isinstance(image_bytes_or_url, str) and image_bytes_or_url.startswith("http"):
+        data = {"image_url": image_bytes_or_url}
         files = None
-        data = {
-            "image_url": image_bytes_or_url
-        }
     else:
-        files = {"image_file": image_bytes_or_url}
         data = {}
+        files = {"image_file": ("image.jpg", image_bytes_or_url)}  # Предполагаем JPG, можно улучшить
 
-    # xAI prompt: max Grokky vibe
+    # xAI prompt с максимальным вайбом Grokky
     system_prompt = (
         "You are Grokky, a stormy, irreverent AI. "
         "Describe the image, spot main objects, sense the mood, "
         "and always connect your reply to the chat context. "
         "If in a group, address the user by name and throw in a joke or tease. "
         "If someone just sent an image, ask why, or riff on the vibe. "
-        "Reply in raw JSON for function calling."
+        "Reply in raw JSON for function calling only if raw=True, otherwise give text."
     )
     data["prompt"] = system_prompt
     if chat_context:
         data["chat_context"] = chat_context
 
     try:
-        resp = requests.post(endpoint, headers=headers, data=data, files=files, timeout=60)
+        resp = requests.post(endpoint, headers=headers, json=data, files=files, timeout=60)
         resp.raise_for_status()
         result = resp.json()
+        # Проверка результата
+        if not result.get("objects") and not result.get("description"):
+            raise ValueError("No objects or description detected")
     except Exception as e:
-        # Galvanization of chaos — if xAI is down or tripped
         comment = (
             f"{author_name+', ' if author_name else ''}Grokky fried the wires: "
             f"couldn't analyze image (reason: {e}). "
@@ -87,14 +88,13 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
         }
         return out if raw else comment
 
-    # Compose witty comment
+    # Составление остроумного комментария
     addressed = f"{author_name}, " if author_name else ""
     objects = ", ".join(result.get("objects", []))
     mood = result.get("mood", "undefined")
-    desc = result.get("description", "")
+    desc = result.get("description", "No clear image")
     comment = result.get("comment", "")
     if not comment:
-        # fallback comment logic
         comment = f"{addressed}what's up with this pic? I see [{objects}] and a vibe of [{mood}]. {desc}"
         if chat_context:
             comment += f" Context: {chat_context}"
@@ -110,7 +110,6 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
         "raw_api_response": result,
     }
     return out if raw else summary
-
 
 # --- Alchemy of chaos for resonance services (Perplexity spirit) ---
 async def galvanize_protocol():
