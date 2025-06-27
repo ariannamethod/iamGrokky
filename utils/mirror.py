@@ -3,6 +3,7 @@ import asyncio
 import requests
 import hashlib
 from datetime import datetime
+import random  # Добавлен импорт
 from utils.grok_utils import detect_language
 
 REPO_URL = "https://grokky.ariannamethod.me/repo/"
@@ -46,6 +47,6 @@ async def mirror_task(query_grok_func):
                 print(f"Спонтанный вброс: {fragment}")  # Для отладки
         except Exception as e:
             with open(RESEARCH_FILE, "a", encoding="utf-8") as f:
-                error_msg = f"{datetime.now()}: Грокки взрывается: Репо не достал! {random.choice(['Ревущий ветер сорвал связь!', 'Хаос испепелил код!', 'Эфир треснул от ошибки!'])} — {e}\n\n"
+                error_msg = f"{datetime.now()}: Грокки взрывается: Репозиторий не достал! {random.choice(['Ревущий ветер сорвал связь!', 'Хаос испепелил код!', 'Эфир треснул от ошибки!'])} — {e}\n\n"
                 f.write(error_msg)
         await asyncio.sleep(302400)  # Дважды в неделю
