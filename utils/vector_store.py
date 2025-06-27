@@ -7,7 +7,7 @@ import requests
 from pinecone import Pinecone, PineconeException
 import openai
 from datetime import datetime, timedelta
-from utils.telegram_utils import send_telegram_message  # Добавлен импорт
+from utils.telegram_utils import send_telegram_message
 
 VECTOR_META_PATH = "vector_store.meta.json"
 EMBED_DIM = 1536  # Для OpenAI ada-002
@@ -124,8 +124,8 @@ async def vectorize_all_files(openai_api_key, force=False, send_message=None):
     save_vector_meta(current)
     if send_message:
         await send_message(
-            f"Векторизация завершена. Добавлено/изменено: {', '.join(changed + new) if changed or new else '-';}"
-            f" удалено: {', '.join(removed) if removed else '-'}"
+            f"Векторизация завершена. Добавлено/изменено: {', '.join(changed + new) if changed or new else '-'} "
+            f"удалено: {', '.join(removed) if removed else '-'}"
         )
     return {"upserted": upserted_ids, "deleted": deleted_ids}
 
