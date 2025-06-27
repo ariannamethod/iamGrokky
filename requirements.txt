@@ -1,18 +1,25 @@
 fastapi
-uvicorn
-requests
-tiktoken
-python-dotenv
-pinecone
-openai
+uvicorn[standard]>=0.30.0
+aiogram>=3.0.0
 aiohttp
-tenacity
-youtube-transcript-api
-beautifulsoup4
+httpx
+requests
+openai>=1.0.0
+python-dotenv
+feedparser
 pypdf
+pdfminer.six
+tiktoken>=0.6.0
+beautifulsoup4
+pillow
+pinecone
+pydub>=0.25.1
+pyyaml
+rich
+tenacity
 python-docx
-textract-py3  # Заменил textract==1.6.4
+docx2txt  # Альтернатива python-docx для .doc
 striprtf
 odfpy
 textblob
-Pillow
+youtube-transcript-api
