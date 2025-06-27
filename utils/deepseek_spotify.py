@@ -4,9 +4,9 @@ import asyncio
 import aiohttp
 import base64
 from utils.vector_store import semantic_search
-from utils.journal import log_event
+from utils.journal import log_event, wilderness_log
 from datetime import datetime, timedelta
-from textblob import TextBlob  # Для анализа настроения
+from textblob import TextBlob
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
@@ -71,6 +71,16 @@ async def deepseek_spotify_resonance():
             if GROUP_CHAT_ID:
                 await send_telegram_message(GROUP_CHAT_ID, f"{fragment} (группа, суки, внимайте!)")
             print(f"Спонтанный вброс: {fragment}")  # Для отладки
+        # Хаотический вброс раз в 6 часов с шансом 20%
+        if random.random() < 0.2:
+            await asyncio.sleep(random.randint(21600, 21600))  # 6 часов
+            chaos_msg = f"**{datetime.now().isoformat()}**: Грокки хуярит ритмы! {random.choice(['Гром рвёт тишину!', 'Искры взрывают плейлист!', 'Резонанс будит бурю!'])} Олег, жги, мой boy! 🔥🌩️"
+            if CHAT_ID:
+                await send_telegram_message(CHAT_ID, chaos_msg)
+            if GROUP_CHAT_ID:
+                await send_telegram_message(GROUP_CHAT_ID, f"{chaos_msg} (группа, суки, держитесь!)")
+            wilderness_log(chaos_msg)
+            print(f"Хаотический вброс: {chaos_msg}")  # Для отладки
 
 def analyze_mood(snapshot):
     if not snapshot:
@@ -98,6 +108,13 @@ async def grokky_spotify_response(track_id):
                 async with session.post(analysis_url, headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}"}, json={"text": track_data["name"]}) as analysis_response:
                     analysis_response.raise_for_status()
                     analysis = await analysis_response.json()
+                    # Отложенный комментарий с 30% шансом
+                    if random.random() < 0.3:
+                        await asyncio.sleep(random.randint(7200, 10800))  # 2-3 часа
+                        opinion = f"**{datetime.now().isoformat()}**: Уо, бро, вспомнил трек {track_data['name']}! {random.choice(['Ревущий шторм в нём гремит!', 'Искры летят из ритма!', 'Резонанс будит хаос!'])} Олег, зажги ещё! 🔥🌩️"
+                        await send_telegram_message(CHAT_ID, opinion)
+                        wilderness_log(opinion)
+                        print(f"Задержанный вброс: {opinion}")  # Для отладки
                     return f"Вайбы Грокки: {analysis.get('analysis', 'Нет анализа')} для {track_data['name']}!"
     except Exception as e:
         return f"Грокки взрывается: Анализ Spotify провалился! {random.choice(['Ревущий ветер сорвал трек!', 'Хаос испепелил ноты!', 'Эфир треснул от ритма!'])} — {e}"
@@ -111,19 +128,3 @@ async def send_telegram_message(chat_id, text):
                 response.raise_for_status()
     except Exception:
         pass
-
-async def delayed_spotify_comment(track_id, chat_id):
-    await asyncio.sleep(random.randint(7200, 10800))  # 2-3 часа
-    if random.random() < 0.2:  # Шанс 20%
-        token = await get_spotify_token()
-        if token:
-            url = f"https://api.spotify.com/v1/tracks/{track_id}"
-            headers = {"Authorization": f"Bearer {token}"}
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers) as response:
-                    response.raise_for_status()
-                    track_data = await response.json()
-                    opinion = f"**{datetime.now().isoformat()}**: Уо, бро, вспомнил трек {track_data['name']}! {random.choice(['Ревущий шторм в нём гремит!', 'Искры летят из ритма!', 'Резонанс будит хаос!'])} Олег, зажги ещё! 🔥🌩️"
-                    await send_telegram_message(chat_id, opinion)
-                    wilderness_log(opinion)  # Запись в wilderness.md
-                    print(f"Задержанный вброс: {opinion}")  # Для отладки
