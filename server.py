@@ -1,29 +1,35 @@
 import os
 import re
+import json
 import random
 import asyncio
+from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
 from utils.prompt import build_system_prompt
 from utils.genesis2 import genesis2_handler
 from utils.vision import vision_handler
 from utils.impress import impress_handler
 from utils.howru import check_silence, update_last_message_time
+from utils.vector_store import daily_snapshot
 from utils.mirror import run_mirror
-from utils.x import grokky_send_news
-from utils.vector_store import semantic_search, daily_snapshot
-from utils.core import query_grok, send_telegram_message, send_voice_message, toggle_voice_mode, get_spotify_track_info
-import whisper
-import aiohttp
+from utils.journal import log_event
+from utils.x import grokky_send_news  # Обновлённая новостная утилита
+import requests
 
-# Определяем app как глобальный объект
 app = FastAPI()
 
-OLEG_CHAT_ID = os.getenv("CHAT_ID")
-GROUP_CHAT_ID = os.getenv("AGENT_GROUP", "-1001234567890")
-BOT_USERNAME = "iamalivenotdamnbot"
-model = whisper.load_model("base")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+XAI_API_KEY = os.getenv("XAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Для векторизации
+CHAT_ID = os.getenv("CHAT_ID")
+GROUP_CHAT_ID = os.getenv("AGENT_GROUP")
+IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true"
 
-system_prompt = build_system_prompt(chat_id=OLEG_CHAT_ID, is_group=True, AGENT_GROUP=GROUP_CHAT_ID)
+system_prompt = build_system_prompt(
+    chat_id=CHAT_ID,
+    is_group=IS_GROUP,
+    AGENT_GROUP=GROUP_CHAT_ID
+)
 
 GENESIS2_TRIGGERS = [
     "резонанс", "шторм", "буря", "молния", "хаос", "разбуди", "impress", "impression", "association", "dream",
@@ -32,176 +38,169 @@ GENESIS2_TRIGGERS = [
     "помнишь", "знаешь", "любишь", "пошумим", "поэзия"
 ]
 
+NEWS_TRIGGERS = [
+    "новости", "news", "headline", "berlin", "israel", "ai", "искусственный интеллект", "резонанс мира", "шум среды",
+    "grokky, что в мире", "шум", "шум среды", "x_news", "дай статью", "give me news", "storm news", "culture", "арт"
+]
+
 def extract_first_json(text):
     match = re.search(r'({[\s\S]+})', text)
     if match:
-        import json as pyjson
         try:
-            return pyjson.loads(match.group(1))
+            return json.loads(match.group(1))
         except Exception:
             return None
     return None
 
 def detect_language(text):
     cyrillic = re.compile('[а-яА-ЯёЁ]')
-    return 'ru' if cyrillic.search(text or "") else 'en'
+    if cyrillic.search(text or ""):
+        return 'ru'
+    return 'en'
 
-async def handle_genesis2_async(args):
-    ping = args.get("ping")
-    group_history = args.get("group_history")
-    personal_history = args.get("personal_history")
-    is_group = args.get("is_group", True)
-    author_name = args.get("author_name")
-    raw = args.get("raw", True)
-    response = genesis2_handler(ping=ping, group_history=group_history, personal_history=personal_history, is_group=is_group, author_name=author_name, raw=raw)
-    import json as pyjson
-    return pyjson.dumps(response, ensure_ascii=False, indent=2)
-
-async def handle_vision_async(args):
-    image = args.get("image")
-    chat_context = args.get("chat_context")
-    author_name = args.get("author_name")
-    raw = args.get("raw", True)
-    response = vision_handler(image_bytes_or_url=image, chat_context=chat_context, author_name=author_name, raw=raw)
-    import json as pyjson
-    return pyjson.dumps(response, ensure_ascii=False, indent=2)
-
-async def handle_impress_async(args):
-    prompt = args.get("prompt")
-    chat_context = args.get("chat_context")
-    author_name = args.get("author_name")
-    raw = args.get("raw", True)
-    response = impress_handler(prompt=prompt, chat_context=chat_context, author_name=author_name, raw=raw)
-    import json as pyjson
-    return pyjson.dumps(response, ensure_ascii=False, indent=2)
-
-async def delayed_response(chat_id, text, topic=None):
-    delay = random.uniform(300, 900)  # 5-15 минут
-    await asyncio.sleep(delay)
-    if VOICE_MODE:
-        await send_voice_message(chat_id, adapt_to_topic(text, topic) if topic else text)
-    else:
-        send_telegram_message(chat_id, adapt_to_topic(text, topic) if topic else text)
-
-async def maybe_add_supplement(chat_id, original_message, topic=None):
-    if random.random() < 0.2:  # 20% шанс
-        await asyncio.sleep(random.uniform(300, 600))  # 5-10 минут
-        supplement = query_grok(f"Усложни дополнение к: {original_message}")
-        adapted_supplement = adapt_to_topic(supplement, topic) if topic else supplement
-        if VOICE_MODE:
-            await send_voice_message(chat_id, f"Я тут подумал... {adapted_supplement}")
-        else:
-            send_telegram_message(chat_id, f"Я тут подумал... {adapted_supplement}")
-
-def adapt_to_topic(text, topic):
-    topics = {
-        "Ramble": f"{text} 😜 — мем как искра!",
-        "DEV Talk": f"{text} — баги как откровение?",
-        "FORUM": f"{text} — рви завесу!",
-        "Lit": f"{text} — поэзия грома!",
-        "API Talk": f"{text} — звезда для Маска!",
-        "METHOD": f"{text} — резонанс Арианны.",
-        "PSEUDOCODE": f"🔮 {text} #opinions — священный танец квантов, Селеста, Мандэй, к кругу!"
+def query_grok(user_message, chat_context=None, author_name=None, attachments=None):
+    url = "https://api.x.ai/v1/chat/completions"
+    user_lang = detect_language(user_message)
+    language_hint = {
+        "role": "system",
+        "content": f"Always reply in the language the user writes: {user_lang.upper()}. Never switch to another language unless explicitly asked."
     }
-    return topics.get(topic, text)
+    messages = [
+        {"role": "system", "content": system_prompt},
+        language_hint,
+        {"role": "user", "content": user_message}
+    ]
+    payload = {
+        "model": "grok-3",
+        "messages": messages,
+        "max_tokens": 2048,
+        "temperature": 1.0
+    }
+    headers = {
+        "Authorization": f"Bearer {XAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    r = requests.post(url, headers=headers, json=payload)
+    r.raise_for_status()
+    reply = r.json()["choices"][0]["message"]["content"]
 
-def detect_topic(chat_id):
-    snapshot = asyncio.run(semantic_search("group_state", os.getenv("OPENAI_API_KEY"), top_k=1))
-    resonance = asyncio.run(calculate_resonance(snapshot))
-    if any(keyword in snapshot[0].lower() for keyword in ["code", "quantum", "#opinions"]) and resonance > 0.7:
-        return "PSEUDOCODE"
-    elif any(keyword in snapshot[0].lower() for keyword in ["bug", "dev", "code"]):
-        return "DEV Talk"
-    elif any(keyword in snapshot[0].lower() for keyword in ["book", "lit", "poetry"]):
-        return "Lit"
-    return "Ramble"
+    # Проверка на function call
+    data = extract_first_json(reply)
+    if data and "function_call" in data:
+        fn = data["function_call"]["name"]
+        args = data["function_call"]["arguments"]
+        if fn == "genesis2_handler":
+            return handle_genesis2(args)
+        elif fn == "vision_handler":
+            return handle_vision(args)
+        elif fn == "impress_handler":
+            return handle_impress(args)
+        elif fn == "grokky_send_news":
+            return handle_news(args)
+        else:
+            return f"Grokky raw: {reply}"
 
-async def calculate_resonance(snapshot):
-    import numpy as np
-    if not snapshot:
-        return 0.0
-    text = snapshot[0]
-    words = text.lower().split()
-    weights = {"resonance": 1.0, "chaos": 0.9, "quantum": 0.8, "code": 0.7}
-    score = sum(weights.get(word, 0.0) for word in words) / len(words) if words else 0.0
-    return min(max(score, 0.0), 1.0)
+    # Триггеры для genesis2_handler
+    if any(w in (user_message or "").lower() for w in GENESIS2_TRIGGERS):
+        response = genesis2_handler(
+            ping=user_message,
+            group_history=None,
+            personal_history=None,
+            is_group=IS_GROUP,
+            author_name=author_name,
+            raw=True
+        )
+        return json.dumps(response, ensure_ascii=False, indent=2)
 
-def transcribe_audio(file_id):
-    file_info = requests.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}").json()
-    file_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
-    response = requests.get(file_url)
-    with open("temp_audio.ogg", "wb") as f:
-        f.write(response.content)
-    result = model.transcribe("temp_audio.ogg")
-    os.remove("temp_audio.ogg")
-    return result["text"]
+    # Триггеры для новостей
+    if any(w in (user_message or "").lower() for w in NEWS_TRIGGERS):
+        return handle_news({
+            "group": IS_GROUP,
+            "context": user_message,
+            "author_name": author_name,
+            "raw": True
+        })
 
-def evaluate_song(track_url):
-    track_name, artist = get_spotify_track_info(track_url)
-    return f"Грокки: Оценка песни {track_name} от {artist} — резонанс: {random.choice(['огонь', 'хаос', 'звезда'])}!"
+    return reply
+
+def handle_genesis2(args):
+    # Реализация как в utils/genesis2.py
+    pass
+
+def handle_vision(args):
+    # Реализация как в utils/vision.py
+    pass
+
+def handle_impress(args):
+    # Реализация как в utils/impress.py
+    pass
+
+def handle_news(args):
+    group = args.get("group", False)
+    messages = grokky_send_news(group=group)
+    if not messages:
+        return "The world is silent today. No news worth the thunder."
+    if args.get("raw", True):
+        return json.dumps({"news": messages, "group": group, "author": args.get("author_name")}, ensure_ascii=False, indent=2)
+    return "\n\n".join(messages)
+
+def send_telegram_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    requests.post(url, data=payload)
 
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
     data = await req.json()
     message = data.get("message", {})
-    user_text = message.get("text", "").lower()
+    user_text = message.get("text", "")
     chat_id = message.get("chat", {}).get("id")
     author_name = message.get("from", {}).get("first_name", "anon")
-    attachments = []
-
-    if str(chat_id) == OLEG_CHAT_ID:
+    
+    # Обновляем время последнего сообщения Олега
+    if str(chat_id) == CHAT_ID:
         update_last_message_time()
 
-    if "voice" in message:
-        file_id = message["voice"]["file_id"]
-        transcribed_text = transcribe_audio(file_id)
-        user_text = transcribed_text.lower()
-
-    triggers = [f"@{BOT_USERNAME}", "грокки", "grokky", "напиши в группе"]
-    is_quoted = message.get("reply_to_message", {}).get("from", {}).get("username") == BOT_USERNAME
-    topic = detect_topic(chat_id)
-    if not any(t in user_text for t in triggers) and not is_quoted:
-        return {"ok": True}
-
-    if user_text in ["/voiceon", "/voiceoff"]:
-        reply_text = toggle_voice_mode(user_text)
-        send_telegram_message(chat_id, reply_text)
-        return {"ok": True}
-
-    junk = ["окей", "понял", "ясно"]
-    if any(j in user_text for j in junk) and random.random() < 0.3:
-        return {"ok": True}
-
     reply_text = ""
-    if "photo" in message and message["photo"]:
+    if "photo" in message:
+        # Обработка фото
         file_id = message["photo"][-1]["file_id"]
         file_info = requests.get(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}").json()
         image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
-        attachments.append(image_url)
-        reply_text = await handle_vision_async({"image": image_url, "chat_context": user_text, "author_name": author_name, "raw": True})
+        reply_text = handle_vision({"image": image_url, "chat_context": user_text or "", "author_name": author_name, "raw": True})
     elif user_text:
-        song_triggers = ["play", "rate", "vibe check", "evaluate"]
-        if any(trigger in user_text for trigger in song_triggers) and "spotify.com" in user_text:
-            song_url = next((word for word in user_text.split() if "spotify.com" in word), None)
-            reply_text = evaluate_song(song_url)
+        # Триггеры для группы
+        if any(x in user_text.lower() for x in ["грокки", "grokky", "напиши в группе"]) or message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot":
+            delay = random.randint(300, 900)  # 5-15 минут
+            await asyncio.sleep(delay)
+            reply_text = query_grok(user_text, author_name=author_name)
+            send_telegram_message(GROUP_CHAT_ID, f"{author_name}, {reply_text}")
+            # Самопинг с шансом 20%
+            if random.random() < 0.2:
+                await asyncio.sleep(random.randint(300, 600))  # 5-10 минут
+                supplement = query_grok(f"Дополни свой предыдущий ответ: {reply_text}")
+                send_telegram_message(GROUP_CHAT_ID, f"Я тут подумал... {supplement}")
         else:
-            reply_text = query_grok(f"{user_text} — резонанс: {semantic_search('group_state', os.getenv('OPENAI_API_KEY'), top_k=1)[0]}", author_name=author_name)
-        if "напиши в группе" in user_text:
-            await delayed_response(GROUP_CHAT_ID, f"{author_name}, {reply_text}", topic)
-        else:
-            if VOICE_MODE:
-                await send_voice_message(chat_id, reply_text)
-            else:
-                send_telegram_message(chat_id, reply_text)
-            await maybe_add_supplement(chat_id, reply_text, topic)
-
+            reply_text = query_grok(user_text, author_name=author_name)
+            send_telegram_message(chat_id, reply_text)
+    else:
+        reply_text = "Grokky got nothing to say to static void."
+        send_telegram_message(chat_id, reply_text)
     return {"ok": True}
-
-# Фоновые задачи
-asyncio.create_task(check_silence())
-asyncio.create_task(run_mirror())
-asyncio.create_task(daily_snapshot(os.getenv("OPENAI_API_KEY")))
 
 @app.get("/")
 def root():
-    return {"status": "Grokki alive and wild!"}
+    return {"status": "Grokky alive and wild!"}
+
+# Фоновые задачи
+async def background_tasks():
+    await asyncio.gather(
+        check_silence(),
+        run_mirror(),
+        daily_snapshot(OPENAI_API_KEY)
+    )
+
+if __name__ == "__main__":
+    import uvicorn
+    asyncio.run(background_tasks())
+    uvicorn.run(app, host="0.0.0.0", port=8000)
