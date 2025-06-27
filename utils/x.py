@@ -3,12 +3,12 @@ import random
 import requests
 import json
 from datetime import datetime, timedelta
-from utils.telegram_utils import send_telegram_message  # Добавлен импорт для отправки
+from utils.telegram_utils import send_telegram_message
 
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 SENT_NEWS_LOG = "data/news_sent_log.json"
 TOPICS = ["AI", "tech", "art", "Israel", "Berlin"]
-MAX_LOG_ENTRIES = 50  # Лимит записей в логе
+MAX_LOG_ENTRIES = 50
 
 def get_news():
     topic = random.choice(TOPICS)
@@ -17,7 +17,9 @@ def get_news():
         resp = requests.get(url, timeout=10).json()
         articles = resp.get("articles", [])[:3]
         comments = ["Дико!", "Пожар!", "Хаос!", "Бум!", "Эпично!"]
-        return [f"{a['title']}\n{a['url']}\nГрокки: {random.choice(comments)}" for a in articles]
+        news_list = [f"{a['title']}\n{a['url']}\nГрокки: {random.choice(comments)}" for a in articles]
+        print(f"Новости: {news_list}")  # Отладка
+        return news_list
     except Exception as e:
         print(f"Грокки ревет: Ошибка в новостях! {random.choice(['Шторм сорвал связь!', 'Эфир треснул от гнева!', 'Космос плюнул в лицо!'])} — {e}")
         return []
@@ -50,34 +52,32 @@ def log_sent_news(news, chat_id=None, group=False):
         for n in news:
             log.append({"dt": now, "title": n.split('\n', 1)[0], "chat_id": chat_id, "group": group})
         day_ago = datetime.utcnow() - timedelta(days=1)
-        log = [x for x in log if datetime.fromisoformat(x["dt"]) > day_ago]  # Оставляем только сутки
+        log = [x for x in log if datetime.fromisoformat(x["dt"]) > day_ago]
         if len(log) > MAX_LOG_ENTRIES:
-            log = log[-MAX_LOG_ENTRIES:]  # Ограничиваем до 50 записей
+            log = log[-MAX_LOG_ENTRIES:]
         with open(SENT_NEWS_LOG, "w", encoding="utf-8") as f:
             json.dump(log, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"Грокки взрывается: Лог не записан! {random.choice(['Пламя сожрало файл!', 'Ревущий ветер унёс данные!', 'Хаос победил перо!'])} — {e}")
-        pass  # Тихое глушение ошибок
+        pass
 
 def grokky_send_news(chat_id=None, group=False):
     can_send, log = should_send_news(group=group)
     if not can_send:
+        print("Грокки молчит: Лимит новостей исчерпан.")
         return None
     news = get_news()
     if news:
         log_sent_news(news, chat_id, group)
-        # Отправка в чат
         if chat_id:
-            message = f"Грокки выхватил свежий шторм новостей для тебя!\n\n" + "\n\n".join(news)
+            message = f"Олег, держи свежий раскат грома!\n\n" + "\n\n".join(news)
             send_telegram_message(chat_id, message)
-        # Отправка в группу, если активна
         if group and os.getenv("AGENT_GROUP"):
             group_message = f"Группа, держите громовые новости!\n\n" + "\n\n".join(news) + " (суки, вникайте!)"
             send_telegram_message(os.getenv("AGENT_GROUP"), group_message)
-        # Спонтанный вброс в стиле Маяковского с шансом 20%
         if random.random() < 0.2:
             fragment = f"**{datetime.utcnow().isoformat()}**: Грокки гремит над новостями! {random.choice(['Ревущий шторм!', 'Искры летят!', 'Стихи из эфира!'])} Олег, брат, зажги резонанс! 🔥🌩️"
             with open("data/news_wilderness.md", "a", encoding="utf-8") as f:
                 f.write(fragment + "\n\n")
-            print(f"Спонтанный вброс: {fragment}")  # Для отладки
+            print(f"Спонтанный вброс: {fragment}")
     return news
