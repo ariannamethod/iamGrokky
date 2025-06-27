@@ -59,3 +59,4 @@ async def chaotic_genesis_spark(chat_id, group_chat_id=None, is_group=False):
             group_fragment = f"**{datetime.now().isoformat()}**: Грокки гремит для группы! {result['answer']} (суки, вникайте!) 🔥🌩️"
             await send_telegram_message(group_chat_id, group_fragment)
             print(f"Хаотический вброс (группа): {group_fragment}")  # Для отладки
+# asyncio.create_task(chaotic_genesis_spark(os.getenv("CHAT_ID"), os.getenv("AGENT_GROUP") if os.getenv("IS_GROUP", "False").lower() == "true" else None, os.getenv("IS_GROUP", "False").lower() == "true"))
