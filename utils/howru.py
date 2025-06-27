@@ -1,3 +1,4 @@
+import os
 import asyncio
 import random
 import json
@@ -23,17 +24,18 @@ def get_last_messages(limit=10):
     except Exception:
         return []
 
-def get_journal_entries():
+def get_journal_entries(limit=10):
     try:
         with open("data/journal.json", "r", encoding="utf-8") as f:
-            return json.load(f)
+            journal = json.load(f)
+        return journal[-limit:]
     except Exception:
         return []
 
 async def check_silence():
     global LAST_MESSAGE_TIME
     while True:
-        await asyncio.sleep(3600)
+        await asyncio.sleep(3600)  # Check every hour
         if not LAST_MESSAGE_TIME:
             continue
         silence = datetime.now() - LAST_MESSAGE_TIME
@@ -46,7 +48,7 @@ async def handle_24h_silence():
     context = await build_context()
     message = query_grok("Oleg has been silent for 24 hours. Write something spontaneous!", context)
     send_telegram_message(OLEG_CHAT_ID, message)
-    log_event({"type": "howru_24h", "message": message})
+    log_event({"type": "howru_24h", "message": message, "timestamp": datetime.now().isoformat()})
 
 async def handle_48h_silence():
     context = await build_context()
@@ -54,13 +56,13 @@ async def handle_48h_silence():
     send_telegram_message(OLEG_CHAT_ID, message)
     group_msg = f"Oleg has been silent for 48 hours. Last seen: {LAST_MESSAGE_TIME}"
     send_telegram_message(GROUP_CHAT_ID, group_msg)
-    log_event({"type": "howru_48h", "message": message, "group_msg": group_msg})
+    log_event({"type": "howru_48h", "message": message, "group_msg": group_msg, "timestamp": datetime.now().isoformat()})
 
 async def build_context():
     last_msgs = get_last_messages(10)
-    journal = get_journal_entries()
+    journal = get_journal_entries(10)
     snapshot = await semantic_search("group_state", os.getenv("OPENAI_API_KEY"), top_k=1)
-    return f"Last messages: {json.dumps(last_msgs, ensure_ascii=False)}\nJournal: {json.dumps(journal[-10:], ensure_ascii=False)}\nSnapshot: {snapshot}"
+    return f"Last messages: {json.dumps(last_msgs, ensure_ascii=False)}\nJournal: {json.dumps(journal, ensure_ascii=False)}\nSnapshot: {snapshot}"
 
 def send_telegram_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
