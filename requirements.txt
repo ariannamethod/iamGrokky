@@ -3,9 +3,10 @@ uvicorn
 requests
 tiktoken
 python-dotenv
-pinecone
+pinecone-client
 openai
 aiohttp
 tenacity
 whisper
 gtts
+youtube-transcript-api
