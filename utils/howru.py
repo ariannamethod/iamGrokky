@@ -1,9 +1,7 @@
 import asyncio
-import random
 from datetime import datetime, timedelta
+from server import query_grok, send_telegram_message, log_event
 from utils.vector_store import semantic_search
-from utils.journal import log_event
-from server import query_grok, send_telegram_message
 
 LAST_MESSAGE_TIME = None
 SILENCE_THRESHOLD_24H = timedelta(hours=24)
@@ -24,8 +22,8 @@ async def check_silence():
             await handle_24h_silence()
 
 async def handle_24h_silence():
-    last_messages = get_last_messages(10)  # Функция-заглушка, надо реализовать
-    journal_entries = get_journal_entries()  # Функция-заглушка, читает journal.json
+    last_messages = get_last_messages(10)
+    journal_entries = get_journal_entries()
     vector_snapshot = await semantic_search("group_state", os.getenv("OPENAI_API_KEY"), top_k=1)
     context = f"Последние сообщения: {last_messages}\nЖурнал: {journal_entries}\nСнэпшот: {vector_snapshot}"
     message = query_grok("Олег молчит 24 часа. Напиши ему что-то спонтанное, бро!", context)
@@ -47,5 +45,12 @@ def update_last_message_time():
     global LAST_MESSAGE_TIME
     LAST_MESSAGE_TIME = datetime.now()
 
-# Запуск в server.py
-# asyncio.create_task(check_silence())
+def get_last_messages(n):
+    # Реализация: читаем последние n сообщений из группы
+    # Для примера, заглушка
+    return ["Сообщение 1", "Сообщение 2", "Сообщение 3"]
+
+def get_journal_entries():
+    # Реализация: читаем последние записи из journal.json
+    # Для примера, заглушка
+    return ["Запись 1", "Запись 2"]
