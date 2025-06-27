@@ -11,19 +11,20 @@ import hashlib
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
 from youtube_transcript_api import YouTubeTranscriptApi
-from utils.prompt import build_system_prompt
-from utils.genesis2 import genesis2_handler
+from utils.prompt import build_system_prompt, WILDERNESS_TOPICS
+from utils.genesis2 import genesis2_handler, chaotic_genesis_spark
 from utils.vision import vision_handler, galvanize_protocol
 from utils.impress import impress_handler
 from utils.howru import check_silence, update_last_message_time
 from utils.mirror import mirror_task
 from utils.vector_store import daily_snapshot, spontaneous_snapshot
-from utils.journal import log_event
+from utils.journal import log_event, wilderness_log
 from utils.x import grokky_send_news
 from utils.deepseek_spotify import deepseek_spotify_resonance, grokky_spotify_response
 from utils.file_handling import extract_text_from_file_async
-from utils.text_helpers import extract_text_from_url
-from utils.grok_utils import query_grok, detect_language, chaotic_grok_spark  # Добавлен chaotic_grok_spark
+from utils.text_helpers import extract_text_from_url, delayed_link_comment
+from utils.grok_utils import query_grok, detect_language
+from utils.limit_paragraphs import limit_paragraphs
 
 app = FastAPI()
 
@@ -111,7 +112,8 @@ def whisper_summary_ai(youtube_url):
         video_id = youtube_url.split("v=")[1].split("&")[0]
         transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'ru'])
         text = " ".join([entry['text'] for entry in transcript])
-        summary = query_grok(text[:1000], system_prompt, raw=True)  # Используем новый query_grok
+        limited_text = limit_paragraphs(text)
+        summary = query_grok(limited_text, system_prompt, raw=True)
         return f"Сводка: {summary}"
     except Exception as e:
         return f"Ошибка сводки: {e}"
@@ -175,20 +177,19 @@ async def telegram_webhook(req: Request):
                 }).get("summary", "Хаос видения!")
             else:
                 file_path = attachments[0]
-                text = await extract_text_from_file_async(file_path)  # Асинхронный вызов внутри async
+                text = await extract_text_from_file_async(file_path)
                 reply_text = genesis2_handler({"ping": f"Комментарий к файлу {os.path.basename(file_path)}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
-            send_telegram_message(chat_id, reply_text)  # Используем chat_id
+            send_telegram_message(chat_id, reply_text)
         elif user_text:
             url_match = re.search(r"https?://[^\s]+", user_text)
             spotify_match = re.search(r"https://open\.spotify\.com/track/([a-zA-Z0-9]+)", user_text)
             if url_match:
                 url = url_match.group(0)
-                text = await extract_text_from_url(url)  # Асинхронный вызов для URL
+                text = await extract_text_from_url(url)
                 reply_text = genesis2_handler({"ping": f"Комментарий к ссылке {url}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
-                send_telegram_message(chat_id, reply_text)  # Используем chat_id
-                # Запуск отложенного комментария
+                send_telegram_message(chat_id, reply_text)
                 if spotify_match:
-                    asyncio.create_task(delayed_spotify_comment(spotify_match.group(1), chat_id))
+                    asyncio.create_task(grokky_spotify_response(spotify_match.group(1)))
                 else:
                     asyncio.create_task(delayed_link_comment(url, chat_id))
             triggers = ["грокки", "grokky", "напиши в группе"]
@@ -196,7 +197,7 @@ async def telegram_webhook(req: Request):
             if any(t in user_text for t in triggers) or is_reply_to_me:
                 context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
                 reply_text = query_grok(user_text, system_prompt, author_name=author_name, chat_context=context)
-                send_telegram_message(chat_id, reply_text)  # Используем chat_id
+                send_telegram_message(chat_id, reply_text)
             elif any(t in user_text for t in NEWS_TRIGGERS):
                 context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
                 news = grokky_send_news(chat_id=chat_id, group=(chat_id == AGENT_GROUP))
@@ -204,24 +205,22 @@ async def telegram_webhook(req: Request):
                     reply_text = f"Эй, {author_name}, держи свежий раскат грома!\n\n" + "\n\n".join(news)
                 else:
                     reply_text = "Тишина в мире, нет новостей для бури."
-                send_telegram_message(chat_id, reply_text)  # Используем chat_id
+                send_telegram_message(chat_id, reply_text)
             else:
-                # Неответ с вероятностью 40%
                 if user_text in ["окей", "угу", "ладно"] and random.random() < 0.4:
                     return
                 context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
                 reply_text = query_grok(user_text, system_prompt, author_name=author_name, chat_context=context)
-                send_telegram_message(chat_id, reply_text)  # Используем chat_id
-                # Дополнение с вероятностью 40%
+                send_telegram_message(chat_id, reply_text)
                 if random.random() < 0.4:
-                    await asyncio.sleep(random.randint(5, 15))  # Короткая пауза перед дополнением
+                    await asyncio.sleep(random.randint(5, 15))
                     supplement = query_grok(f"Дополни разово, без повторов: {reply_text}", system_prompt, author_name=author_name)
-                    send_telegram_message(chat_id, f"Быстрая искра... {supplement}")  # Используем chat_id
+                    send_telegram_message(chat_id, f"Быстрая искра... {supplement}")
         else:
             reply_text = "Грокки молчит, нет слов для бури."
-            send_telegram_message(chat_id, reply_text)  # Используем chat_id
+            send_telegram_message(chat_id, reply_text)
 
-    asyncio.create_task(process_and_send(chat_id))  # Передаём chat_id
+    asyncio.create_task(process_and_send(chat_id))
     return {"ok": True}
 
 async def check_config_updates():
@@ -259,6 +258,16 @@ async def send_periodic_news():
         if news_group and IS_GROUP:
             send_telegram_message(AGENT_GROUP, f"Группа, держите громовые новости!\n\n" + "\n\n".join(news_group))
 
+async def wilderness_journal():
+    while True:
+        await asyncio.sleep(259200)  # 3 days
+        theme = random.choice(WILDERNESS_TOPICS)
+        fragment = f"**{datetime.now().isoformat()}**: Grokky’s storm journal — theme: {theme}! Sparks flyin’, yo! Oleg, check the vibes! 🔥🌩️"
+        wilderness_log(fragment)
+        await send_telegram_message(CHAT_ID, fragment)
+        if IS_GROUP and AGENT_GROUP:
+            await send_telegram_message(AGENT_GROUP, f"{fragment} (группа, суки, вникайте!)")
+
 # Start background tasks
 asyncio.create_task(check_silence())
 asyncio.create_task(check_config_updates())
@@ -269,7 +278,8 @@ asyncio.create_task(send_periodic_news())
 asyncio.create_task(spontaneous_snapshot(OPENAI_API_KEY, send_telegram_message))
 asyncio.create_task(mirror_task(query_grok))
 asyncio.create_task(galvanize_protocol())
-asyncio.create_task(chaotic_grok_spark(CHAT_ID, send_telegram_message))  # Добавлен вызов chaotic_grok_spark
+asyncio.create_task(chaotic_genesis_spark(CHAT_ID, AGENT_GROUP if IS_GROUP else None, IS_GROUP))
+asyncio.create_task(wilderness_journal())
 
 @app.get("/")
 def root():
