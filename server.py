@@ -17,7 +17,7 @@ from utils.vision import vision_handler
 from utils.impress import impress_handler
 from utils.howru import check_silence, update_last_message_time
 from utils.mirror import mirror_task
-from utils.vector_store import daily_snapshot
+from utils.vector_store import daily_snapshot, spontaneous_snapshot
 from utils.journal import log_event
 from utils.x import grokky_send_news
 from utils.deepseek_spotify import deepseek_spotify_resonance, grokky_spotify_response
@@ -314,10 +314,11 @@ asyncio.create_task(post_pseudocode_ritual())
 asyncio.create_task(deepseek_spotify_resonance())
 asyncio.create_task(daily_snapshot(OPENAI_API_KEY))
 asyncio.create_task(send_periodic_news())
+asyncio.create_task(spontaneous_snapshot(OPENAI_API_KEY, send_telegram_message))
 
 @app.get("/")
 def root():
-    return {"status": "Grokky alive and wild!"}
+    return {"status": "Gрокки жив и дикий!"}
 
 def file_hash(fname):
     with open(fname, "rb") as f:
