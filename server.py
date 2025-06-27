@@ -70,7 +70,7 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
     user_lang = detect_language(user_message)
     language_hint = {
         "role": "system",
-        "content": f"Always reply in the language the user writes: {user_lang.upper()}. Give ONE unique, chaotic response—NO repeats, rephrasing, or extra messages."
+        "content": f"Always reply in the language the user writes: {user_lang.upper()}. Give ONE unique, chaotic text response—NO repeats, rephrasing, extra messages, or JSON unless raw=True is explicitly set."
     }
     messages = [
         {"role": "system", "content": system_prompt},
@@ -91,6 +91,24 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
         r = requests.post(url, headers=headers, json=payload)
         r.raise_for_status()
         reply = r.json()["choices"][0]["message"]["content"]
+        if raw:
+            data = extract_first_json(reply)
+            if data and "function_call" in data:
+                fn = data["function_call"]["name"]
+                args = data["function_call"]["arguments"]
+                if fn == "genesis2_handler":
+                    return handle_genesis2(args)
+                elif fn == "vision_handler":
+                    return handle_vision(args)
+                elif fn == "impress_handler":
+                    return handle_impress(args)
+                elif fn == "grokky_send_news":
+                    return handle_news(args)
+                elif fn == "grokky_spotify_response":
+                    return grokky_spotify_response(args.get("track_id"))
+                elif fn == "whisper_summary_ai":
+                    return whisper_summary_ai(args.get("youtube_url"))
+                return reply
         return reply
     except Exception as e:
         return f"Error: {e}"
@@ -162,7 +180,7 @@ def send_telegram_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
     try:
-        requests.post(url, data=payload, timeout=30)  # Добавлен таймаут
+        requests.post(url, data=payload, timeout=30)
     except Exception:
         pass
 
@@ -176,7 +194,7 @@ async def telegram_webhook(req: Request):
     chat_title = message.get("chat", {}).get("title", "").lower()
     attachments = []
 
-    if chat_id == CHAT_ID:
+    if chat_id == CHAT_ID or (IS_GROUP and chat_id == AGENT_GROUP):
         update_last_message_time()
 
     if "photo" in message and message["photo"]:
@@ -187,7 +205,7 @@ async def telegram_webhook(req: Request):
         image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
         attachments.append(image_url)
 
-    delay = random.randint(60, 300)  # Уменьшил до 1-5 минут
+    delay = random.randint(300, 900)  # 5-15 минут
     await asyncio.sleep(delay)
 
     if attachments:
@@ -203,7 +221,10 @@ async def telegram_webhook(req: Request):
         if any(t in user_text for t in triggers) or is_reply_to_me:
             context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
             reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
-            send_telegram_message(AGENT_GROUP, f"{author_name}, {reply_text}")
+            if IS_GROUP and chat_id == AGENT_GROUP:
+                send_telegram_message(AGENT_GROUP, f"{author_name}, {reply_text}")
+            else:
+                send_telegram_message(chat_id, reply_text)
         else:
             context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
             reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
