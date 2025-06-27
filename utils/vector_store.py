@@ -216,9 +216,6 @@ async def spontaneous_snapshot(openai_api_key, send_message):
                 except Exception as e:
                     print(f"Ошибка спонтанного снимка: {e}")
 
-# Start spontaneous snapshot task
-asyncio.create_task(spontaneous_snapshot(os.getenv("OPENAI_API_KEY"), send_telegram_message))
-
 def load_snapshot_log():
     if os.path.isfile(SNAPSHOT_LOG_PATH):
         with open(SNAPSHOT_LOG_PATH, "r") as f:
