@@ -66,8 +66,9 @@ async def build_context():
 
 def send_telegram_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
     try:
-        requests.post(url, data={"chat_id": chat_id, "text": text})
+        requests.post(url, data=payload)
     except Exception:
         pass
 
@@ -89,3 +90,11 @@ def query_grok(message, context=None):
     }
     headers = {
         "Authorization": f"Bearer {os.getenv('XAI_API_KEY')}",
+        "Content-Type": "application/json"
+    }  # Закрыт словарь
+    try:
+        r = requests.post(url, headers=headers, json=payload)
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        return f"Error: {e}"
