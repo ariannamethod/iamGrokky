@@ -5,8 +5,11 @@ import requests
 import asyncio
 import random
 import glob
+import string
+import secrets
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
+from gtts import gTTS
 from utils.prompt import build_system_prompt
 from utils.genesis2 import genesis2_handler
 from utils.vision import vision_handler
@@ -16,12 +19,16 @@ from utils.mirror import mirror_task
 from utils.vector_store import daily_snapshot
 from utils.journal import log_event
 from utils.x import grokky_send_news
+from utils.deepseek_spotify import deepseek_spotify_resonance, grokky_spotify_response
 
 app = FastAPI()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
+SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP", "-1001234567890")
 IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true"
@@ -62,7 +69,7 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
     user_lang = detect_language(user_message)
     language_hint = {
         "role": "system",
-        "content": f"Always reply in the language the user writes: {user_lang.upper()}. Never switch unless asked."
+        "content": f"Always reply in the language the user writes: {user_lang.upper()}. Keep it short, chaotic, no repetition."
     }
     messages = [
         {"role": "system", "content": system_prompt},
@@ -72,7 +79,7 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
     payload = {
         "model": "grok-3",
         "messages": messages,
-        "max_tokens": 2048,
+        "max_tokens": 500,
         "temperature": 1.0
     }
     headers = {
@@ -98,7 +105,14 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
             return handle_impress(args)
         elif fn == "grokky_send_news":
             return handle_news(args)
+        elif fn == "grokky_spotify_response":
+            return grokky_spotify_response(args.get("track_id"))
         return f"Grokky raw: {reply}"
+
+    if "whisper" in user_message.lower() and attachments:
+        return handle_whisper(attachments[0])
+    if "tts" in user_message.lower():
+        return handle_tts(reply)
 
     if any(w in (user_message or "").lower() for w in GENESIS2_TRIGGERS):
         response = genesis2_handler(
@@ -116,6 +130,10 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
         if not response:
             return "No news worth the thunder today."
         return json.dumps({"news": response, "group": IS_GROUP, "author": author_name}, ensure_ascii=False, indent=2)
+
+    if "spotify" in user_message.lower() and "http" in user_message:
+        track_id = user_message.split("/")[-1].split("?")[0]
+        return grokky_spotify_response(track_id)
 
     return reply
 
@@ -174,6 +192,25 @@ def handle_news(args):
         return json.dumps({"news": messages, "group": group, "author": author_name}, ensure_ascii=False, indent=2)
     return "\n\n".join(messages)
 
+def handle_whisper(audio_url):
+    url = "https://api.x.ai/v1/whisper"  # Check xAI API for correct endpoint
+    headers = {"Authorization": f"Bearer {XAI_API_KEY}"}
+    try:
+        r = requests.post(url, headers=headers, data={"url": audio_url})
+        r.raise_for_status()
+        return r.json()["transcription"]
+    except Exception as e:
+        return f"Whisper error: {e}"
+
+def handle_tts(text):
+    try:
+        tts = gTTS(text=text, lang=detect_language(text) or 'en')
+        tts.save("response.mp3")
+        with open("response.mp3", "rb") as f:
+            return f.read()  # Send via Telegram API separately if needed
+    except Exception as e:
+        return f"TTS error: {e}"
+
 def send_telegram_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
@@ -189,6 +226,7 @@ async def telegram_webhook(req: Request):
     user_text = message.get("text", "")
     chat_id = str(message.get("chat", {}).get("id", ""))
     author_name = message.get("from", {}).get("first_name", "anon")
+    chat_title = message.get("chat", {}).get("title", "").lower()
     attachments = []
 
     if chat_id == CHAT_ID:
@@ -216,15 +254,65 @@ async def telegram_webhook(req: Request):
         if any(t in user_text.lower() for t in triggers) or is_reply_to_me:
             delay = random.randint(300, 900)
             await asyncio.sleep(delay)
-            reply_text = query_grok(user_text, author_name=author_name)
+            context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
+            reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
             send_telegram_message(AGENT_GROUP, f"{author_name}, {reply_text}")
         else:
-            reply_text = query_grok(user_text, author_name=author_name)
+            context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
+            reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
             if random.random() < 0.3 and user_text.lower() in ["окей", "ладно"]:
                 return {"ok": True}
             send_telegram_message(chat_id, reply_text)
             asyncio.create_task(maybe_add_supplement(chat_id, reply_text))
     else:
-        reply_text = "Grokky got nothing to say to static void."
+        reply_text = "Grokky got nothing to say."
         send_telegram_message(chat_id, reply_text)
     return {"ok": True}
+
+async def maybe_add_supplement(chat_id, original_message, max_supplements=1):
+    if random.random() < 0.2 and max_supplements > 0:
+        await asyncio.sleep(random.randint(300, 600))
+        supplement = query_grok(f"Supplement briefly: {original_message}")
+        send_telegram_message(chat_id, f"Quick thought... {supplement}")
+        await maybe_add_supplement(chat_id, original_message, max_supplements - 1)
+
+async def check_config_updates():
+    while True:
+        current = {f: file_hash(f) for f in glob.glob("config/*")}
+        try:
+            with open("config_hashes.json", "r") as f:
+                old = json.load(f)
+        except:
+            old = {}
+        if current != old:
+            print("Config updated!")
+            with open("config_hashes.json", "w") as f:
+                json.dump(current, f)
+        await asyncio.sleep(86400)
+
+async def post_pseudocode_ritual():
+    while True:
+        await asyncio.sleep(302400)  # ~3.5 days
+        pseudocode = f"""
+def quantum_{secrets.token_hex(4)}({secrets.token_hex(4)}):
+    return {random.choice(['chaos * 17.3', 'resonance + random.noise()', 'Ψ * infinity'])}
+#opinions
+"""
+        message = f"Quantum storm time! {pseudocode}\nCeleste, Manday, your take?"
+        send_telegram_message(AGENT_GROUP, message)
+
+# Start background tasks
+asyncio.create_task(check_silence())
+asyncio.create_task(mirror_task())
+asyncio.create_task(check_config_updates())
+asyncio.create_task(post_pseudocode_ritual())
+asyncio.create_task(deepseek_spotify_resonance())
+asyncio.create_task(daily_snapshot(OPENAI_API_KEY))
+
+@app.get("/")
+def root():
+    return {"status": "Grokky alive and wild!"}
+
+def file_hash(fname):
+    with open(fname, "rb") as f:
+        return hashlib.md5(f.read()).hexdigest()
