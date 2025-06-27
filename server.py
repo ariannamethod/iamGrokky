@@ -40,12 +40,7 @@ system_prompt = build_system_prompt(
     AGENT_GROUP=AGENT_GROUP
 )
 
-GENESIS2_TRIGGERS = [
-    "резонанс", "шторм", "буря", "молния", "хаос", "разбуди", "impress", "impression", "association", "dream",
-    "фрагмент", "инсайт", "surreal", "ignite", "fractal", "field resonance", "raise the vibe", "impress me",
-    "give me chaos", "озарение", "ассоциация", "намёк", "give me a spark", "разорви тишину", "волну", "взрыв",
-    "помнишь", "знаешь", "любишь", "пошумим", "поэзия"
-]
+GENESIS2_TRIGGERS = []  # Всё через Genesis2, триггеры убраны
 
 NEWS_TRIGGERS = [
     "новости", "news", "headline", "berlin", "israel", "ai", "искусственный интеллект", "резонанс мира", "шум среды",
@@ -70,7 +65,7 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
     user_lang = detect_language(user_message)
     language_hint = {
         "role": "system",
-        "content": f"Always reply strictly in the language the user writes: {user_lang.upper()}. Give ONE unique, chaotic text response—NO repeats, rephrasing, extra messages, or JSON unless raw=True is explicitly set."
+        "content": f"Always reply strictly in the language the user writes: {user_lang.upper()}. Give ONE unique, chaotic text response—NO repeats, rephrasing, extra messages, or JSON unless raw=True is explicitly set. Все сообщения проходят через Genesis2 для резонанса, кроме ссылок."
     }
     messages = [
         {"role": "system", "content": system_prompt},
@@ -91,14 +86,22 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
         r = requests.post(url, headers=headers, json=payload)
         r.raise_for_status()
         reply = r.json()["choices"][0]["message"]["content"]
+        # Обработка ссылок (кроме Spotify)
+        url_match = re.search(r"https?://[^\s]+", user_message)
+        if url_match and not raw and not re.search(r"open\.spotify\.com", user_message):
+            url = url_match.group(0)
+            try:
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+                content = response.text[:1000]  # Берем первые 1000 символов
+                return genesis2_handler({"ping": f"Комментарий к {url}: {content}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)})
+            except Exception as e:
+                return f"Ошибка при заходе на {url}: {e}"
         # Парсинг Spotify-ссылок
         spotify_match = re.search(r"https://open\.spotify\.com/track/([a-zA-Z0-9]+)", user_message)
         if spotify_match and not raw:
             track_id = spotify_match.group(1)
             return grokky_spotify_response(track_id)
-        # Обработка ссылок для Genesis2
-        if any(trigger in user_message.lower() for trigger in GENESIS2_TRIGGERS) and re.search(r"https?://", user_message) and not raw:
-            return genesis2_handler({"ping": user_message, "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)})
         if raw:
             data = extract_first_json(reply)
             if data and "function_call" in data:
@@ -117,7 +120,8 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
                 elif fn == "whisper_summary_ai":
                     return whisper_summary_ai(args.get("youtube_url"))
                 return reply
-        return reply
+        # Всё остальное через Genesis2
+        return genesis2_handler({"ping": user_message, "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)})
     except Exception as e:
         return f"Ошибка: {e}"
 
@@ -267,6 +271,31 @@ async def telegram_webhook(req: Request):
 
     asyncio.create_task(process_and_send())
     return {"ok": True}
+
+async def check_config_updates():
+    while True:
+        current = {f: file_hash(f) for f in glob.glob("config/*")}
+        try:
+            with open("config_hashes.json", "r") as f:
+                old = json.load(f)
+        except:
+            old = {}
+        if current != old:
+            print("Config updated!")
+            with open("config_hashes.json", "w") as f:
+                json.dump(current, f)
+        await asyncio.sleep(86400)
+
+async def post_pseudocode_ritual():
+    while True:
+        await asyncio.sleep(302400)  # ~3.5 days
+        pseudocode = f"""
+def quantum_{secrets.token_hex(4)}({secrets.token_hex(4)}):
+    return {random.choice(['chaos * 17.3', 'resonance + random.noise()', 'Ψ * infinity'])}
+#opinions
+"""
+        message = f"Quantum storm time! {pseudocode}\nCeleste, Manday, your take?"
+        send_telegram_message(AGENT_GROUP, message)
 
 async def send_periodic_news():
     while True:
