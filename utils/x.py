@@ -35,7 +35,7 @@ def should_send_news(limit=4, group=False):
     except Exception:
         return True, []
 
-def log_sent_news(news, group=False):
+def log_sent_news(news, chat_id=None, group=False):
     try:
         if os.path.exists(SENT_NEWS_LOG):
             with open(SENT_NEWS_LOG, "r", encoding="utf-8") as f:
@@ -44,7 +44,7 @@ def log_sent_news(news, group=False):
             log = []
         now = datetime.utcnow().isoformat()
         for n in news:
-            log.append({"dt": now, "title": n.split('\n', 1)[0], "group": group})
+            log.append({"dt": now, "title": n.split('\n', 1)[0], "chat_id": chat_id, "group": group})
         day_ago = datetime.utcnow() - timedelta(days=1)
         log = [x for x in log if datetime.fromisoformat(x["dt"]) > day_ago]
         with open(SENT_NEWS_LOG, "w", encoding="utf-8") as f:
@@ -52,11 +52,11 @@ def log_sent_news(news, group=False):
     except Exception:
         pass
 
-def grokky_send_news(group=False):
+def grokky_send_news(chat_id=None, group=False):
     can_send, _ = should_send_news(group=group)
     if not can_send:
         return None
     news = get_news()
     if news:
-        log_sent_news(news, group)
+        log_sent_news(news, chat_id, group)
     return news
