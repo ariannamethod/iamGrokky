@@ -1,6 +1,7 @@
 import os
 import random
 import requests
+import json
 from datetime import datetime, timedelta
 
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
@@ -43,7 +44,7 @@ def log_sent_news(news, group=False):
         json.dump(log, f, ensure_ascii=False, indent=2)
 
 def grokky_send_news(group=False):
-    can_send, log = should_send_news(group=group)
+    can_send, _ = should_send_news(group=group)
     if not can_send:
         return None
     news = get_news()
