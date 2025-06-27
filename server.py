@@ -7,6 +7,7 @@ import random
 import glob
 import string
 import secrets
+import hashlib  # Добавлен импорт hashlib
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -79,7 +80,7 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
     payload = {
         "model": "grok-3",
         "messages": messages,
-        "max_tokens": 300,  # Уменьшил для контроля длины
+        "max_tokens": 300,
         "temperature": 1.0
     }
     headers = {
@@ -90,7 +91,7 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
         r = requests.post(url, headers=headers, json=payload)
         r.raise_for_status()
         reply = r.json()["choices"][0]["message"]["content"]
-        return reply  # Только текст, без JSON
+        return reply
     except Exception as e:
         return f"Error: {e}"
 
