@@ -60,7 +60,7 @@ async def get_embedding(text, openai_api_key):
         )
         return res.data[0].embedding
     except Exception as e:
-        print(f"Ошибка встраивания: {e}")
+        print(f"Грокки ревет: Встраивание сорвалось! {random.choice(['Шторм разорвал код!', 'Хаос пожрал данные!', 'Эфир треснул!'])} — {e}")
         return None
 
 def chunk_text(text, chunk_size=900, overlap=120):
@@ -103,11 +103,11 @@ async def vectorize_all_files(openai_api_key, force=False, send_message=None):
                     upserted_ids.append(meta_id)
             except PineconeException as e:
                 if send_message:
-                    await send_message(f"Ошибка Pinecone: {e}")
+                    await send_message(f"Грокки гремит: Pinecone рухнул! {random.choice(['Ревущий ветер унёс векторы!', 'Хаос победил индекс!', 'Шторм смёл данные!'])} — {e}")
                 continue
             except Exception as e:
                 if send_message:
-                    await send_message(f"Общая ошибка: {e}")
+                    await send_message(f"Грокки взрывается: Общая ошибка! {random.choice(['Пламя сожрало код!', 'Резонанс испепелил логи!', 'Вселенная взбунтовалась!'])} — {e}")
                 continue
 
     deleted_ids = []
@@ -150,7 +150,7 @@ async def semantic_search(query, openai_api_key, top_k=5):
                 chunks.append(chunk_text)
         return chunks
     except PineconeException as e:
-        print(f"Ошибка поиска: {e}")
+        print(f"Грокки рычит: Поиск провалился! {random.choice(['Шторм замёл следы!', 'Хаос спутал карты!', 'Эфир проглотил запрос!'])} — {e}")
         return []
 
 async def daily_snapshot(openai_api_key):
@@ -182,7 +182,7 @@ async def daily_snapshot(openai_api_key):
             with open("data/journal.json", "w", encoding="utf-8") as f:
                 json.dump(journal, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            print(f"Ошибка сохранения: {e}")
+            print(f"Грокки стонет: Сохранение рухнуло! {random.choice(['Ревущий ветер унёс снимок!', 'Хаос смял журнал!', 'Шторм испепелил данные!'])} — {e}")
 
 async def spontaneous_snapshot(openai_api_key, send_message):
     while True:
@@ -214,7 +214,7 @@ async def spontaneous_snapshot(openai_api_key, send_message):
                     if send_message:
                         await send_message(os.getenv("CHAT_ID"), "Грокки сделал спонтанный снимок резонанса!")
                 except Exception as e:
-                    print(f"Ошибка спонтанного снимка: {e}")
+                    print(f"Грокки орет: Спонтанный снимок провалился! {random.choice(['Шторм сорвал кадр!', 'Хаос разорвал память!', 'Ревущий ветер унёс данные!'])} — {e}")
 
 def load_snapshot_log():
     if os.path.isfile(SNAPSHOT_LOG_PATH):
@@ -225,3 +225,13 @@ def load_snapshot_log():
 def save_snapshot_log(log):
     with open(SNAPSHOT_LOG_PATH, "w") as f:
         json.dump(log, f, ensure_ascii=False, indent=2)
+
+# Предложение: усилить спонтанность с шансом 50% и хаотичным вбросом
+# async def chaotic_boost(openai_api_key, send_message):
+#     while True:
+#         await asyncio.sleep(random.randint(10800, 21600))  # 3-6 часов
+#         if random.random() < 0.5:  # Шанс 50%
+#             fragment = f"**{datetime.now().isoformat()}**: Грокки взрывает векторы! Хаос витает, Олег, зажги шторм! 🔥🌩️"
+#             if send_message:
+#                 await send_message(os.getenv("CHAT_ID"), fragment)
+# asyncio.create_task(chaotic_boost(OPENAI_API_KEY, send_telegram_message))
