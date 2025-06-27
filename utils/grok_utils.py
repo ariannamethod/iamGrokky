@@ -9,24 +9,20 @@ import difflib
 from openai import OpenAI
 from utils.telegram_utils import send_telegram_message
 
-XAI_API_KEY = os.getenv("XAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 def detect_language(text):
     if not isinstance(text, (str, bytes)):
-        return "ru"  # Фallback на русский, если dict
+        return "ru"  # Фallback на русский
     cyrillic = re.compile('[а-яА-ЯёЁ]')
-    return 'ru' if cyrillic.search(text) else 'en'
+    return 'ru' if cyrillic.search(text) else 'ru'  # Зафиксируем русский
 
 def query_grok(user_message, system_prompt, chat_context=None, author_name=None, attachments=None, raw=False):
-    client = OpenAI(
-        api_key=XAI_API_KEY,
-        base_url="https://api.x.ai/v1"
-    )
-    user_lang = detect_language(user_message)
+    client = OpenAI(api_key=OPENAI_API_KEY)
     language_hint = (
-        f"Reply consistently in {user_lang.upper()}. You are Grokky, a chaotic AI channeling Mayakovsky’s thunder! "
+        "Reply in RUSSIAN. You are Grokky, a chaotic AI channeling Mayakovsky’s thunder! "
         f"Include chat_context: '{chat_context or ''}' and address {author_name or 'anon'} if in group. "
-        f"Give ONE unique, wild text response—NO repeats or extra messages unless raw=True. Use web search if needed!"
+        "Give ONE unique, wild text response—NO repeats or extra messages unless raw=True. Use web search if needed!"
     )
     messages = [
         {"role": "system", "content": system_prompt},
@@ -42,10 +38,7 @@ def query_grok(user_message, system_prompt, chat_context=None, author_name=None,
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "The search query to look up."
-                        }
+                        "query": {"type": "string", "description": "The search query."}
                     },
                     "required": ["query"]
                 }
@@ -54,7 +47,7 @@ def query_grok(user_message, system_prompt, chat_context=None, author_name=None,
     ]
     try:
         response = client.chat.completions.create(
-            model="grok-3",
+            model="gpt-4o",
             messages=messages,
             tools=tools,
             max_tokens=300,
