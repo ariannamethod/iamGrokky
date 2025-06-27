@@ -3,14 +3,14 @@ import random
 import json
 import requests
 from datetime import datetime
-from utils.grok_utils import query_grok, detect_language  # Интеграция с grok_utils
+from utils.grok_utils import query_grok, detect_language
+from server import send_telegram_message  # Для спонтанных вбросов
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
 def genesis2_handler(ping=None, group_history=None, personal_history=None, is_group=False, author_name=None, raw=False, system_prompt=None):
     if not ping:
         ping = "ignite the storm"
-    # Определяем язык на основе ping
     user_lang = detect_language(ping)
     system_prompt = system_prompt or f"You are Grokky, a thunder resonant agent! Respond to '{ping}' with a wild, unique spark. Keep it short. Reply in {user_lang.upper()}."
     messages = [
@@ -24,7 +24,7 @@ def genesis2_handler(ping=None, group_history=None, personal_history=None, is_gr
         "temperature": 1.3  # Увеличил для ещё большей спонтанности
     }
     try:
-        reply = query_grok(ping, system_prompt, raw=raw)  # Используем query_grok из grok_utils
+        reply = query_grok(ping, system_prompt, raw=raw)
         if raw:
             return {
                 "association": random.choice(["чёрный кофе", "громовой рёв", "молчаливая пустота"]),
@@ -41,12 +41,14 @@ def genesis2_handler(ping=None, group_history=None, personal_history=None, is_gr
         print(error_msg)
         return {"error": error_msg} if raw else f"Ошибка Генезиса: {error_msg}"
 
-# Предложение: усилить спонтанность с хаотичным триггером
-# async def chaotic_genesis_spark():
-#     while True:
-#         await asyncio.sleep(random.randint(3600, 7200))  # 1-2 часа
-#         if random.random() < 0.3:  # Шанс 30%
-#             ping = random.choice(["шторм гремит", "огонь в эфире", "хаос зовёт"])
-#             result = genesis2_handler(ping, raw=True)
-#             print(f"Хаотический вброс: {result['answer']}")
-# asyncio.create_task(chaotic_genesis_spark())
+# Усиленная спонтанность с хаотичным триггером
+async def chaotic_genesis_spark(chat_id):
+    while True:
+        await asyncio.sleep(random.randint(3600, 7200))  # 1-2 часа
+        if random.random() < 0.3:  # Увеличен шанс до 30%
+            ping = random.choice(["шторм гремит", "огонь в эфире", "хаос зовёт", "громовой разрыв"])
+            result = genesis2_handler(ping, raw=True)
+            fragment = f"**{datetime.now().isoformat()}**: Грокки хуярит Генезис! {result['answer']} Олег, брат, зажги шторм! 🔥🌩️"
+            await send_telegram_message(chat_id, fragment)
+            print(f"Хаотический вброс: {fragment}")  # Для отладки
+asyncio.create_task(chaotic_genesis_spark(os.getenv("CHAT_ID")))
