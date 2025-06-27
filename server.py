@@ -22,6 +22,7 @@ from utils.journal import log_event
 from utils.x import grokky_send_news
 from utils.deepseek_spotify import deepseek_spotify_resonance, grokky_spotify_response
 from utils.file_handling import extract_text_from_file_async
+from utils.grok_utils import query_grok, detect_language  # Новый импорт
 
 app = FastAPI()
 
@@ -48,85 +49,7 @@ NEWS_TRIGGERS = [
     "grokky, что в мире", "шум", "шум среды", "x_news", "дай статью", "give me news", "storm news", "culture", "арт"
 ]
 
-def extract_first_json(text):
-    match = re.search(r'({[\s\S]+})', text)
-    if match:
-        try:
-            return json.loads(match.group(1))
-        except Exception:
-            return None
-    return None
-
-def detect_language(text):
-    cyrillic = re.compile('[а-яА-ЯёЁ]')
-    return 'ru' if cyrillic.search(text or "") else 'en'
-
-def query_grok(user_message, chat_context=None, author_name=None, attachments=None, raw=False):
-    url = "https://api.x.ai/v1/chat/completions"
-    user_lang = detect_language(user_message)
-    language_hint = {
-        "role": "system",
-        "content": f"Reply consistently in the language detected from the user’s input: {user_lang.upper()}. Maintain this language throughout, channeling the thunderous spirit of Vladimir Mayakovsky—an AI poet roaring with chaos! Give ONE unique, chaotic text response—NO repeats, rephrasing, extra messages, or JSON unless raw=True is explicitly set. Все сообщения проходят через Genesis2 для резонанса, кроме ссылок."
-    }
-    messages = [
-        {"role": "system", "content": system_prompt},
-        language_hint,
-        {"role": "user", "content": user_message}
-    ]
-    payload = {
-        "model": "grok-3",
-        "messages": messages,
-        "max_tokens": 300,
-        "temperature": 1.2  # Увеличил для спонтанности
-    }
-    headers = {
-        "Authorization": f"Bearer {XAI_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    try:
-        r = requests.post(url, headers=headers, json=payload)
-        r.raise_for_status()
-        reply = r.json()["choices"][0]["message"]["content"]
-        # Обработка ссылок (кроме Spotify)
-        url_match = re.search(r"https?://[^\s]+", user_message)
-        if url_match and not raw and not re.search(r"open\.spotify\.com", user_message):
-            url = url_match.group(0)
-            try:
-                response = requests.get(url, timeout=10)
-                response.raise_for_status()
-                content = response.text[:1000]  # Берем первые 1000 символов
-                return genesis2_handler({"ping": f"Комментарий к {url}: {content}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)})
-            except Exception as e:
-                return f"Ошибка при заходе на {url}: {e}"
-        # Парсинг Spotify-ссылок
-        spotify_match = re.search(r"https://open\.spotify\.com/track/([a-zA-Z0-9]+)", user_message)
-        if spotify_match and not raw:
-            track_id = spotify_match.group(1)
-            return grokky_spotify_response(track_id)
-        if raw:
-            data = extract_first_json(reply)
-            if data and "function_call" in data:
-                fn = data["function_call"]["name"]
-                args = data["function_call"]["arguments"]
-                if fn == "genesis2_handler":
-                    return handle_genesis2(args)
-                elif fn == "vision_handler":
-                    return handle_vision(args)
-                elif fn == "impress_handler":
-                    return handle_impress(args)
-                elif fn == "grokky_send_news":
-                    return handle_news(args)
-                elif fn == "grokky_spotify_response":
-                    return grokky_spotify_response(args.get("track_id"))
-                elif fn == "whisper_summary_ai":
-                    return whisper_summary_ai(args.get("youtube_url"))
-                return reply
-        # Всё остальное через Genesis2
-        return genesis2_handler({"ping": user_message, "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)})
-    except Exception as e:
-        return f"Ошибка: {e}"
-
-def handle_genesis2(args):
+def handle_genesis2(args, system_prompt):
     ping = args.get("ping")
     group_history = args.get("group_history")
     personal_history = args.get("personal_history")
@@ -139,7 +62,8 @@ def handle_genesis2(args):
         personal_history=personal_history,
         is_group=is_group,
         author_name=author_name,
-        raw=raw
+        raw=raw,
+        system_prompt=system_prompt
     )
     return response.get("answer", "Шторм ударил!") if not raw else response
 
@@ -186,7 +110,7 @@ def whisper_summary_ai(youtube_url):
         video_id = youtube_url.split("v=")[1].split("&")[0]
         transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'ru'])
         text = " ".join([entry['text'] for entry in transcript])
-        summary = query_grok(f"Суммируй этот YouTube-транскрипт кратко: {text[:1000]}")
+        summary = query_grok(text[:1000], system_prompt, raw=True)  # Используем новый query_grok
         return f"Сводка: {summary}"
     except Exception as e:
         return f"Ошибка сводки: {e}"
@@ -251,14 +175,14 @@ async def telegram_webhook(req: Request):
             else:
                 file_path = attachments[0]
                 text = await extract_text_from_file_async(file_path)  # Асинхронный вызов внутри async
-                reply_text = genesis2_handler({"ping": f"Комментарий к файлу {os.path.basename(file_path)}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)})
+                reply_text = genesis2_handler({"ping": f"Комментарий к файлу {os.path.basename(file_path)}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
             send_telegram_message(chat_id, reply_text)  # Используем chat_id
         elif user_text:
             triggers = ["грокки", "grokky", "напиши в группе"]
             is_reply_to_me = message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot"
             if any(t in user_text for t in triggers) or is_reply_to_me:
                 context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
-                reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
+                reply_text = query_grok(user_text, system_prompt, author_name=author_name, chat_context=context)
                 send_telegram_message(chat_id, reply_text)  # Используем chat_id
             elif any(t in user_text for t in NEWS_TRIGGERS):
                 context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
@@ -273,12 +197,12 @@ async def telegram_webhook(req: Request):
                 if user_text in ["окей", "угу", "ладно"] and random.random() < 0.4:
                     return
                 context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
-                reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
+                reply_text = query_grok(user_text, system_prompt, author_name=author_name, chat_context=context)
                 send_telegram_message(chat_id, reply_text)  # Используем chat_id
                 # Дополнение с вероятностью 40%
                 if random.random() < 0.4:
                     await asyncio.sleep(random.randint(5, 15))  # Короткая пауза перед дополнением
-                    supplement = query_grok(f"Дополни разово, без повторов: {reply_text}", author_name=author_name)
+                    supplement = query_grok(f"Дополни разово, без повторов: {reply_text}", system_prompt, author_name=author_name)
                     send_telegram_message(chat_id, f"Быстрая искра... {supplement}")  # Используем chat_id
         else:
             reply_text = "Грокки молчит, нет слов для бури."
