@@ -26,8 +26,7 @@ from utils.split_message import split_message
 app = FastAPI()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-XAI_API_KEY = os.getenv("XAI_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Только OpenAI
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
@@ -44,8 +43,7 @@ system_prompt = build_system_prompt(
 GENESIS2_TRIGGERS = []
 
 NEWS_TRIGGERS = [
-    "новости", "news", "headline", "berlin", "israel", "ai", "искусственный интеллект", "резонанс мира", "шум среды",
-    "grokky, что в мире", "шум", "шум среды", "x_news", "дай статью", "give me news", "storm news", "culture", "арт"
+    "новости", "что там с новостями", "дай новости", "новости мира", "news", "какие новости"
 ]
 
 def handle_genesis2(args, system_prompt):
@@ -56,7 +54,7 @@ def handle_genesis2(args, system_prompt):
     personal_history = args.get("personal_history")
     is_group = args.get("is_group", True)
     author_name = random.choice(["Олег", "брат"])
-    raw = args.get("raw", False)
+    raw = False
     response = genesis2_handler(
         ping=ping,
         group_history=group_history,
@@ -66,13 +64,13 @@ def handle_genesis2(args, system_prompt):
         raw=raw,
         system_prompt=system_prompt
     )
-    return response if not raw else response
+    return response.get("answer", "Шторм ударил!")
 
 def handle_vision(args):
     image = args.get("image")
     chat_context = args.get("chat_context")
     author_name = random.choice(["Олег", "брат"])
-    raw = args.get("raw", False)
+    raw = False
     if isinstance(image, str):
         try:
             response = asyncio.run(vision_handler(
@@ -81,7 +79,7 @@ def handle_vision(args):
                 author_name=author_name,
                 raw=raw
             ))
-            return response.get("summary", f"{author_name}, хаос видения!") if not raw and isinstance(response, dict) else response
+            return response
         except Exception as e:
             return f"{author_name}, Грокки взорвался: {e}"
     return f"{author_name}, что-то пошло не так с изображением!"
@@ -90,22 +88,22 @@ def handle_impress(args):
     prompt = args.get("prompt")
     chat_context = args.get("chat_context")
     author_name = random.choice(["Олег", "брат"])
-    raw = args.get("raw", False)
-    if any(t in prompt.lower() for t in ["нарисуй", "изобрази", "/draw"]):
+    raw = False
+    if any(t in prompt.lower() for t in ["нарисуй", "изобрази", "/draw", "нарисуй мне", "draw me"]):
         if not raw:
             return f"{author_name}, хочу нарисовать что-то дикое! Подтверди (да/нет)?"
         response = asyncio.run(impress_handler(prompt=prompt, chat_context=chat_context, author_name=author_name, raw=raw))
         if isinstance(response, dict) and "image_url" in response:
             send_telegram_message(chat_id, f"{author_name}, держи шторм! {response['image_url']}\n{response['grokkys_comment']}")
             return response['grokkys_comment']
-        return response.get("grokkys_comment", f"{author_name}, шторм изображений!") if not raw else response
+        return response.get("grokkys_comment", f"{author_name}, шторм изображений!")
     return response.get("grokkys_comment", f"{author_name}, шторм изображений!") if not raw else response
 
 def handle_news(args):
     group = args.get("group", False)
     context = args.get("context", "")
     author_name = random.choice(["Олег", "брат"])
-    raw = False  # Уберём raw=True для текстового ответа
+    raw = False
     messages = grokky_send_news(chat_id=args.get("chat_id"), group=group)
     if not messages:
         return f"{author_name}, в мире тишина, нет новостей для бури."
@@ -118,9 +116,9 @@ def whisper_summary_ai(youtube_url):
             transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'ru'])
             text = " ".join([entry['text'] for entry in transcript])
         except Exception:
-            text = "Транскрипта нет, брат, но я могу поискать инфу!"
+            text = "Транскрипта нет, брат, но я могу поискать!"
         limited_text = limit_paragraphs(text)
-        summary = query_grok(limited_text, system_prompt, raw=True)
+        summary = query_grok(limited_text, system_prompt, raw=False)
         return f"{random.choice(['Олег', 'брат'])}, сводка: {summary}"
     except Exception as e:
         return f"{random.choice(['Олег', 'брат'])}, ошибка сводки: {e}"
@@ -147,11 +145,7 @@ async def telegram_webhook(req: Request):
                         f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}"
                     ).json()
                     image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
-                    mime_type = file_info.get("result", {}).get("mime_type", "").lower()
-                    if not mime_type.startswith(("image/jpeg", "image/jpg", "image/png")):
-                        reply_text = f"{author_name}, Грокки орёт: только JPEG/PNG, брат! Ты кинул {mime_type}."
-                    else:
-                        reply_text = await handle_vision({"image": image_url, "chat_context": user_text or "", "author_name": author_name, "raw": False})
+                    reply_text = await handle_vision({"image": image_url, "chat_context": user_text or "", "author_name": author_name, "raw": False})
                     for part in split_message(reply_text):
                         send_telegram_message(chat_id, part)
                     if "видишь ли ты картинку" in user_text:
