@@ -7,6 +7,7 @@ from utils.vector_store import semantic_search
 from utils.journal import log_event, wilderness_log
 from datetime import datetime, timedelta
 from textblob import TextBlob
+from utils.telegram_utils import send_telegram_message  # Добавлен импорт
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
