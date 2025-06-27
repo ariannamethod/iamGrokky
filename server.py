@@ -350,12 +350,4 @@ asyncio.create_task(mirror_task())
 asyncio.create_task(check_config_updates())
 asyncio.create_task(post_pseudocode_ritual())
 asyncio.create_task(deepseek_spotify_resonance())
-asyncio.create_task(daily_snapshot(OPENAI_API_KEY))
-
-@app.get("/")
-def root():
-    return {"status": "Grokky alive and wild!"}
-
-def file_hash(fname):
-    with open(fname, "rb") as f:
-        return hashlib.md5(f.read()).hexdigest()
+asyncio.create_task(daily_snapshot(OPENAI_API_KEY
