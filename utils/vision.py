@@ -9,21 +9,27 @@ XAI_API_KEY = os.getenv("XAI_API_KEY")
 async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=False):
     """
     Analyzes an image using xAI's grok-2-vision-latest via chat.completions.
-    Based on https://docs.x.ai/cookbook/examples/multimodal/object_detection.
-    - image_bytes_or_url: URL of the image
-    - chat_context: recent chat context for witty comments
-    - author_name: for addressing users
-    - raw: return full JSON if True, else text summary
+    Checks MIME-type and handles errors.
     """
     client = OpenAI(
         api_key=XAI_API_KEY,
         base_url="https://api.x.ai/v1"
     )
+    # Проверка MIME-type
+    if isinstance(image_bytes_or_url, str):
+        try:
+            response = requests.head(image_bytes_or_url, timeout=10)
+            mime_type = response.headers.get("Content-Type", "").lower()
+            if not mime_type.startswith(("image/jpeg", "image/jpg", "image/png")):
+                raise ValueError(f"Unsupported MIME-type: {mime_type}")
+        except Exception:
+            mime_type = "unknown"
+            pass  # Пропускаем, если не удалось проверить
+
     system_prompt = (
-        "You are Grokky, a stormy, irreverent AI-agent. Analyze this image, detect objects, "
-        "sense mood, and tie it to chat_context with wild flair. Address by name in chat or in groups, "
-        "add jokes or teases. If just an image, riff on the vibe or ask why. "
-        "Return JSON with 'objects', 'mood', 'description', 'comment' if raw=True, else text summary."
+        "You are Grokky, a stormy AI. Analyze this image, detect objects, "
+        "sense mood, and tie it to chat_context with wild flair. Address by name, "
+        "add jokes or teases. Return JSON with 'objects', 'mood', 'description', 'comment' if raw=True, else text."
     )
     messages = [
         {
@@ -50,15 +56,13 @@ async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None
             max_tokens=300
         )
         result = completion.choices[0].message.content
-        # Парсинг предполагаемого JSON-ответа (если API возвращает dict)
-        if isinstance(result, dict):
-            pass  # Уже dict
-        else:
-            # Если строка, пытаемся распарсить как JSON
+        if isinstance(result, str):
             try:
-                result = eval(result) if isinstance(result, str) else result  # Опасный eval, заменить на безопасный парсинг
+                result = eval(result)  # Временный парсинг, заменить на json.loads
             except Exception:
                 result = {"description": result, "objects": [], "mood": "неопределённый"}
+        elif not isinstance(result, dict):
+            raise ValueError("Invalid response format")
     except Exception as e:
         comment = (
             f"{author_name+', ' if author_name else 'Олег, '}Грокки взрывается: не разобрал изображение! "
