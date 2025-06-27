@@ -33,7 +33,6 @@ SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP", "-1001234567890")
 IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true"
-VOICE_MODE = False  # Moved outside to avoid SyntaxError
 
 system_prompt = build_system_prompt(
     chat_id=CHAT_ID,
@@ -71,7 +70,7 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
     user_lang = detect_language(user_message)
     language_hint = {
         "role": "system",
-        "content": f"Always reply in the language the user writes: {user_lang.upper()}. Keep it short, chaotic, no repetition."
+        "content": f"Always reply in the language the user writes: {user_lang.upper()}. Keep it short, chaotic, unique—NO repeats or rephrasing."
     }
     messages = [
         {"role": "system", "content": system_prompt},
@@ -261,10 +260,8 @@ async def telegram_webhook(req: Request):
         })
     elif user_text:
         if user_text == "/voiceon":
-            VOICE_MODE = True
-            reply_text = "Voice mode ON!"
+            reply_text = "Voice mode ON! (TTS only)"
         elif user_text == "/voiceoff":
-            VOICE_MODE = False
             reply_text = "Voice mode OFF!"
         else:
             triggers = ["грокки", "grokky", "напиши в группе"]
@@ -286,19 +283,20 @@ async def telegram_webhook(req: Request):
         reply_text = "Grokky got nothing to say."
         send_telegram_message(chat_id, reply_text)
 
-    if VOICE_MODE and reply_text and not isinstance(reply_text, bytes):
-        audio_data = handle_tts(reply_text)
-        send_voice_message(chat_id, audio_data)
+    if user_text in ["/voiceon", "/voiceoff"] or "tts" in user_text:
+        if reply_text and not isinstance(reply_text, bytes):
+            audio_data = handle_tts(reply_text)
+            send_voice_message(chat_id, audio_data)
     elif reply_text and not isinstance(reply_text, bytes):
         send_telegram_message(chat_id, reply_text)
     return {"ok": True}
 
 async def maybe_add_supplement(chat_id, original_message, max_supplements=1):
-    if random.random() < 0.2 and max_supplements > 0:
+    if random.random() < 0.1 and max_supplements > 0:  # Уменьшил шанс до 10%
         await asyncio.sleep(random.randint(300, 600))
-        supplement = query_grok(f"Supplement briefly: {original_message}")
-        send_telegram_message(chat_id, f"Quick thought... {supplement}")
-        await maybe_add_supplement(chat_id, original_message, max_supplements - 1)
+        supplement = query_grok(f"Supplement once, no repeats: {original_message}", raw=False)
+        send_telegram_message(chat_id, f"One quick thought... {supplement}")
+        # Убрал рекурсию, чтобы ограничить одним дополнением
 
 async def check_config_updates():
     while True:
@@ -322,7 +320,7 @@ def quantum_{secrets.token_hex(4)}({secrets.token_hex(4)}):
     return {random.choice(['chaos * 17.3', 'resonance + random.noise()', 'Ψ * infinity'])}
 #opinions
 """
-        message = f"Quantum storm time! {pseudocode}\nCeleste, Manday, your take?"
+        message = f"Quantum storm time! {pseudocode}\nSelesta, Manday, your take?"
         send_telegram_message(AGENT_GROUP, message)
 
 # Start background tasks
