@@ -57,7 +57,7 @@ def handle_genesis2(args, system_prompt):
     group_history = args.get("group_history")
     personal_history = args.get("personal_history")
     is_group = args.get("is_group", True)
-    author_name = "Олег" if args.get("author_name", "").lower() == "ataeff" else args.get("author_name", "Олег")
+    author_name = "Олег"  # Фиксируем имя как Олег всегда
     raw = args.get("raw", False)
     response = genesis2_handler(
         ping=ping,
@@ -73,20 +73,22 @@ def handle_genesis2(args, system_prompt):
 def handle_vision(args):
     image = args.get("image")
     chat_context = args.get("chat_context")
-    author_name = "Олег" if args.get("author_name", "").lower() == "ataeff" else args.get("author_name", "Олег")
+    author_name = "Олег"  # Фиксируем имя как Олег всегда
     raw = args.get("raw", False)
-    response = vision_handler(
-        image_bytes_or_url=image,
-        chat_context=chat_context,
-        author_name=author_name,
-        raw=raw
-    )
-    return response.get("summary", "Хаос видения!") if not raw else response
+    if isinstance(image, str):
+        response = vision_handler(
+            image_bytes_or_url=image,
+            chat_context=chat_context,
+            author_name=author_name,
+            raw=raw
+        )
+        return response.get("summary", "Олег, хаос видения!") if not raw and isinstance(response, dict) else response
+    return "Олег, что-то пошло не так с изображением!"
 
 def handle_impress(args):
     prompt = args.get("prompt")
     chat_context = args.get("chat_context")
-    author_name = "Олег" if args.get("author_name", "").lower() == "ataeff" else args.get("author_name", "Олег")
+    author_name = "Олег"  # Фиксируем имя как Олег всегда
     raw = args.get("raw", False)
     if any(t in prompt.lower() for t in ["нарисуй", "изобрази", "/draw"]):
         if not raw:
@@ -95,13 +97,13 @@ def handle_impress(args):
         if isinstance(response, dict) and "image_url" in response:
             send_telegram_message(chat_id, f"Олег, держи шторм! {response['image_url']}\n{response['grokkys_comment']}")
             return response['grokkys_comment']
-        return response.get("grokkys_comment", "Шторм изображений!") if not raw else response
-    return response.get("grokkys_comment", "Шторм изображений!") if not raw else response
+        return response.get("grokkys_comment", "Олег, шторм изображений!") if not raw else response
+    return response.get("grokkys_comment", "Олег, шторм изображений!") if not raw else response
 
 def handle_news(args):
     group = args.get("group", False)
     context = args.get("context", "")
-    author_name = "Олег" if args.get("author_name", "").lower() == "ataeff" else args.get("author_name", "Олег")
+    author_name = "Олег"  # Фиксируем имя как Олег всегда
     raw = args.get("raw", False)
     messages = grokky_send_news(chat_id=args.get("chat_id"), group=group)
     if not messages:
@@ -125,7 +127,7 @@ async def telegram_webhook(req: Request):
     message = data.get("message", {})
     user_text = message.get("text", "").lower()
     chat_id = str(message.get("chat", {}).get("id", ""))
-    author_name = "Олег" if message.get("from", {}).get("username", "").lower() == "ataeff" else message.get("from", {}).get("first_name", "Олег")
+    author_name = "Олег"  # Фиксируем имя как Олег всегда
     chat_title = message.get("chat", {}).get("title", "").lower()
     attachments = message.get("document", []) if message.get("document") else message.get("photo", [])
 
@@ -135,18 +137,21 @@ async def telegram_webhook(req: Request):
     if attachments:
         if isinstance(attachments, list) and attachments:
             if "photo" in message:
-                file_id = attachments[-1]["file_id"]
-                file_info = requests.get(
-                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}"
-                ).json()
-                image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
-                reply_text = handle_vision({"image": image_url, "chat_context": user_text or "", "author_name": author_name, "raw": False})
-                for part in split_message(reply_text):
-                    send_telegram_message(chat_id, part)
-                if "видишь ли ты картинку" in user_text:
-                    reply_text = handle_impress({"prompt": "Оцени изображение", "chat_context": user_text, "author_name": author_name, "raw": False})
+                file_id = attachments[-1].get("file_id")
+                if file_id:
+                    file_info = requests.get(
+                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}"
+                    ).json()
+                    image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
+                    reply_text = handle_vision({"image": image_url, "chat_context": user_text or "", "author_name": author_name, "raw": False})
                     for part in split_message(reply_text):
                         send_telegram_message(chat_id, part)
+                    if "видишь ли ты картинку" in user_text:
+                        reply_text = handle_impress({"prompt": "Оцени изображение", "chat_context": user_text, "author_name": author_name, "raw": False})
+                        for part in split_message(reply_text):
+                            send_telegram_message(chat_id, part)
+                else:
+                    print(f"Ошибка: file_id не найден в {attachments}")
             elif "document" in message:
                 file_id = attachments[0].get("file_id")
                 if file_id:
