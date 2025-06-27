@@ -8,3 +8,11 @@ openai
 aiohttp
 tenacity
 youtube-transcript-api
+beautifulsoup4
+pypdf
+python-docx
+textract
+striprtf
+odfpy
+textblob
+Pillow  # Добавил на случай обработки изображений, как в vision.py
