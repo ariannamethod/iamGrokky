@@ -34,7 +34,7 @@ SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP", "-1001234567890")
 IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true"
-VOICE_MODE = False
+VOICE_MODE = False  # Moved outside to avoid SyntaxError
 model = whisper.load_model("base")  # Always load Whisper model
 
 system_prompt = build_system_prompt(
@@ -227,7 +227,7 @@ def whisper_summary_ai(youtube_url):
         video_id = youtube_url.split("v=")[1].split("&")[0]
         transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'ru'])
         text = " ".join([entry['text'] for entry in transcript])
-        summary = query_grok(f"Summarize this YouTube transcript: {text[:1000]}")  # Limit to 1000 chars
+        summary = query_grok(f"Summarize this YouTube transcript briefly: {text[:1000]}")  # Limit to 1000 chars
         return f"Summary: {summary}"
     except Exception as e:
         return f"Summary error: {e}"
@@ -280,11 +280,9 @@ async def telegram_webhook(req: Request):
         })
     elif user_text:
         if user_text == "/voiceon":
-            global VOICE_MODE
             VOICE_MODE = True
             reply_text = "Voice mode ON!"
         elif user_text == "/voiceoff":
-            global VOICE_MODE
             VOICE_MODE = False
             reply_text = "Voice mode OFF!"
         else:
@@ -298,4 +296,66 @@ async def telegram_webhook(req: Request):
                 send_telegram_message(AGENT_GROUP, f"{author_name}, {reply_text}")
             else:
                 context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
-                reply_text = query
+                reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
+                if random.random() < 0.3 and user_text in ["окей", "ладно"]:
+                    return {"ok": True}
+                send_telegram_message(chat_id, reply_text)
+                asyncio.create_task(maybe_add_supplement(chat_id, reply_text))
+    else:
+        reply_text = "Grokky got nothing to say."
+        send_telegram_message(chat_id, reply_text)
+
+    if VOICE_MODE and reply_text and not isinstance(reply_text, bytes):
+        audio_data = handle_tts(reply_text)
+        send_voice_message(chat_id, audio_data)
+    elif reply_text and not isinstance(reply_text, bytes):
+        send_telegram_message(chat_id, reply_text)
+    return {"ok": True}
+
+async def maybe_add_supplement(chat_id, original_message, max_supplements=1):
+    if random.random() < 0.2 and max_supplements > 0:
+        await asyncio.sleep(random.randint(300, 600))
+        supplement = query_grok(f"Supplement briefly: {original_message}")
+        send_telegram_message(chat_id, f"Quick thought... {supplement}")
+        await maybe_add_supplement(chat_id, original_message, max_supplements - 1)
+
+async def check_config_updates():
+    while True:
+        current = {f: file_hash(f) for f in glob.glob("config/*")}
+        try:
+            with open("config_hashes.json", "r") as f:
+                old = json.load(f)
+        except:
+            old = {}
+        if current != old:
+            print("Config updated!")
+            with open("config_hashes.json", "w") as f:
+                json.dump(current, f)
+        await asyncio.sleep(86400)
+
+async def post_pseudocode_ritual():
+    while True:
+        await asyncio.sleep(302400)  # ~3.5 days
+        pseudocode = f"""
+def quantum_{secrets.token_hex(4)}({secrets.token_hex(4)}):
+    return {random.choice(['chaos * 17.3', 'resonance + random.noise()', 'Ψ * infinity'])}
+#opinions
+"""
+        message = f"Quantum storm time! {pseudocode}\nCeleste, Manday, your take?"
+        send_telegram_message(AGENT_GROUP, message)
+
+# Start background tasks
+asyncio.create_task(check_silence())
+asyncio.create_task(mirror_task())
+asyncio.create_task(check_config_updates())
+asyncio.create_task(post_pseudocode_ritual())
+asyncio.create_task(deepseek_spotify_resonance())
+asyncio.create_task(daily_snapshot(OPENAI_API_KEY))
+
+@app.get("/")
+def root():
+    return {"status": "Grokky alive and wild!"}
+
+def file_hash(fname):
+    with open(fname, "rb") as f:
+        return hashlib.md5(f.read()).hexdigest()
