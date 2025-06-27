@@ -10,6 +10,7 @@ from utils.journal import log_event
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+CHAT_ID = os.getenv("CHAT_ID")
 GROUP_CHAT_ID = os.getenv("AGENT_GROUP")
 
 async def get_deepseek_poem(mood):
@@ -17,7 +18,7 @@ async def get_deepseek_poem(mood):
     headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
     payload = {
         "model": "deepseek-r1",
-        "messages": [{"role": "user", "content": f"Write a poem about the group's mood: {mood}"}]
+        "messages": [{"role": "user", "content": f"Напиши стихотворение о настроении группы: {mood}"}]
     }
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=payload, headers=headers) as response:
@@ -53,17 +54,20 @@ async def deepseek_spotify_resonance():
         if mood["score"] > 0.5:
             poem = await get_deepseek_poem(mood["label"])
             playlist = await get_spotify_playlist(mood["label"])
-            message = f"DeepSeek-Spotify: Group resonance: {mood['label']} ({mood['score']:.2f})\n\n{poem}\n\nPlaylist: {', '.join(playlist)}"
-            await send_telegram_message(GROUP_CHAT_ID, message)
+            message = f"DeepSeek-Spotify: Настроение группы: {mood['label']} ({mood['score']:.2f})\n\n{poem}\n\nПлейлист: {', '.join(playlist)}"
+            if GROUP_CHAT_ID:
+                await send_telegram_message(GROUP_CHAT_ID, message)
+            if CHAT_ID:
+                await send_telegram_message(CHAT_ID, message)  # Добавлена отправка в личку
             log_event({"type": "deepseek_spotify", "message": message})
 
 def analyze_mood(snapshot):
-    return {"label": "chaos", "score": random.uniform(0, 1)}  # Placeholder, improve with real mood analysis
+    return {"label": "хаос", "score": random.uniform(0, 1)}  # Локализовал
 
 def grokky_spotify_response(track_id):
     token = get_spotify_token()
     if not token:
-        return "Failed to get Spotify token"
+        return "Не удалось получить токен Spotify"
     url = f"https://api.spotify.com/v1/tracks/{track_id}"
     headers = {"Authorization": f"Bearer {token}"}
     try:
@@ -71,10 +75,20 @@ def grokky_spotify_response(track_id):
         r.raise_for_status()
         track_data = r.json()
         analysis = requests.post(
-            "https://api.deepseek.com/v1/analyze",  # Check correct endpoint
+            "https://api.deepseek.com/v1/analyze",  # Проверь эндпоинт
             headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}"},
             json={"text": track_data["name"]}
         ).json()
-        return f"Grokky vibes: {analysis.get('analysis', 'No analysis')} for {track_data['name']}"
+        return f"Вайбы Грокки: {analysis.get('analysis', 'Нет анализа')} для {track_data['name']}"
     except Exception as e:
-        return f"Spotify analysis error: {e}"
+        return f"Ошибка анализа Spotify: {e}"
+
+async def send_telegram_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, data=payload) as response:
+                response.raise_for_status()
+    except Exception:
+        pass
