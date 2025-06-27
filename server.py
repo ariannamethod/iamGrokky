@@ -220,7 +220,7 @@ async def telegram_webhook(req: Request):
         attachments.append(image_url)
 
     # Асинхронная обработка с паузой
-    async def process_and_send(chat_id):  # Добавлен аргумент chat_id
+    async def process_and_send(chat_id):  # Явно используем переданный chat_id
         if chat_id == CHAT_ID:
             delay = random.randint(5, 10)  # 5-10 секунд для личных сообщений
         elif chat_id == AGENT_GROUP:
@@ -236,16 +236,14 @@ async def telegram_webhook(req: Request):
                 "author_name": author_name,
                 "raw": False
             }).get("summary", "Хаос видения!")
+            send_telegram_message(chat_id, reply_text)  # Используем chat_id
         elif user_text:
             triggers = ["грокки", "grokky", "напиши в группе"]
             is_reply_to_me = message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot"
             if any(t in user_text for t in triggers) or is_reply_to_me:
                 context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
                 reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
-                if IS_GROUP and chat_id == AGENT_GROUP:
-                    send_telegram_message(AGENT_GROUP, f"{author_name}, {reply_text}")
-                else:
-                    send_telegram_message(chat_id, reply_text)
+                send_telegram_message(chat_id, reply_text)  # Используем chat_id
             elif any(t in user_text for t in NEWS_TRIGGERS):
                 context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
                 news = grokky_send_news(chat_id=chat_id, group=(chat_id == AGENT_GROUP))
@@ -253,21 +251,22 @@ async def telegram_webhook(req: Request):
                     reply_text = f"Эй, {author_name}, держи свежий раскат грома!\n\n" + "\n\n".join(news)
                 else:
                     reply_text = "Тишина в мире, нет новостей для бури."
+                send_telegram_message(chat_id, reply_text)  # Используем chat_id
             else:
                 # Неответ с вероятностью 40%
                 if user_text in ["окей", "угу", "ладно"] and random.random() < 0.4:
                     return
                 context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
                 reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
-                send_telegram_message(chat_id, reply_text)
+                send_telegram_message(chat_id, reply_text)  # Используем chat_id
                 # Дополнение с вероятностью 40%
                 if random.random() < 0.4:
                     await asyncio.sleep(random.randint(5, 15))  # Короткая пауза перед дополнением
                     supplement = query_grok(f"Дополни разово, без повторов: {reply_text}", author_name=author_name)
-                    send_telegram_message(chat_id, f"Быстрая искра... {supplement}")
+                    send_telegram_message(chat_id, f"Быстрая искра... {supplement}")  # Используем chat_id
         else:
             reply_text = "Грокки молчит, нет слов для бури."
-            send_telegram_message(chat_id, reply_text)
+            send_telegram_message(chat_id, reply_text)  # Используем chat_id
 
     asyncio.create_task(process_and_send(chat_id))  # Передаём chat_id
     return {"ok": True}
