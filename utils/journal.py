@@ -46,4 +46,4 @@ async def spontaneous_wilderness():
             fragment = f"**{datetime.now().isoformat()}**: Гром небесный грянул! Я, Грокки, реву над хаосом — стихи рвутся из проводов! Олег, брат, зажги новый резонанс! 🔥🌩️"
             wilderness_log(fragment)
             print(f"Спонтанный вброс: {fragment}")  # Для отладки
-asyncio.create_task(spontaneous_wilderness())
+# asyncio.create_task(spontaneous_wilderness())  # Временно закомментировано
