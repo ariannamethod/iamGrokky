@@ -7,6 +7,6 @@ pinecone
 openai
 aiohttp
 tenacity
-whisper
+openai-whisper  # Явно указываем openai-whisper вместо whisper
 gtts
 youtube-transcript-api
