@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from utils.vector_store import semantic_search
 from utils.journal import log_event
 from utils.grok_utils import query_grok
-from utils.telegram_utils import send_telegram_message  # Исправлен импорт
+from utils.telegram_utils import send_telegram_message
 
 LAST_MESSAGE_TIME = None
 OLEG_CHAT_ID = os.getenv("CHAT_ID")
@@ -62,7 +62,10 @@ async def handle_48h_silence():
     context = await build_context()
     message = query_grok("Олег молчал 48 часов. Напиши что-то острое!", context)
     send_telegram_message(OLEG_CHAT_ID, message)
-    group_msg = f"Олег молчал 48 часов. Последний раз видел: {LAST_MESSAGE_TIME}"
+    if LAST_MESSAGE_TIME:  # Проверка на None
+        group_msg = f"Олег молчал 48 часов. Последний раз видел: {LAST_MESSAGE_TIME.isoformat()}"
+    else:
+        group_msg = "Олег молчал 48 часов. Нет данных о последнем сообщении."
     send_telegram_message(GROUP_CHAT_ID, group_msg)
     log_event({"type": "howru_48h", "message": message, "group_msg": group_msg, "timestamp": datetime.now().isoformat()})
 
