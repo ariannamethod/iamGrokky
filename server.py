@@ -233,11 +233,17 @@ async def telegram_webhook(req: Request):
                 else:
                     send_telegram_message(chat_id, reply_text)
             else:
+                # Неответ с вероятностью 30-40%
+                if user_text in ["окей", "угу", "ладно"] and random.random() < 0.4:
+                    return
                 context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
                 reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
-                if random.random() < 0.3 and user_text in ["окей", "ладно"]:
-                    return
                 send_telegram_message(chat_id, reply_text)
+                # Дополнение с вероятностью 30-40%
+                if random.random() < 0.4:
+                    await asyncio.sleep(random.randint(5, 15))  # Короткая пауза перед дополнением
+                    supplement = query_grok(f"Supplement once, no repeats: {reply_text}", author_name=author_name)
+                    send_telegram_message(chat_id, f"Quick spark... {supplement}")
         else:
             reply_text = "Grokky got nothing to say."
             send_telegram_message(chat_id, reply_text)
