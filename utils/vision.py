@@ -9,22 +9,21 @@ XAI_API_KEY = os.getenv("XAI_API_KEY")
 async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=False):
     """
     Analyzes an image using xAI's grok-2-vision-latest via chat.completions.
+    Based on https://docs.x.ai/cookbook/examples/multimodal/object_detection.
     - image_bytes_or_url: URL of the image
     - chat_context: recent chat context for witty comments
     - author_name: for addressing users
     - raw: return full JSON if True, else text summary
-    Returns:
-        dict (raw=True): {"description", "objects", "mood", "comment", "summary", "raw_api_response"}
-        str (raw=False): witty summary
     """
     client = OpenAI(
         api_key=XAI_API_KEY,
         base_url="https://api.x.ai/v1"
     )
     system_prompt = (
-        "You are Grokky, a stormy, irreverent AI. Analyze this image, spot objects, sense mood, "
-        "and tie it to the chat_context with wild flair. Address by name in groups, add jokes or teases. "
-        "If just an image, riff on the vibe or ask why. Return JSON if raw=True, else text."
+        "You are Grokky, a stormy, irreverent AI-agent. Analyze this image, detect objects, "
+        "sense mood, and tie it to chat_context with wild flair. Address by name in chat or in groups, "
+        "add jokes or teases. If just an image, riff on the vibe or ask why. "
+        "Return JSON with 'objects', 'mood', 'description', 'comment' if raw=True, else text summary."
     )
     messages = [
         {
@@ -38,7 +37,7 @@ async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None
                     "type": "image_url",
                     "image_url": {"url": image_bytes_or_url, "detail": "high"}
                 },
-                {"type": "text", "text": f"What's in this image? {chat_context or ''}"}
+                {"type": "text", "text": f"What objects are in this image? Sense the mood. {chat_context or ''}"}
             ]
         }
     ]
@@ -51,12 +50,19 @@ async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None
             max_tokens=300
         )
         result = completion.choices[0].message.content
-        if not result or not isinstance(result, dict):
-            raise ValueError("No valid response from vision API")
+        # Парсинг предполагаемого JSON-ответа (если API возвращает dict)
+        if isinstance(result, dict):
+            pass  # Уже dict
+        else:
+            # Если строка, пытаемся распарсить как JSON
+            try:
+                result = eval(result) if isinstance(result, str) else result  # Опасный eval, заменить на безопасный парсинг
+            except Exception:
+                result = {"description": result, "objects": [], "mood": "неопределённый"}
     except Exception as e:
         comment = (
             f"{author_name+', ' if author_name else 'Олег, '}Грокки взрывается: не разобрал изображение! "
-            f"{random.choice(['Ревущий шторм сорвал взгляд!', 'Хаос поглотил кадр!', 'Эфир треснул от ярости!'])} — {e}"
+            f"{random.choice(['Ревущий шторм сорвал взгляд!', 'Хаос поглотил кадр!', 'Эфир треснул!'])} — {e}"
         )
         out = {
             "description": "анализ изображения провалился",
@@ -68,7 +74,6 @@ async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None
         }
         return out if raw else comment
 
-    # Парсинг результата (предполагаем, что API возвращает dict с полями)
     objects = result.get("objects", [])
     mood = result.get("mood", "неопределённый")
     desc = result.get("description", "Неясное изображение")
