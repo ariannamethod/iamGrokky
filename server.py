@@ -13,15 +13,17 @@ from fastapi import FastAPI, Request
 from youtube_transcript_api import YouTubeTranscriptApi
 from utils.prompt import build_system_prompt
 from utils.genesis2 import genesis2_handler
-from utils.vision import vision_handler
+from utils.vision import vision_handler, galvanize_protocol
 from utils.impress import impress_handler
 from utils.howru import check_silence, update_last_message_time
+from utils.mirror import mirror_task
 from utils.vector_store import daily_snapshot, spontaneous_snapshot
 from utils.journal import log_event
 from utils.x import grokky_send_news
 from utils.deepseek_spotify import deepseek_spotify_resonance, grokky_spotify_response
 from utils.file_handling import extract_text_from_file_async
-from utils.grok_utils import query_grok, detect_language  # Используем из grok_utils
+from utils.text_helpers import extract_text_from_url
+from utils.grok_utils import query_grok, detect_language
 
 app = FastAPI()
 
@@ -177,6 +179,18 @@ async def telegram_webhook(req: Request):
                 reply_text = genesis2_handler({"ping": f"Комментарий к файлу {os.path.basename(file_path)}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
             send_telegram_message(chat_id, reply_text)  # Используем chat_id
         elif user_text:
+            url_match = re.search(r"https?://[^\s]+", user_text)
+            spotify_match = re.search(r"https://open\.spotify\.com/track/([a-zA-Z0-9]+)", user_text)
+            if url_match:
+                url = url_match.group(0)
+                text = await extract_text_from_url(url)  # Асинхронный вызов для URL
+                reply_text = genesis2_handler({"ping": f"Комментарий к ссылке {url}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
+                send_telegram_message(chat_id, reply_text)  # Используем chat_id
+                # Запуск отложенного комментария
+                if spotify_match:
+                    asyncio.create_task(delayed_spotify_comment(spotify_match.group(1), chat_id))
+                else:
+                    asyncio.create_task(delayed_link_comment(url, chat_id))
             triggers = ["грокки", "grokky", "напиши в группе"]
             is_reply_to_me = message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot"
             if any(t in user_text for t in triggers) or is_reply_to_me:
@@ -253,7 +267,8 @@ asyncio.create_task(deepseek_spotify_resonance())
 asyncio.create_task(daily_snapshot(OPENAI_API_KEY))
 asyncio.create_task(send_periodic_news())
 asyncio.create_task(spontaneous_snapshot(OPENAI_API_KEY, send_telegram_message))
-asyncio.create_task(mirror_task(query_grok))  # Запуск с передачей функции
+asyncio.create_task(mirror_task(query_grok))
+asyncio.create_task(galvanize_protocol())
 
 @app.get("/")
 def root():
