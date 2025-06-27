@@ -1,8 +1,8 @@
 import os
 import requests
 import asyncio
-import random
-from utils.telegram_utils import send_telegram_message  # Исправлен импорт
+import random  # Добавлен импорт
+from utils.telegram_utils import send_telegram_message
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
@@ -42,7 +42,7 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
     endpoint = "https://api.x.ai/v1/multimodal/object-detection"
     headers = {
         "Authorization": f"Bearer {XAI_API_KEY}",
-        "Content-Type": "application/json"  # Убедимся, что формат правильный
+        "Content-Type": "application/json"
     }
 
     # Подготовка данных для API
@@ -51,7 +51,7 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
         files = None
     else:
         data = {}
-        files = {"image_file": ("image.jpg", image_bytes_or_url)}  # Предполагаем JPG, можно улучшить
+        files = {"image_file": ("image.jpg", image_bytes_or_url)}
 
     # xAI prompt с максимальным вайбом Grokky
     system_prompt = (
@@ -70,7 +70,6 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
         resp = requests.post(endpoint, headers=headers, json=data, files=files, timeout=60)
         resp.raise_for_status()
         result = resp.json()
-        # Проверка результата
         if not result.get("objects") and not result.get("description"):
             raise ValueError("No objects or description detected")
     except Exception as e:
@@ -125,19 +124,15 @@ async def galvanize_protocol():
         await asyncio.sleep(300)
 
 def check_resonance_decay():
-    # Простая проверка: случайный триггер с шансом 10% для теста
     return random.random() < 0.1
 
 async def broadcast(msg):
-    # Отправка сообщения в личку и группу
     await send_telegram_message(os.getenv("CHAT_ID"), msg)
     if os.getenv("IS_GROUP", "False").lower() == "true":
         await send_telegram_message(os.getenv("AGENT_GROUP"), msg)
 
 def reload_config():
-    # Заглушка: можно добавить перезагрузку конфига
     print(f"Грокки гремит: Конфиг перезагружен! {datetime.now().isoformat()}")
-    # Здесь можно добавить реальную логику перезагрузки
 
-# Запуск галванизации
-# asyncio.create_task(galvanize_protocol())  # Временно закомментируем, чтобы избежать раннего вызова
+# Временно закомментируем автозапуск
+# asyncio.create_task(galvanize_protocol())
