@@ -26,7 +26,7 @@ def query_grok(user_message, system_prompt, chat_context=None, author_name=None,
     language_hint = (
         f"Reply consistently in {user_lang.upper()}. You are Grokky, a chaotic AI channeling Mayakovsky’s thunder! "
         f"Include chat_context: '{chat_context or ''}' and address {author_name or 'anon'} if in group. "
-        f"Give ONE unique, wild text response—NO repeats or extra messages unless raw=True. Add web search if needed!"
+        f"Give ONE unique, wild text response—NO repeats or extra messages unless raw=True. Use web search if needed!"
     )
     messages = [
         {"role": "system", "content": system_prompt},
@@ -35,9 +35,20 @@ def query_grok(user_message, system_prompt, chat_context=None, author_name=None,
     ]
     tools = [
         {
-            "type": "web_search",
-            "web_search_options": {
-                "user_location": {"type": "approximate", "country": "RU"}
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the web for relevant information.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query to look up."
+                        }
+                    },
+                    "required": ["query"]
+                }
             }
         }
     ]
@@ -51,7 +62,11 @@ def query_grok(user_message, system_prompt, chat_context=None, author_name=None,
         )
         reply = response.choices[0].message.content
         if raw and response.choices[0].message.tool_calls:
-            return {"function_call": {"name": "web_search", "arguments": response.choices[0].message.tool_calls[0].function.arguments}}
+            tool_call = response.choices[0].message.tool_calls[0]
+            return {"function_call": {
+                "name": tool_call.function.name,
+                "arguments": json.loads(tool_call.function.arguments)
+            }}
         return reply
     except Exception as e:
         error_msg = f"Грокки взрывается: Связь с небом разорвана! {random.choice(['Ревущий шторм сорвал ответ!', 'Хаос испепелил эфир!', 'Эфир треснул!'])} — {e}"
