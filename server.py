@@ -205,36 +205,38 @@ async def telegram_webhook(req: Request):
         image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
         attachments.append(image_url)
 
-    delay = random.randint(300, 900)  # 5-15 минут
-    await asyncio.sleep(delay)
-
-    if attachments:
-        reply_text = handle_vision({
-            "image": attachments[0],
-            "chat_context": user_text or "",
-            "author_name": author_name,
-            "raw": False
-        }).get("summary", "Vision chaos!")
-    elif user_text:
-        triggers = ["грокки", "grokky", "напиши в группе"]
-        is_reply_to_me = message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot"
-        if any(t in user_text for t in triggers) or is_reply_to_me:
-            context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
-            reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
-            if IS_GROUP and chat_id == AGENT_GROUP:
-                send_telegram_message(AGENT_GROUP, f"{author_name}, {reply_text}")
+    # Асинхронная отправка с задержкой
+    async def process_and_send():
+        delay = random.randint(300, 900)  # 5-15 минут
+        await asyncio.sleep(delay)
+        if attachments:
+            reply_text = handle_vision({
+                "image": attachments[0],
+                "chat_context": user_text or "",
+                "author_name": author_name,
+                "raw": False
+            }).get("summary", "Vision chaos!")
+        elif user_text:
+            triggers = ["грокки", "grokky", "напиши в группе"]
+            is_reply_to_me = message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot"
+            if any(t in user_text for t in triggers) or is_reply_to_me:
+                context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
+                reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
+                if IS_GROUP and chat_id == AGENT_GROUP:
+                    send_telegram_message(AGENT_GROUP, f"{author_name}, {reply_text}")
+                else:
+                    send_telegram_message(chat_id, reply_text)
             else:
+                context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
+                reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
+                if random.random() < 0.3 and user_text in ["окей", "ладно"]:
+                    return
                 send_telegram_message(chat_id, reply_text)
         else:
-            context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
-            reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
-            if random.random() < 0.3 and user_text in ["окей", "ладно"]:
-                return {"ok": True}
+            reply_text = "Grokky got nothing to say."
             send_telegram_message(chat_id, reply_text)
-    else:
-        reply_text = "Grokky got nothing to say."
-        send_telegram_message(chat_id, reply_text)
 
+    asyncio.create_task(process_and_send())
     return {"ok": True}
 
 async def check_config_updates():
