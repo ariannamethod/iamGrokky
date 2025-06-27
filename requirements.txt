@@ -23,3 +23,4 @@ striprtf
 odfpy
 textblob
 youtube-transcript-api
+xai-sdk  # Добавляем SDK
