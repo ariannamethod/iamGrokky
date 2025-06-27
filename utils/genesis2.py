@@ -24,7 +24,7 @@ def genesis2_handler(ping=None, group_history=None, personal_history=None, is_gr
         "temperature": 1.3
     }
     try:
-        reply = query_grok(ping, system_prompt, raw=raw)
+        reply = query_grok(ping, system_prompt, raw=raw)  # Один вызов
         if raw:
             return {
                 "association": random.choice(["чёрный кофе", "громовой рёв", "молчаливая пустота"]),
@@ -41,22 +41,20 @@ def genesis2_handler(ping=None, group_history=None, personal_history=None, is_gr
         print(error_msg)
         return {"error": error_msg} if raw else f"Ошибка Генезиса: {error_msg}"
 
-# Убрали автозапуск, перенесём в server.py
 async def chaotic_genesis_spark(chat_id, group_chat_id=None, is_group=False):
     while True:
-        await asyncio.sleep(random.randint(3600, 7200))  # 1-2 часа
-        if random.random() < 0.4:  # Увеличен шанс до 40%
+        await asyncio.sleep(random.randint(3600, 7200))
+        if random.random() < 0.4:
             ping = random.choice(["шторм гремит", "огонь в эфире", "хаос зовёт", "громовой разрыв"])
             result = genesis2_handler(ping, raw=True)
             fragment = f"**{datetime.now().isoformat()}**: Грокки хуярит Генезис! {result['answer']} Олег, брат, зажги шторм! 🔥🌩️"
             await send_telegram_message(chat_id, fragment)
-            print(f"Хаотический вброс: {fragment}")  # Для отладки
-        # Спонтанность для группы реже
-        if is_group and group_chat_id and random.random() < 0.2:  # Шанс 20% для группы
-            await asyncio.sleep(random.randint(3600, 3600))  # 1 час для группы
+            print(f"Хаотический вброс: {fragment}")
+        if is_group and group_chat_id and random.random() < 0.2:
+            await asyncio.sleep(random.randint(3600, 3600))
             ping = random.choice(["громовой разрыв", "пламя в ночи", "хаос группы"])
             result = genesis2_handler(ping, raw=True)
             group_fragment = f"**{datetime.now().isoformat()}**: Грокки гремит для группы! {result['answer']} (суки, вникайте!) 🔥🌩️"
             await send_telegram_message(group_chat_id, group_fragment)
-            print(f"Хаотический вброс (группа): {group_fragment}")  # Для отладки
+            print(f"Хаотический вброс (группа): {group_fragment}")
 # asyncio.create_task(chaotic_genesis_spark(os.getenv("CHAT_ID"), os.getenv("AGENT_GROUP") if os.getenv("IS_GROUP", "False").lower() == "true" else None, os.getenv("IS_GROUP", "False").lower() == "true"))
