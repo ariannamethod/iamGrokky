@@ -7,7 +7,7 @@ from utils.vector_store import semantic_search
 from utils.journal import log_event, wilderness_log
 from datetime import datetime, timedelta
 from textblob import TextBlob
-from utils.telegram_utils import send_telegram_message  # Добавлен импорт
+from utils.telegram_utils import send_telegram_message
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
@@ -119,13 +119,3 @@ async def grokky_spotify_response(track_id):
                     return f"Вайбы Грокки: {analysis.get('analysis', 'Нет анализа')} для {track_data['name']}!"
     except Exception as e:
         return f"Грокки взрывается: Анализ Spotify провалился! {random.choice(['Ревущий ветер сорвал трек!', 'Хаос испепелил ноты!', 'Эфир треснул от ритма!'])} — {e}"
-
-async def send_telegram_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, data=payload) as response:
-                response.raise_for_status()
-    except Exception:
-        pass
