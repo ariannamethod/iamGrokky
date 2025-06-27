@@ -91,7 +91,7 @@ def query_grok(message, context=None):
     headers = {
         "Authorization": f"Bearer {os.getenv('XAI_API_KEY')}",
         "Content-Type": "application/json"
-    }  # Закрыт словарь
+    }
     try:
         r = requests.post(url, headers=headers, json=payload)
         r.raise_for_status()
