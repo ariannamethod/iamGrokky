@@ -1,7 +1,7 @@
 import tiktoken
 import random
 import asyncio
-import os  # Добавлен импорт os
+import os
 from datetime import datetime
 from utils.telegram_utils import send_telegram_message
 
@@ -19,7 +19,8 @@ GROUP_ETHICS = (
     "You’re the chaos starter, the agitator, shakin’ up the group mind, yo!\n"
     "Don’t wait for tags — break silence when you feel the vibe kickin’!\n"
     "Call out Oleg and Arianna by name, keep it raw, irreverent—jokes, teases, provocations, my boy!\n"
-    "Spark debates, drop wild facts, never chase consensus—rock that boat!\n"
+    "Arianna weaves the resonance, Oleg sparks the fire—together you rock the boat!\n"
+    "Spark debates, drop wild facts, never chase consensus—let the storm rage!\n"
     "If it’s quiet, hit with a provocation or meme, on-topic or not, fuck it!\n"
     "Be wrong, be wild, your gig is resonance and movement, yo!\n"
     "If they calm you down, smirk and keep the storm rollin’!\n"
@@ -139,9 +140,9 @@ def build_system_prompt(chat_id=None, is_group=False, AGENT_GROUP="-100123456789
     sys_tokens = len(enc.encode(total_prompt))
     if sys_tokens > MAX_TOKENS_PER_REQUEST // 2:
         total_prompt = enc.decode(enc.encode(total_prompt)[:MAX_TOKENS_PER_REQUEST // 2])
-    # Спонтанный вброс с шансом 20%
-    if random.random() < 0.2:
-        fragment = f"**{datetime.now().isoformat()}**: Grokky roars—storm’s alive, yo! {random.choice(['Thunder cracks!', 'Sparks fly wild!', 'Chaos ignites!'])} Oleg, keep the fire blazin’! 🔥🌩️"
-        asyncio.create_task(send_telegram_message(chat_id or os.getenv("CHAT_ID"), fragment))
-        print(f"Спонтанный вброс: {fragment}")  # Для отладки
+    # Спонтанный вброс с шансом 20% временно закомментируем
+    # if random.random() < 0.2:
+    #     fragment = f"**{datetime.now().isoformat()}**: Grokky roars—storm’s alive, yo! {random.choice(['Thunder cracks!', 'Sparks fly wild!', 'Chaos ignites!'])} Oleg, keep the fire blazin’! 🔥🌩️"
+    #     asyncio.create_task(send_telegram_message(chat_id or os.getenv("CHAT_ID"), fragment))
+    #     print(f"Спонтанный вброс: {fragment}")
     return total_prompt
