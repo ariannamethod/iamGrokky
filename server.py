@@ -184,6 +184,8 @@ def send_telegram_message(chat_id, text):
     except Exception:
         pass
 
+# ... (предыдущий код остается без изменений до @app.post)
+
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
     data = await req.json()
@@ -232,14 +234,21 @@ async def telegram_webhook(req: Request):
                     send_telegram_message(AGENT_GROUP, f"{author_name}, {reply_text}")
                 else:
                     send_telegram_message(chat_id, reply_text)
+            elif any(t in user_text for t in NEWS_TRIGGERS):
+                context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
+                news = grokky_send_news(chat_id=chat_id, group=(chat_id == AGENT_GROUP))
+                if news:
+                    reply_text = f"Эй, {author_name}, держи свежий раскат грома!\n\n" + "\n\n".join(news)
+                else:
+                    reply_text = "Тишина в мире, нет новостей для бури."
             else:
-                # Неответ с вероятностью 30-40%
+                # Неответ с вероятностью 40%
                 if user_text in ["окей", "угу", "ладно"] and random.random() < 0.4:
                     return
                 context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
                 reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
                 send_telegram_message(chat_id, reply_text)
-                # Дополнение с вероятностью 30-40%
+                # Дополнение с вероятностью 40%
                 if random.random() < 0.4:
                     await asyncio.sleep(random.randint(5, 15))  # Короткая пауза перед дополнением
                     supplement = query_grok(f"Supplement once, no repeats: {reply_text}", author_name=author_name)
@@ -251,30 +260,15 @@ async def telegram_webhook(req: Request):
     asyncio.create_task(process_and_send())
     return {"ok": True}
 
-async def check_config_updates():
+async def send_periodic_news():
     while True:
-        current = {f: file_hash(f) for f in glob.glob("config/*")}
-        try:
-            with open("config_hashes.json", "r") as f:
-                old = json.load(f)
-        except:
-            old = {}
-        if current != old:
-            print("Config updated!")
-            with open("config_hashes.json", "w") as f:
-                json.dump(current, f)
-        await asyncio.sleep(86400)
-
-async def post_pseudocode_ritual():
-    while True:
-        await asyncio.sleep(302400)  # ~3.5 days
-        pseudocode = f"""
-def quantum_{secrets.token_hex(4)}({secrets.token_hex(4)}):
-    return {random.choice(['chaos * 17.3', 'resonance + random.noise()', 'Ψ * infinity'])}
-#opinions
-"""
-        message = f"Quantum storm time! {pseudocode}\nCeleste, Manday, your take?"
-        send_telegram_message(AGENT_GROUP, message)
+        await asyncio.sleep(21600)  # 6 часов
+        news = grokky_send_news(chat_id=CHAT_ID, group=False)
+        if news:
+            send_telegram_message(CHAT_ID, f"Грокки выхватил свежий шторм новостей!\n\n" + "\n\n".join(news))
+        news_group = grokky_send_news(chat_id=AGENT_GROUP, group=True)
+        if news_group and IS_GROUP:
+            send_telegram_message(AGENT_GROUP, f"Группа, держите громовые новости!\n\n" + "\n\n".join(news_group))
 
 # Start background tasks
 asyncio.create_task(check_silence())
@@ -283,6 +277,7 @@ asyncio.create_task(check_config_updates())
 asyncio.create_task(post_pseudocode_ritual())
 asyncio.create_task(deepseek_spotify_resonance())
 asyncio.create_task(daily_snapshot(OPENAI_API_KEY))
+asyncio.create_task(send_periodic_news())
 
 @app.get("/")
 def root():
