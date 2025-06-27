@@ -6,7 +6,8 @@ import requests
 from datetime import datetime, timedelta
 from utils.vector_store import semantic_search
 from utils.journal import log_event
-from utils.grok_utils import query_grok  # Обновлённый импорт
+from utils.grok_utils import query_grok
+from utils.telegram_utils import send_telegram_message  # Исправлен импорт
 
 LAST_MESSAGE_TIME = None
 OLEG_CHAT_ID = os.getenv("CHAT_ID")
@@ -70,14 +71,6 @@ async def build_context():
     journal = get_journal_entries(10)
     snapshot = await semantic_search("group_state", os.getenv("OPENAI_API_KEY"), top_k=1)
     return f"Последние сообщения: {json.dumps(last_msgs, ensure_ascii=False)}\nЖурнал: {json.dumps(journal, ensure_ascii=False)}\nСнимок: {snapshot}"
-
-def send_telegram_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    try:
-        requests.post(url, data=payload)
-    except Exception:
-        pass
 
 def update_last_message_time():
     global LAST_MESSAGE_TIME
