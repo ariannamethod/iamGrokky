@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import requests
 import asyncio
 import random
@@ -18,15 +19,15 @@ app = FastAPI()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 XAI_API_KEY = os.getenv("XAI_API_KEY")
-chat_id_env = os.getenv("CHAT_ID")
-is_group_env = os.getenv("IS_GROUP", "False").lower() == "true"
-agent_group_env = os.getenv("AGENT_GROUP", "-1001234567890")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+CHAT_ID = os.getenv("CHAT_ID")
+AGENT_GROUP = os.getenv("AGENT_GROUP", "-1001234567890")
+IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true"
 
 system_prompt = build_system_prompt(
-    chat_id=chat_id_env,
-    is_group=is_group_env,
-    AGENT_GROUP=agent_group_env
+    chat_id=CHAT_ID,
+    is_group=IS_GROUP,
+    AGENT_GROUP=AGENT_GROUP
 )
 
 GENESIS2_TRIGGERS = [
@@ -39,25 +40,22 @@ GENESIS2_TRIGGERS = [
 def extract_first_json(text):
     match = re.search(r'({[\s\S]+})', text)
     if match:
-        import json as pyjson
         try:
-            return pyjson.loads(match.group(1))
+            return json.loads(match.group(1))
         except Exception:
             return None
     return None
 
 def detect_language(text):
     cyrillic = re.compile('[а-яА-ЯёЁ]')
-    if cyrillic.search(text or ""):
-        return 'ru'
-    return 'en'
+    return 'ru' if cyrillic.search(text or "") else 'en'
 
 def query_grok(user_message, chat_context=None, author_name=None, attachments=None):
     url = "https://api.x.ai/v1/chat/completions"
     user_lang = detect_language(user_message)
     language_hint = {
         "role": "system",
-        "content": f"Always reply in the language the user writes: {user_lang.upper()}. Never switch to another language unless explicitly asked."
+        "content": f"Always reply in the language the user writes: {user_lang.upper()}. Never switch unless asked."
     }
     messages = [
         {"role": "system", "content": system_prompt},
@@ -74,9 +72,12 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
         "Authorization": f"Bearer {XAI_API_KEY}",
         "Content-Type": "application/json"
     }
-    r = requests.post(url, headers=headers, json=payload)
-    r.raise_for_status()
-    reply = r.json()["choices"][0]["message"]["content"]
+    try:
+        r = requests.post(url, headers=headers, json=payload)
+        r.raise_for_status()
+        reply = r.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        return f"Error: {e}"
 
     data = extract_first_json(reply)
     if data and "function_call" in data:
@@ -88,15 +89,14 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
             return handle_vision(args)
         elif fn == "impress_handler":
             return handle_impress(args)
-        else:
-            return f"Grokky raw: {reply}"
+        return f"Grokky raw: {reply}"
 
     if any(w in (user_message or "").lower() for w in GENESIS2_TRIGGERS):
         response = genesis2_handler(
             ping=user_message,
             group_history=None,
             personal_history=None,
-            is_group=is_group_env,
+            is_group=IS_GROUP,
             author_name=author_name,
             raw=True
         )
@@ -150,23 +150,39 @@ def handle_impress(args):
 def send_telegram_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
-    requests.post(url, data=payload)
+    try:
+        requests.post(url, data=payload)
+    except Exception:
+        pass
 
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
     data = await req.json()
     message = data.get("message", {})
     user_text = message.get("text", "")
-    chat_id = message.get("chat", {}).get("id")
+    chat_id = str(message.get("chat", {}).get("id", ""))
     author_name = message.get("from", {}).get("first_name", "anon")
+    attachments = []
 
-    if str(chat_id) == chat_id_env:
+    if chat_id == CHAT_ID:
         update_last_message_time()
 
+    if "photo" in message and message["photo"]:
+        file_id = message["photo"][-1]["file_id"]
+        file_info = requests.get(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}"
+        ).json()
+        image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
+        attachments.append(image_url)
+
     reply_text = ""
-    if "photo" in message:
-        # Обработка фото
-        pass
+    if attachments:
+        reply_text = handle_vision({
+            "image": attachments[0],
+            "chat_context": user_text or "",
+            "author_name": author_name,
+            "raw": True
+        })
     elif user_text:
         triggers = ["грокки", "grokky", "напиши в группе"]
         is_reply_to_me = message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot"
@@ -174,24 +190,42 @@ async def telegram_webhook(req: Request):
             delay = random.randint(300, 900)
             await asyncio.sleep(delay)
             reply_text = query_grok(user_text, author_name=author_name)
-            send_telegram_message(agent_group_env, f"{author_name}, {reply_text}")
+            send_telegram_message(AGENT_GROUP, f"{author_name}, {reply_text}")
         else:
             reply_text = query_grok(user_text, author_name=author_name)
             if random.random() < 0.3 and user_text.lower() in ["окей", "ладно"]:
                 return {"ok": True}
             send_telegram_message(chat_id, reply_text)
             asyncio.create_task(maybe_add_supplement(chat_id, reply_text))
+    else:
+        reply_text = "Grokky got nothing to say to static void."
+        send_telegram_message(chat_id, reply_text)
     return {"ok": True}
 
 async def maybe_add_supplement(chat_id, original_message):
     if random.random() < 0.2:
         await asyncio.sleep(random.randint(300, 600))
-        supplement = query_grok(f"Дополни свой ответ: {original_message}")
-        send_telegram_message(chat_id, f"Я тут подумал... {supplement}")
+        supplement = query_grok(f"Supplement your previous response: {original_message}")
+        send_telegram_message(chat_id, f"Thought again... {supplement}")
 
-# Фоновые задачи
+async def check_config_updates():
+    while True:
+        current = {f: file_hash(f) for f in glob.glob("config/*")}
+        try:
+            with open("config_hashes.json", "r") as f:
+                old = json.load(f)
+        except:
+            old = {}
+        if current != old:
+            print("Config updated!")
+            with open("config_hashes.json", "w") as f:
+                json.dump(current, f)
+        await asyncio.sleep(86400)
+
+# Запуск фоновых задач
 asyncio.create_task(check_silence())
 asyncio.create_task(mirror_task())
+asyncio.create_task(check_config_updates())
 asyncio.create_task(daily_snapshots())
 
 async def daily_snapshots():
@@ -202,3 +236,7 @@ async def daily_snapshots():
 @app.get("/")
 def root():
     return {"status": "Grokky alive and wild!"}
+
+def file_hash(fname):
+    with open(fname, "rb") as f:
+        return hashlib.md5(f.read()).hexdigest()
