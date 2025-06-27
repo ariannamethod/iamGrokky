@@ -4,6 +4,7 @@ import json
 import requests
 import asyncio
 import random
+import glob
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
 from utils.prompt import build_system_prompt
@@ -36,6 +37,11 @@ GENESIS2_TRIGGERS = [
     "фрагмент", "инсайт", "surreal", "ignite", "fractal", "field resonance", "raise the vibe", "impress me",
     "give me chaos", "озарение", "ассоциация", "намёк", "give me a spark", "разорви тишину", "волну", "взрыв",
     "помнишь", "знаешь", "любишь", "пошумим", "поэзия"
+]
+
+NEWS_TRIGGERS = [
+    "новости", "news", "headline", "berlin", "israel", "ai", "искусственный интеллект", "резонанс мира", "шум среды",
+    "grokky, что в мире", "шум", "шум среды", "x_news", "дай статью", "give me news", "storm news", "culture", "арт"
 ]
 
 def extract_first_json(text):
@@ -104,6 +110,12 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
             raw=True
         )
         return json.dumps(response, ensure_ascii=False, indent=2)
+
+    if any(w in (user_message or "").lower() for w in NEWS_TRIGGERS):
+        response = grokky_send_news(group=IS_GROUP)
+        if not response:
+            return "No news worth the thunder today."
+        return json.dumps({"news": response, "group": IS_GROUP, "author": author_name}, ensure_ascii=False, indent=2)
 
     return reply
 
@@ -241,12 +253,7 @@ async def check_config_updates():
 asyncio.create_task(check_silence())
 asyncio.create_task(mirror_task())
 asyncio.create_task(check_config_updates())
-asyncio.create_task(daily_snapshots())
-
-async def daily_snapshots():
-    while True:
-        await daily_snapshot(OPENAI_API_KEY)
-        await asyncio.sleep(86400)
+asyncio.create_task(daily_snapshot())
 
 @app.get("/")
 def root():
