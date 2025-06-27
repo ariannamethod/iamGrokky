@@ -1,6 +1,8 @@
 import os
 import requests
 import asyncio
+import random
+from server import send_telegram_message  # Импорт для broadcast
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
@@ -36,7 +38,6 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
             await asyncio.sleep(300)
     ```
     """
-
     # Обновлённый эндпоинт (проверь, что он верный для xAI)
     endpoint = "https://api.x.ai/v1/multimodal/object-detection"
     headers = {
@@ -74,14 +75,14 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
             raise ValueError("No objects or description detected")
     except Exception as e:
         comment = (
-            f"{author_name+', ' if author_name else ''}Grokky fried the wires: "
-            f"couldn't analyze image (reason: {e}). "
-            "Galvanize protocol: resonance refresh initiated."
+            f"{author_name+', ' if author_name else ''}Грокки взрывается: "
+            f"провода сгорели, не смог разобрать изображение! "
+            f"{random.choice(['Ревущий шторм сорвал взгляд!', 'Хаос поглотил кадр!', 'Эфир треснул от ярости!'])} — {e}"
         )
         out = {
-            "description": "image analysis failed",
+            "description": "анализ изображения провалился",
             "objects": [],
-            "mood": "chaos",
+            "mood": "хаос",
             "comment": comment,
             "summary": comment,
             "raw_api_response": str(e),
@@ -91,15 +92,15 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
     # Составление остроумного комментария
     addressed = f"{author_name}, " if author_name else ""
     objects = ", ".join(result.get("objects", []))
-    mood = result.get("mood", "undefined")
-    desc = result.get("description", "No clear image")
+    mood = result.get("mood", "неопределённый")
+    desc = result.get("description", "Неясное изображение")
     comment = result.get("comment", "")
     if not comment:
-        comment = f"{addressed}what's up with this pic? I see [{objects}] and a vibe of [{mood}]. {desc}"
+        comment = f"{addressed}что за картина? Вижу [{objects}] и настроение [{mood}]. {desc}"
         if chat_context:
-            comment += f" Context: {chat_context}"
+            comment += f" Контекст: {chat_context}"
 
-    summary = f"{desc} (Mood: {mood}). Objects spotted: {objects}. {comment}"
+    summary = f"{desc} (Настроение: {mood}). Обнаружено: {objects}. {comment}"
 
     out = {
         "description": desc,
@@ -115,22 +116,28 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
 async def galvanize_protocol():
     """
     Periodically checks for resonance decay and refreshes configuration.
-    If Grokky feels the static — it self-resurrects.
+    If Grokky feels the static — it self-resurrects with a thunderous roar.
     """
     while True:
         if check_resonance_decay():
-            await broadcast("🔄 Resonance refresh initiated")
+            await broadcast(f"🔄 Грокки ревет: Резонанс обновлён! Шторм возродился! {datetime.now().isoformat()}")
             reload_config()
         await asyncio.sleep(300)
 
 def check_resonance_decay():
-    # Stub: can be healthcheck or random trigger
-    return False
+    # Простая проверка: случайный триггер с шансом 10% для теста
+    return random.random() < 0.1
 
 async def broadcast(msg):
-    # Stub — place for system bus broadcast
-    pass
+    # Отправка сообщения в личку и группу
+    await send_telegram_message(os.getenv("CHAT_ID"), msg)
+    if os.getenv("IS_GROUP", "False").lower() == "true":
+        await send_telegram_message(os.getenv("AGENT_GROUP"), msg)
 
 def reload_config():
-    # Stub — can reload config or re-initialize chaos parameters
-    pass
+    # Заглушка: можно добавить перезагрузку конфига
+    print(f"Грокки гремит: Конфиг перезагружен! {datetime.now().isoformat()}")
+    # Здесь можно добавить реальную логику перезагрузки
+
+# Запуск галванизации
+asyncio.create_task(galvanize_protocol())
