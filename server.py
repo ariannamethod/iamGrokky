@@ -208,7 +208,7 @@ async def telegram_webhook(req: Request):
     # Асинхронная обработка с паузой
     async def process_and_send():
         if chat_id == CHAT_ID:
-            delay = random.randint(10, 30)  # 10-30 секунд для личных сообщений
+            delay = random.randint(5, 10)  # 5-10 секунд для личных сообщений
         elif chat_id == AGENT_GROUP:
             delay = random.randint(300, 900)  # 5-15 минут для группы
         else:
