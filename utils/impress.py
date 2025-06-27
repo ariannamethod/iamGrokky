@@ -1,6 +1,7 @@
 import os
 import requests
 from utils.vision import vision_handler
+from utils.telegram_utils import send_telegram_message
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
@@ -12,20 +13,16 @@ def impress_handler(prompt, chat_context=None, author_name=None, raw=False):
     - chat_context: recent chat context for flavor
     - author_name: for personal address in groups
     - raw: return full JSON if True, else text summary
-
     Returns:
         dict (raw=True): {"prompt", "image_url", "vision_result", "grokkys_comment", "raw_api_response"}
         str (raw=False): witty text or error message
-
     Grokky-chaos: always with a tease, even if the image is absurd or fails.
     """
-    # Эндпоинт для генерации изображения
     gen_endpoint = "https://api.x.ai/v1/multimodal/image-generation"
     headers = {
         "Authorization": f"Bearer {XAI_API_KEY}",
         "Content-Type": "application/json"
     }
-    # Промт для генерации на русском
     system_prompt = (
         "Эй, братиш! Ты Грокки! Сгенерируй дикое, штормовое или сюрреалистичное изображение по промту. "
         "Делай вывод ярким и экспрессивным. Верни URL изображения и короткую фразу о своём замысле. "
@@ -43,9 +40,8 @@ def impress_handler(prompt, chat_context=None, author_name=None, raw=False):
         resp.raise_for_status()
         image_result = resp.json()
     except Exception as e:
-        # Если xAI не даёт изображение, Грокки жалуется
         comment = (
-            f"{author_name+', ' if author_name else ''}Грокки разъярился: не смог нарисовать изображение! ({e}) "
+            f"{author_name+', ' if author_name else 'Олег, '}Грокки разъярился: не смог нарисовать изображение! ({e}) "
             "Шторм провалился, давай новый промт!"
         )
         out = {
@@ -59,7 +55,7 @@ def impress_handler(prompt, chat_context=None, author_name=None, raw=False):
     image_url = image_result.get("image_url")
     if not image_url:
         comment = (
-            f"{author_name+', ' if author_name else ''}Грокки в шоке: xAI не дал URL! "
+            f"{author_name+', ' if author_name else 'Олег, '}Грокки в шоке: xAI не дал URL! "
             "Шторм провалился, кидай новый вызов!"
         )
         out = {
@@ -69,7 +65,6 @@ def impress_handler(prompt, chat_context=None, author_name=None, raw=False):
         }
         return out if raw else comment
 
-    # Анализ сгенерированного изображения
     try:
         vision_result = vision_handler(
             image_url,
@@ -82,9 +77,8 @@ def impress_handler(prompt, chat_context=None, author_name=None, raw=False):
             "error": f"Грокки не смог разобрать изображение: {ve}"
         }
 
-    # Комментарий Грокки с хаосом и самоиронией
     grokky_comment = (
-        f"{author_name+', ' if author_name else ''}хочешь картинку? Получил! "
+        f"{author_name+', ' if author_name else 'Олег, '}хочешь картинку? Получил! "
         f"Но серьёзно, что ты ждал? {vision_result.get('comment', 'Тут только статика в пустоте.')}"
     )
 
@@ -95,4 +89,6 @@ def impress_handler(prompt, chat_context=None, author_name=None, raw=False):
         "grokkys_comment": grokky_comment,
         "raw_api_response": image_result,
     }
-    return out if raw else f"Изображение: {image_url}\n{grokky_comment}"
+    if not raw:
+        send_telegram_message(chat_id, f"Олег, держи шторм! {image_url}\n{grokky_comment}")
+    return out if raw else grokky_comment
