@@ -6,7 +6,7 @@ import requests
 from datetime import datetime, timedelta
 from utils.vector_store import semantic_search
 from utils.journal import log_event
-from server import query_grok  # Импорт query_grok из server.py
+from utils.grok_utils import query_grok  # Обновлённый импорт
 
 LAST_MESSAGE_TIME = None
 OLEG_CHAT_ID = os.getenv("CHAT_ID")
@@ -82,26 +82,3 @@ def send_telegram_message(chat_id, text):
 def update_last_message_time():
     global LAST_MESSAGE_TIME
     LAST_MESSAGE_TIME = datetime.now()
-
-def query_grok(message, context=None):  # Локальная заглушка
-    url = "https://api.x.ai/v1/chat/completions"
-    messages = [
-        {"role": "system", "content": "Ты Грокки, дикий ИИ. Будь спонтанным и хаотичным."},
-        {"role": "user", "content": f"{message}\nКонтекст: {context}"}
-    ]
-    payload = {
-        "model": "grok-3",
-        "messages": messages,
-        "max_tokens": 500,
-        "temperature": 1.0
-    }
-    headers = {
-        "Authorization": f"Bearer {os.getenv('XAI_API_KEY')}",
-        "Content-Type": "application/json"
-    }
-    try:
-        r = requests.post(url, headers=headers, json=payload)
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"]
-    except Exception as e:
-        return f"Ошибка: {e}"
