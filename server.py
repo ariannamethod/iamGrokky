@@ -205,10 +205,16 @@ async def telegram_webhook(req: Request):
         image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
         attachments.append(image_url)
 
-    # Асинхронная отправка с задержкой
+    # Асинхронная обработка с паузой
     async def process_and_send():
-        delay = random.randint(300, 900)  # 5-15 минут
+        if chat_id == CHAT_ID:
+            delay = random.randint(10, 30)  # 10-30 секунд для личных сообщений
+        elif chat_id == AGENT_GROUP:
+            delay = random.randint(300, 900)  # 5-15 минут для группы
+        else:
+            delay = 0
         await asyncio.sleep(delay)
+
         if attachments:
             reply_text = handle_vision({
                 "image": attachments[0],
