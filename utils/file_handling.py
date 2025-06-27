@@ -8,7 +8,7 @@ from odf.opendocument import load
 from odf.text import P
 import random
 from datetime import datetime
-from server import send_telegram_message  # Для задержанных комментариев
+from utils.telegram_utils import send_telegram_message  # Исправлен импорт
 
 MAX_TEXT_SIZE = int(os.getenv("MAX_TEXT_SIZE", 100_000))  # Динамический лимит из окружения
 
