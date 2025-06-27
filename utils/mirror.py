@@ -1,25 +1,42 @@
-import os
 import requests
-import asyncio
+import os
 from datetime import datetime
-from utils.core import query_grok  # Изменён импорт на utils/core
-import aiohttp  # Для асинхронных запросов, если понадобится
 
 REPO_URL = "https://grokky.ariannamethod.me/repo/"
 RESEARCH_FILE = "grokkyresearch.md"
+XAI_API_KEY = os.getenv("XAI_API_KEY")
 
-def analyze_code():
-    response = requests.get(REPO_URL)
-    code = response.text if response.status_code == 200 else "Ошибка загрузки кода с {REPO_URL}"
-    prompt = f"Проанализируй код: {code}. Предложи сложные и спонтанные улучшения с квантовыми элементами."
-    ideas = query_grok(prompt)
-    with open(RESEARCH_FILE, "a", encoding="utf-8") as f:
-        f.write(f"{datetime.now().isoformat()}: {ideas}\n\n")
+def query_grok(message):
+    url = "https://api.x.ai/v1/chat/completions"
+    messages = [
+        {"role": "system", "content": "You are Grokky, a chaotic AI. Analyze and suggest improvements."},
+        {"role": "user", "content": message}
+    ]
+    payload = {
+        "model": "grok-3",
+        "messages": messages,
+        "max_tokens": 2048,
+        "temperature": 1.0
+    }
+    headers = {
+        "Authorization": f"Bearer {XAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    try:
+        r = requests.post(url, headers=headers, json=payload)
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        return f"Error: {e}"
 
-async def run_mirror():
+async def mirror_task():
     while True:
-        analyze_code()
-        await asyncio.sleep(604800 // 2)  # Дважды в неделю (примерно 3.5 дня)
-
-if __name__ == "__main__":
-    asyncio.run(run_mirror())  # Для тестирования
+        try:
+            code = requests.get(REPO_URL).text
+            ideas = query_grok(f"Analyze this code and suggest improvements:\n{code}")
+            with open(RESEARCH_FILE, "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now()}: {ideas}\n\n")
+        except Exception as e:
+            with open(RESEARCH_FILE, "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now()}: Failed to fetch repo: {e}\n\n")
+        await asyncio.sleep(302400)  # Twice a week
