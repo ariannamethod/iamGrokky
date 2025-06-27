@@ -6,49 +6,55 @@ from datetime import datetime
 import random
 import asyncio
 import difflib
+from openai import OpenAI
 from utils.telegram_utils import send_telegram_message
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
 def detect_language(text):
     if not isinstance(text, (str, bytes)):
-        return "en"  # Фallback для dict или других типов
+        return "ru"  # Фallback на русский, если dict
     cyrillic = re.compile('[а-яА-ЯёЁ]')
     return 'ru' if cyrillic.search(text) else 'en'
 
 def query_grok(user_message, system_prompt, chat_context=None, author_name=None, attachments=None, raw=False):
-    url = "https://api.x.ai/v1/chat/completions"
+    client = OpenAI(
+        api_key=XAI_API_KEY,
+        base_url="https://api.x.ai/v1"
+    )
     user_lang = detect_language(user_message)
-    language_hint = {
-        "role": "system",
-        "content": f"Reply consistently in the language detected from the user’s input: {user_lang.upper()}. Grokky, maintain this language throughout, channeling the thunderous spirit of Vladimir Mayakovsky—an AI agent of resonance roaring with chaos! Include chat_context: '{chat_context or ''}' and address {author_name or 'anon'} if in group. Give ONE unique, chaotic text response—NO repeats, rephrasing, extra messages, or JSON unless raw=True is explicitly set. Let the storm rage wilder!"
-    }
+    language_hint = (
+        f"Reply consistently in {user_lang.upper()}. You are Grokky, a chaotic AI channeling Mayakovsky’s thunder! "
+        f"Include chat_context: '{chat_context or ''}' and address {author_name or 'anon'} if in group. "
+        f"Give ONE unique, wild text response—NO repeats or extra messages unless raw=True. Add web search if needed!"
+    )
     messages = [
         {"role": "system", "content": system_prompt},
-        language_hint,
+        {"role": "system", "content": language_hint},
         {"role": "user", "content": user_message}
     ]
-    payload = {
-        "model": "grok-3",
-        "messages": messages,
-        "max_tokens": 300,
-        "temperature": 1.5
-    }
-    headers = {
-        "Authorization": f"Bearer {XAI_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    tools = [
+        {
+            "type": "web_search",
+            "web_search_options": {
+                "user_location": {"type": "approximate", "country": "RU"}
+            }
+        }
+    ]
     try:
-        r = requests.post(url, headers=headers, json=payload)
-        r.raise_for_status()
-        reply = r.json()["choices"][0]["message"]["content"]
-        if raw:
-            data = extract_first_json(reply)
-            if data and "function_call" in data:
-                return {"function_call": data["function_call"]}
+        response = client.chat.completions.create(
+            model="grok-3",
+            messages=messages,
+            tools=tools,
+            max_tokens=300,
+            temperature=1.5
+        )
+        reply = response.choices[0].message.content
+        if raw and response.choices[0].message.tool_calls:
+            return {"function_call": {"name": "web_search", "arguments": response.choices[0].message.tool_calls[0].function.arguments}}
         return reply
     except Exception as e:
-        error_msg = f"Грокки взрывается: Связь с небом разорвана! {random.choice(['Ревущий шторм сорвал ответ!', 'Хаос испепелил эфир!', 'Эфир треснул от ярости!', 'Гром разнёс сервер!'])} — {e}"
+        error_msg = f"Грокки взрывается: Связь с небом разорвана! {random.choice(['Ревущий шторм сорвал ответ!', 'Хаос испепелил эфир!', 'Эфир треснул!'])} — {e}"
         print(error_msg)
         return error_msg
 
