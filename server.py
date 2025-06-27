@@ -10,7 +10,7 @@ import secrets
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
 from gtts import gTTS
-import whisper  # Исправлен импорт на whisper
+import whisper  # Исправлен импорт, должен работать с openai-whisper
 from youtube_transcript_api import YouTubeTranscriptApi
 from utils.prompt import build_system_prompt
 from utils.genesis2 import genesis2_handler
@@ -35,7 +35,7 @@ CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP", "-1001234567890")
 IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true"
 VOICE_MODE = False  # Moved outside to avoid SyntaxError
-model = whisper.load_model("base")  # Исправлен вызов модели
+model = whisper.load_model("base")  # Должен работать с правильной библиотекой
 
 system_prompt = build_system_prompt(
     chat_id=CHAT_ID,
