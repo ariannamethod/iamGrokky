@@ -25,7 +25,7 @@ from utils.file_handling import extract_text_from_file_async
 from utils.text_helpers import extract_text_from_url, delayed_link_comment
 from utils.grok_utils import query_grok, detect_language
 from utils.limit_paragraphs import limit_paragraphs
-from utils.telegram_utils import send_telegram_message  # Используем новый модуль
+from utils.telegram_utils import send_telegram_message
 
 app = FastAPI()
 
