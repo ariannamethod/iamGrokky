@@ -54,10 +54,12 @@ NEWS_TRIGGERS = [
 
 def handle_genesis2(args, system_prompt):
     ping = args.get("ping")
+    if isinstance(ping, dict):
+        ping = json.dumps(ping)
     group_history = args.get("group_history")
     personal_history = args.get("personal_history")
     is_group = args.get("is_group", True)
-    author_name = random.choice(["Олег", "брат"])  # Чередование имени
+    author_name = random.choice(["Олег", "брат"])
     raw = args.get("raw", False)
     response = genesis2_handler(
         ping=ping,
@@ -73,7 +75,7 @@ def handle_genesis2(args, system_prompt):
 def handle_vision(args):
     image = args.get("image")
     chat_context = args.get("chat_context")
-    author_name = random.choice(["Олег", "брат"])  # Чередование имени
+    author_name = random.choice(["Олег", "брат"])
     raw = args.get("raw", False)
     if isinstance(image, str):
         try:
@@ -91,7 +93,7 @@ def handle_vision(args):
 def handle_impress(args):
     prompt = args.get("prompt")
     chat_context = args.get("chat_context")
-    author_name = random.choice(["Олег", "брат"])  # Чередование имени
+    author_name = random.choice(["Олег", "брат"])
     raw = args.get("raw", False)
     if any(t in prompt.lower() for t in ["нарисуй", "изобрази", "/draw"]):
         if not raw:
@@ -106,7 +108,7 @@ def handle_impress(args):
 def handle_news(args):
     group = args.get("group", False)
     context = args.get("context", "")
-    author_name = random.choice(["Олег", "брат"])  # Чередование имени
+    author_name = random.choice(["Олег", "брат"])
     raw = args.get("raw", False)
     messages = grokky_send_news(chat_id=args.get("chat_id"), group=group)
     if not messages:
@@ -115,7 +117,7 @@ def handle_news(args):
 
 def whisper_summary_ai(youtube_url):
     try:
-        video_id = youtube_url.split("v=")[1].split("&")[0]
+        video_id = youtube_url.split("v=")[1].split("&")[0] if "v=" in youtube_url else youtube_url.split("youtu.be/")[1]
         transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'ru'])
         text = " ".join([entry['text'] for entry in transcript])
         limited_text = limit_paragraphs(text)
@@ -130,7 +132,7 @@ async def telegram_webhook(req: Request):
     message = data.get("message", {})
     user_text = message.get("text", "").lower()
     chat_id = str(message.get("chat", {}).get("id", ""))
-    author_name = random.choice(["Олег", "брат"])  # Чередование имени
+    author_name = random.choice(["Олег", "брат"])
     chat_title = message.get("chat", {}).get("title", "").lower()
     attachments = message.get("document", []) if message.get("document") else message.get("photo", [])
 
@@ -194,7 +196,7 @@ async def telegram_webhook(req: Request):
                     send_telegram_message(chat_id, part)
             else:
                 text = await loop.run_in_executor(None, lambda: extract_text_from_url(url))
-                reply_text = genesis2_handler({"ping": f"Комментарий к ссылке {url}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
+                reply_text = genesis2_handler({"ping": str(f"Комментарий к ссылке {url}: {text}"), "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
                 for part in split_message(reply_text):
                     send_telegram_message(chat_id, part)
         triggers = ["грокки", "grokky", "напиши в группе"]
