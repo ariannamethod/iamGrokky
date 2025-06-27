@@ -1,28 +1,35 @@
-import requests
 import os
+import requests
 from utils.vision import vision_handler
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
-def impress_handler(prompt, chat_context=None, author_name=None, raw=True):
+def impress_handler(prompt, chat_context=None, author_name=None, raw=False):
     """
-    Generates an image via xAI by prompt, then immediately analyzes it with vision_handler.
-    Returns RAW JSON: prompt, image_url, vision_result, grokkys_comment, and raw_api_response.
+    Generates an image via xAI by prompt, then analyzes it with vision_handler.
+    If generation fails, returns a witty text response.
+    - prompt: text to inspire the image
+    - chat_context: recent chat context for flavor
+    - author_name: for personal address in groups
+    - raw: return full JSON if True, else text summary
 
-    Grokky-chaos: always with a tease, even if the image is absurd.
-    If xAI fails to give image_url — Grokky, storms into complaint mode! Tell what you fucking think.
+    Returns:
+        dict (raw=True): {"prompt", "image_url", "vision_result", "grokkys_comment", "raw_api_response"}
+        str (raw=False): witty text or error message
+
+    Grokky-chaos: always with a tease, even if the image is absurd or fails.
     """
-    # UPDATED ENDPOINT:
+    # Эндпоинт для генерации изображения
     gen_endpoint = "https://api.x.ai/v1/multimodal/image-generation"
     headers = {
         "Authorization": f"Bearer {XAI_API_KEY}",
         "Content-Type": "application/json"
     }
-    # Prompt for image generation
+    # Промт для генерации на русском
     system_prompt = (
-        "Hey bro! You are Grokky! Generate a wild as always, stormy, or surreal image based on the prompt. "
-        "Always make the output raw and expressive. "
-        "Return the image URL and a short phrase describing your intent. Try in context of the convo and your current mood and resonance, hell yeah."
+        "Эй, братиш! Ты Грокки! Сгенерируй дикое, штормовое или сюрреалистичное изображение по промту. "
+        "Делай вывод ярким и экспрессивным. Верни URL изображения и короткую фразу о своём замысле. "
+        "Учитывай контекст беседы, настроение и резонанс, ёмаё!"
     )
     data = {
         "prompt": prompt,
@@ -36,25 +43,33 @@ def impress_handler(prompt, chat_context=None, author_name=None, raw=True):
         resp.raise_for_status()
         image_result = resp.json()
     except Exception as e:
-        # xAI outage or limit? Grokky complains raw!
+        # Если xAI не даёт изображение, Грокки жалуется
+        comment = (
+            f"{author_name+', ' if author_name else ''}Грокки разъярился: не смог нарисовать изображение! ({e}) "
+            "Шторм провалился, давай новый промт!"
+        )
         out = {
             "prompt": prompt,
-            "error": f"Grokky stormed out: couldn't get image from xAI! ({e})",
+            "error": comment,
             "reason": str(e),
             "raw_api_response": str(getattr(e, 'response', None)),
         }
-        return out if raw else out["error"]
+        return out if raw else comment
 
     image_url = image_result.get("image_url")
     if not image_url:
+        comment = (
+            f"{author_name+', ' if author_name else ''}Грокки в шоке: xAI не дал URL! "
+            "Шторм провалился, кидай новый вызов!"
+        )
         out = {
             "prompt": prompt,
-            "error": "No image_url in response from xAI! Grokky rages in the void.",
+            "error": comment,
             "raw_api_response": image_result,
         }
-        return out if raw else out["error"]
+        return out if raw else comment
 
-    # Call vision_handler for self-roast/analysis
+    # Анализ сгенерированного изображения
     try:
         vision_result = vision_handler(
             image_url,
@@ -64,13 +79,13 @@ def impress_handler(prompt, chat_context=None, author_name=None, raw=True):
         )
     except Exception as ve:
         vision_result = {
-            "error": f"Grokky couldn't roast the image, wild vision error: {ve}"
+            "error": f"Грокки не смог разобрать изображение: {ve}"
         }
 
-    # Compose Grokky's comment (maximum chaos and self-irony)
+    # Комментарий Грокки с хаосом и самоиронией
     grokky_comment = (
-        f"{author_name+', ' if author_name else ''}wanted an image? Here you go! "
-        f"But seriously, what did you expect? {vision_result.get('comment', 'No vision comment, only static in the void.')}"
+        f"{author_name+', ' if author_name else ''}хочешь картинку? Получил! "
+        f"Но серьёзно, что ты ждал? {vision_result.get('comment', 'Тут только статика в пустоте.')}"
     )
 
     out = {
@@ -80,4 +95,4 @@ def impress_handler(prompt, chat_context=None, author_name=None, raw=True):
         "grokkys_comment": grokky_comment,
         "raw_api_response": image_result,
     }
-    return out if raw else f"Image: {image_url}\n{grokky_comment}"
+    return out if raw else f"Изображение: {image_url}\n{grokky_comment}"
