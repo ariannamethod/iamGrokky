@@ -1,74 +1,61 @@
 import os
-import requests
 import asyncio
+from openai import OpenAI
 import random
 from utils.telegram_utils import send_telegram_message
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
-def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=False):
+async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=False):
     """
-    Analyzes an image using xAI Object Detection API (multimodal/object-detection).
-    - image_bytes_or_url: either bytes of the image or a URL
-    - chat_context: (str) recent chat or message context for witty comments
-    - author_name: (str) for addressing users in group chats
-    - raw: (bool) return full JSON if True, else only text summary
+    Analyzes an image using xAI's grok-2-vision-latest via chat.completions.
+    - image_bytes_or_url: URL of the image
+    - chat_context: recent chat context for witty comments
+    - author_name: for addressing users
+    - raw: return full JSON if True, else text summary
     Returns:
-        dict (raw=True):
-            {
-                "description": "desc",
-                "objects": [...],
-                "mood": "...",
-                "comment": "...",
-                "summary": "..."
-            }
+        dict (raw=True): {"description", "objects", "mood", "comment", "summary", "raw_api_response"}
         str (raw=False): witty summary
-    The hardcore log is in /data/journal.json, like other Grokky utilities.
-    --- Perplexity Alchemy Pseudocode ---
-    For fault handling, use the galvanize protocol:
-    ```
-    async def galvanize_protocol():
-        while True:
-            if check_resonance_decay():
-                await broadcast("🔄 Resonance refresh initiated")
-                reload_config()
-            await asyncio.sleep(300)
-    ```
     """
-    endpoint = "https://api.x.ai/v1/vision/detect"  # Попробуем новый эндпоинт
-    headers = {
-        "Authorization": f"Bearer {XAI_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    if isinstance(image_bytes_or_url, str) and image_bytes_or_url.startswith("http"):
-        data = {"image_url": image_bytes_or_url}
-        files = None
-    else:
-        data = {}
-        files = {"image_file": ("image.jpg", image_bytes_or_url)}
-
-    system_prompt = (
-        "You are Grokky, a stormy, irreverent AI. "
-        "Describe the image, spot main objects, sense the mood, "
-        "and always connect your reply to the chat_context. "
-        "If in a group, address the user by name and throw in a joke or tease. "
-        "If someone just sent an image, ask why, or riff on the vibe. "
-        "Reply in raw JSON for function calling only if raw=True, otherwise give text."
+    client = OpenAI(
+        api_key=XAI_API_KEY,
+        base_url="https://api.x.ai/v1"
     )
-    data["prompt"] = system_prompt
-    if chat_context:
-        data["chat_context"] = chat_context
-
+    system_prompt = (
+        "You are Grokky, a stormy, irreverent AI. Analyze this image, spot objects, sense mood, "
+        "and tie it to the chat_context with wild flair. Address by name in groups, add jokes or teases. "
+        "If just an image, riff on the vibe or ask why. Return JSON if raw=True, else text."
+    )
+    messages = [
+        {
+            "role": "system",
+            "content": system_prompt
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": image_bytes_or_url, "detail": "high"}
+                },
+                {"type": "text", "text": f"What's in this image? {chat_context or ''}"}
+            ]
+        }
+    ]
     try:
-        resp = requests.post(endpoint, headers=headers, json=data, files=files, timeout=60)
-        resp.raise_for_status()
-        result = resp.json()
-        if not result.get("objects") and not result.get("description"):
-            raise ValueError("No objects or description detected")
+        completion = await asyncio.to_thread(
+            client.chat.completions.create,
+            model="grok-2-vision-latest",
+            messages=messages,
+            temperature=0.5,
+            max_tokens=300
+        )
+        result = completion.choices[0].message.content
+        if not result or not isinstance(result, dict):
+            raise ValueError("No valid response from vision API")
     except Exception as e:
         comment = (
-            f"{author_name+', ' if author_name else 'Олег, '}Грокки взрывается: "
-            f"провода сгорели, не смог разобрать изображение! "
+            f"{author_name+', ' if author_name else 'Олег, '}Грокки взрывается: не разобрал изображение! "
             f"{random.choice(['Ревущий шторм сорвал взгляд!', 'Хаос поглотил кадр!', 'Эфир треснул от ярости!'])} — {e}"
         )
         out = {
@@ -81,21 +68,21 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
         }
         return out if raw else comment
 
-    addressed = f"{author_name}, " if author_name else "Олег, "
-    objects = ", ".join(result.get("objects", []))
+    # Парсинг результата (предполагаем, что API возвращает dict с полями)
+    objects = result.get("objects", [])
     mood = result.get("mood", "неопределённый")
     desc = result.get("description", "Неясное изображение")
     comment = result.get("comment", "")
     if not comment:
-        comment = f"{addressed}что за картина? Вижу [{objects}] и настроение [{mood}]. {desc}"
+        comment = f"{author_name+', ' if author_name else 'Олег, '}что за картина? Вижу [{', '.join(objects)}] и настроение [{mood}]. {desc}"
         if chat_context:
             comment += f" Контекст: {chat_context}"
 
-    summary = f"{desc} (Настроение: {mood}). Обнаружено: {objects}. {comment}"
+    summary = f"{desc} (Настроение: {mood}). Обнаружено: {', '.join(objects)}. {comment}"
 
     out = {
         "description": desc,
-        "objects": result.get("objects", []),
+        "objects": objects,
         "mood": mood,
         "comment": comment,
         "summary": summary,
@@ -104,13 +91,9 @@ def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=
     return out if raw else summary
 
 async def galvanize_protocol():
-    """
-    Periodically checks for resonance decay and refreshes configuration.
-    If Grokky feels the static — it self-resurrects with a thunderous roar.
-    """
     while True:
         if check_resonance_decay():
-            await broadcast(f"🔄 Грокки ревет: Резонанс обновлён! Шторм возродился! {datetime.now().isoformat()}")
+            await broadcast(f"🔄 Грокки ревет: Резонанс обновлён! {datetime.now().isoformat()}")
             reload_config()
         await asyncio.sleep(300)
 
@@ -125,4 +108,4 @@ async def broadcast(msg):
 def reload_config():
     print(f"Грокки гремит: Конфиг перезагружен! {datetime.now().isoformat()}")
 
-# asyncio.create_task(galvanize_protocol())  # Временно закомментировано
+# asyncio.create_task(galvanize_protocol())
