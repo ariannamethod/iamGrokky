@@ -7,13 +7,14 @@ import requests
 from pinecone import Pinecone, PineconeException
 import openai
 from datetime import datetime, timedelta
+from utils.telegram_utils import send_telegram_message  # Добавлен импорт
 
 VECTOR_META_PATH = "vector_store.meta.json"
 EMBED_DIM = 1536  # Для OpenAI ada-002
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX = os.getenv("PINECONE_INDEX")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-SNAPSHOT_LOG_PATH = "data/snapshot_log.json"  # Для отслеживания спонтанных снимков
+SNAPSHOT_LOG_PATH = "data/snapshot_log.json"
 
 pc = Pinecone(api_key=PINECONE_API_KEY)
 if PINECONE_INDEX not in [x["name"] for x in pc.list_indexes()]:
@@ -123,7 +124,7 @@ async def vectorize_all_files(openai_api_key, force=False, send_message=None):
     save_vector_meta(current)
     if send_message:
         await send_message(
-            f"Векторизация завершена. Добавлено/изменено: {', '.join(changed + new) if changed or new else '-'};"
+            f"Векторизация завершена. Добавлено/изменено: {', '.join(changed + new) if changed or new else '-';}"
             f" удалено: {', '.join(removed) if removed else '-'}"
         )
     return {"upserted": upserted_ids, "deleted": deleted_ids}
