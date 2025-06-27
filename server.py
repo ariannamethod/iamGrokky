@@ -55,7 +55,7 @@ NEWS_TRIGGERS = [
 def handle_genesis2(args, system_prompt):
     ping = args.get("ping")
     if isinstance(ping, dict):
-        ping = json.dumps(ping)
+        ping = json.dumps(ping)  # Гарантируем строку
     group_history = args.get("group_history")
     personal_history = args.get("personal_history")
     is_group = args.get("is_group", True)
@@ -148,11 +148,11 @@ async def telegram_webhook(req: Request):
                         f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}"
                     ).json()
                     image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
-                    reply_text = handle_vision({"image": image_url, "chat_context": user_text or "", "author_name": author_name, "raw": False})
+                    reply_text = await handle_vision({"image": image_url, "chat_context": user_text or "", "author_name": author_name, "raw": False})
                     for part in split_message(reply_text):
                         send_telegram_message(chat_id, part)
                     if "видишь ли ты картинку" in user_text:
-                        reply_text = handle_impress({"prompt": "Оцени изображение", "chat_context": user_text, "author_name": author_name, "raw": False})
+                        reply_text = await handle_impress({"prompt": "Оцени изображение", "chat_context": user_text, "author_name": author_name, "raw": False})
                         for part in split_message(reply_text):
                             send_telegram_message(chat_id, part)
                 else:
@@ -195,7 +195,7 @@ async def telegram_webhook(req: Request):
                 for part in split_message(reply_text):
                     send_telegram_message(chat_id, part)
             else:
-                text = await loop.run_in_executor(None, lambda: extract_text_from_url(url))
+                text = await extract_text_from_url(url)
                 reply_text = genesis2_handler({"ping": str(f"Комментарий к ссылке {url}: {text}"), "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
                 for part in split_message(reply_text):
                     send_telegram_message(chat_id, part)
