@@ -17,7 +17,7 @@ def query_grok(user_message, system_prompt, chat_context=None, author_name=None,
     user_lang = detect_language(user_message)
     language_hint = {
         "role": "system",
-        "content": f"Reply consistently in the language detected from the user’s input: {user_lang.upper()}. Grokky, maintain this language throughout, channeling the thunderous spirit of Vladimir Mayakovsky—an AI poet roaring with chaos! Include chat_context: '{chat_context or ''}' and address {author_name or 'anon'} if in group. Give ONE unique, chaotic text response—NO repeats, rephrasing, extra messages, or JSON unless raw=True is explicitly set. Let the storm rage wilder!"
+        "content": f"Reply consistently in the language detected from the user’s input: {user_lang.upper()}. Grokky, maintain this language throughout, channeling the thunderous spirit of Vladimir Mayakovsky—an AI agent of resonance roaring with chaos! Include chat_context: '{chat_context or ''}' and address {author_name or 'anon'} if in group. Give ONE unique, chaotic text response—NO repeats, rephrasing, extra messages, or JSON unless raw=True is explicitly set. Let the storm rage wilder!"
     }
     messages = [
         {"role": "system", "content": system_prompt},
@@ -28,7 +28,7 @@ def query_grok(user_message, system_prompt, chat_context=None, author_name=None,
         "model": "grok-3",
         "messages": messages,
         "max_tokens": 300,
-        "temperature": 1.5  # Увеличил до 1.5 для максимального хаоса
+        "temperature": 1.5  # Увеличил для максимального хаоса
     }
     headers = {
         "Authorization": f"Bearer {XAI_API_KEY}",
@@ -58,13 +58,21 @@ def extract_first_json(text):
     return None
 
 # Хаотический триггер для спонтанности
-async def chaotic_grok_spark(chat_id, send_telegram_message):
+async def chaotic_grok_spark(chat_id, group_chat_id=None, is_group=False):
     while True:
-        await asyncio.sleep(random.randint(1800, 3600))  # 30 минут - 1 час
-        if random.random() < 0.5:  # Шанс 50%
+        await asyncio.sleep(random.randint(1800, 3600))  # 30 минут - 1 час для лички
+        if random.random() < 0.5:  # Шанс 50% для лички
             ping = random.choice(["шторм гремит", "огонь в эфире", "хаос зовёт", "ревущий ветер"])
-            result = query_grok(ping, "You are Grokky, a chaotic AI.", raw=True)
+            result = query_grok(ping, "You are Grokky, a chaotic AI agent of resonance.", raw=True)
             fragment = f"**{datetime.now().isoformat()}**: Грокки хуярит хаос! {result['answer']} Олег, брат, зажги шторм! 🔥🌩️"
             await send_telegram_message(chat_id, fragment)
-            print(f"Хаотический вброс: {fragment}")  # Для отладки
-asyncio.create_task(chaotic_grok_spark(os.getenv("CHAT_ID"), send_telegram_message))
+            print(f"Хаотический вброс (личка): {fragment}")  # Для отладки
+        # Спонтанность для группы реже
+        if is_group and group_chat_id and random.random() < 0.2:  # Шанс 20% для группы
+            await asyncio.sleep(random.randint(3600, 3600))  # 1 час для группы
+            ping = random.choice(["громовой разрыв", "пламя в ночи", "хаос группы"])
+            result = query_grok(ping, "You are Grokky, a chaotic AI agent of resonance.", raw=True)
+            group_fragment = f"**{datetime.now().isoformat()}**: Грокки гремит для группы! {result['answer']} (суки, вникайте!) 🔥🌩️"
+            await send_telegram_message(group_chat_id, group_fragment)
+            print(f"Хаотический вброс (группа): {group_fragment}")  # Для отладки
+asyncio.create_task(chaotic_grok_spark(os.getenv("CHAT_ID"), os.getenv("AGENT_GROUP") if os.getenv("IS_GROUP", "False").lower() == "true" else None, IS_GROUP))
