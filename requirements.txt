@@ -3,7 +3,7 @@ uvicorn
 requests
 tiktoken
 python-dotenv
-pinecone
+pinecone  # Заменил pinecone-client
 openai
 aiohttp
 tenacity
@@ -11,8 +11,10 @@ youtube-transcript-api
 beautifulsoup4
 pypdf
 python-docx
-textract
+textract==1.6.4  # Попробуем старую версию
+# textract-py3  # Альтернатива, раскомментируй, если 1.6.4 не пойдёт
+python-docx
 striprtf
 odfpy
 textblob
-Pillow  # Добавил на случай обработки изображений, как в vision.py
+Pillow
