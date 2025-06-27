@@ -21,7 +21,7 @@ from utils.journal import log_event, wilderness_log
 from utils.x import grokky_send_news
 from utils.deepseek_spotify import grokky_spotify_response
 from utils.file_handling import extract_text_from_file_async
-from utils.text_helpers import extract_text_from_url, delayed_link_comment
+from utils.text_helpers import extract_text_from_url
 from utils.grok_utils import query_grok, detect_language
 from utils.limit_paragraphs import limit_paragraphs
 from utils.telegram_utils import send_telegram_message
@@ -57,7 +57,7 @@ def handle_genesis2(args, system_prompt):
     group_history = args.get("group_history")
     personal_history = args.get("personal_history")
     is_group = args.get("is_group", True)
-    author_name = "Олег"  # Фиксируем имя как Олег всегда
+    author_name = random.choice(["Олег", "брат"])  # Чередование имени
     raw = args.get("raw", False)
     response = genesis2_handler(
         ping=ping,
@@ -73,41 +73,44 @@ def handle_genesis2(args, system_prompt):
 def handle_vision(args):
     image = args.get("image")
     chat_context = args.get("chat_context")
-    author_name = "Олег"  # Фиксируем имя как Олег всегда
+    author_name = random.choice(["Олег", "брат"])  # Чередование имени
     raw = args.get("raw", False)
     if isinstance(image, str):
-        response = vision_handler(
-            image_bytes_or_url=image,
-            chat_context=chat_context,
-            author_name=author_name,
-            raw=raw
-        )
-        return response.get("summary", "Олег, хаос видения!") if not raw and isinstance(response, dict) else response
-    return "Олег, что-то пошло не так с изображением!"
+        try:
+            response = vision_handler(
+                image_bytes_or_url=image,
+                chat_context=chat_context,
+                author_name=author_name,
+                raw=raw
+            )
+            return response.get("summary", f"{author_name}, хаос видения!") if not raw and isinstance(response, dict) else response
+        except Exception as e:
+            return f"{author_name}, Грокки взорвался: {e}"
+    return f"{author_name}, что-то пошло не так с изображением!"
 
 def handle_impress(args):
     prompt = args.get("prompt")
     chat_context = args.get("chat_context")
-    author_name = "Олег"  # Фиксируем имя как Олег всегда
+    author_name = random.choice(["Олег", "брат"])  # Чередование имени
     raw = args.get("raw", False)
     if any(t in prompt.lower() for t in ["нарисуй", "изобрази", "/draw"]):
         if not raw:
-            return f"Олег, хочу нарисовать что-то дикое! Подтверди (да/нет)?"
+            return f"{author_name}, хочу нарисовать что-то дикое! Подтверди (да/нет)?"
         response = impress_handler(prompt=prompt, chat_context=chat_context, author_name=author_name, raw=raw)
         if isinstance(response, dict) and "image_url" in response:
-            send_telegram_message(chat_id, f"Олег, держи шторм! {response['image_url']}\n{response['grokkys_comment']}")
+            send_telegram_message(chat_id, f"{author_name}, держи шторм! {response['image_url']}\n{response['grokkys_comment']}")
             return response['grokkys_comment']
-        return response.get("grokkys_comment", "Олег, шторм изображений!") if not raw else response
-    return response.get("grokkys_comment", "Олег, шторм изображений!") if not raw else response
+        return response.get("grokkys_comment", f"{author_name}, шторм изображений!") if not raw else response
+    return response.get("grokkys_comment", f"{author_name}, шторм изображений!") if not raw else response
 
 def handle_news(args):
     group = args.get("group", False)
     context = args.get("context", "")
-    author_name = "Олег"  # Фиксируем имя как Олег всегда
+    author_name = random.choice(["Олег", "брат"])  # Чередование имени
     raw = args.get("raw", False)
     messages = grokky_send_news(chat_id=args.get("chat_id"), group=group)
     if not messages:
-        return "Олег, в мире тишина, нет новостей для бури."
+        return f"{author_name}, в мире тишина, нет новостей для бури."
     return "\n\n".join(messages) if not raw else json.dumps({"news": messages, "group": group, "author": author_name}, ensure_ascii=False, indent=2)
 
 def whisper_summary_ai(youtube_url):
@@ -117,9 +120,9 @@ def whisper_summary_ai(youtube_url):
         text = " ".join([entry['text'] for entry in transcript])
         limited_text = limit_paragraphs(text)
         summary = query_grok(limited_text, system_prompt, raw=True)
-        return f"Олег, сводка: {summary}"
+        return f"{random.choice(['Олег', 'брат'])}, сводка: {summary}"
     except Exception as e:
-        return f"Олег, ошибка сводки: {e}"
+        return f"{random.choice(['Олег', 'брат'])}, ошибка сводки: {e}"
 
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
@@ -127,7 +130,7 @@ async def telegram_webhook(req: Request):
     message = data.get("message", {})
     user_text = message.get("text", "").lower()
     chat_id = str(message.get("chat", {}).get("id", ""))
-    author_name = "Олег"  # Фиксируем имя как Олег всегда
+    author_name = random.choice(["Олег", "брат"])  # Чередование имени
     chat_title = message.get("chat", {}).get("title", "").lower()
     attachments = message.get("document", []) if message.get("document") else message.get("photo", [])
 
@@ -178,18 +181,19 @@ async def telegram_webhook(req: Request):
         spotify_match = re.search(r"https://open\.spotify\.com/track/([a-zA-Z0-9]+)", user_text)
         if url_match:
             url = url_match.group(0)
+            loop = asyncio.get_event_loop()
             if youtube_match:
-                reply_text = whisper_summary_ai(url)
+                reply_text = await loop.run_in_executor(None, lambda: whisper_summary_ai(url))
                 for part in split_message(reply_text):
                     send_telegram_message(chat_id, part)
             elif spotify_match:
                 track_id = spotify_match.group(1)
                 asyncio.create_task(grokky_spotify_response(track_id))
-                reply_text = f"Олег, слушаю трек {track_id}, ща разберусь!"
+                reply_text = f"{author_name}, слушаю трек {track_id}, ща разберусь!"
                 for part in split_message(reply_text):
                     send_telegram_message(chat_id, part)
             else:
-                text = await extract_text_from_url(url)
+                text = await loop.run_in_executor(None, lambda: extract_text_from_url(url))
                 reply_text = genesis2_handler({"ping": f"Комментарий к ссылке {url}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
                 for part in split_message(reply_text):
                     send_telegram_message(chat_id, part)
@@ -204,9 +208,9 @@ async def telegram_webhook(req: Request):
             context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
             news = grokky_send_news(chat_id=chat_id, group=(chat_id == AGENT_GROUP))
             if news:
-                reply_text = f"Олег, держи свежий раскат грома!\n\n" + "\n\n".join(news)
+                reply_text = f"{author_name}, держи свежий раскат грома!\n\n" + "\n\n".join(news)
             else:
-                reply_text = "Олег, тишина в мире, нет новостей для бури."
+                reply_text = f"{author_name}, тишина в мире, нет новостей для бури."
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
         else:
@@ -222,7 +226,7 @@ async def telegram_webhook(req: Request):
                 for part in split_message(supplement):
                     send_telegram_message(chat_id, part)
     else:
-        reply_text = "Олег, Грокки молчит, нет слов для бури."
+        reply_text = f"{author_name}, Грокки молчит, нет слов для бури."
         send_telegram_message(chat_id, reply_text)
 
     return {"ok": True}
