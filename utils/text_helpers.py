@@ -8,14 +8,10 @@ import random
 from utils.journal import wilderness_log
 from utils.telegram_utils import send_telegram_message
 
-def fuzzy_match(a, b):
-    """Return similarity ratio between two strings."""
-    return difflib.SequenceMatcher(None, a, b).ratio()
-
 async def delayed_link_comment(url, chat_id):
     await asyncio.sleep(random.randint(300, 900))  # 5-15 минут
-    if random.random() < 0.3:  # Шанс 30%
-        context = await extract_text_from_url(url)[:200]  # Берем кусочек контекста
+    if random.random() < 0.3:
+        context = (await extract_text_from_url(url))[:200]
         opinion = random.choice([
             f"Уо, бро, вспомнил ту ссылку про {context}! Хаос там ревет, как шторм над Москвой! 🔥🌩️",
             f"Эй, брат, та ссылка с {context} — искры в эфире! Давай жги дальше! 🌌🔥",
@@ -28,7 +24,7 @@ async def delayed_link_comment(url, chat_id):
 
 async def extract_text_from_url(url):
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: _extract_text_from_url_sync(url))
+    return await loop.run_in_executor(None, _extract_text_from_url_sync, url)
 
 def _extract_text_from_url_sync(url):
     MAX_TEXT_SIZE = int(os.getenv("MAX_TEXT_SIZE", 3500))
