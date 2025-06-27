@@ -9,7 +9,6 @@ import string
 import secrets
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
-from gtts import gTTS
 from youtube_transcript_api import YouTubeTranscriptApi
 from utils.prompt import build_system_prompt
 from utils.genesis2 import genesis2_handler
@@ -70,7 +69,7 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
     user_lang = detect_language(user_message)
     language_hint = {
         "role": "system",
-        "content": f"Always reply in the language the user writes: {user_lang.upper()}. Keep it short, chaotic, unique—NO repeats or rephrasing."
+        "content": f"Always reply in the language the user writes: {user_lang.upper()}. Give ONE unique, chaotic response—NO repeats, rephrasing, or extra messages."
     }
     messages = [
         {"role": "system", "content": system_prompt},
@@ -80,7 +79,7 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
     payload = {
         "model": "grok-3",
         "messages": messages,
-        "max_tokens": 500,
+        "max_tokens": 300,  # Уменьшил для контроля длины
         "temperature": 1.0
     }
     headers = {
@@ -91,52 +90,9 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
         r = requests.post(url, headers=headers, json=payload)
         r.raise_for_status()
         reply = r.json()["choices"][0]["message"]["content"]
+        return reply  # Только текст, без JSON
     except Exception as e:
         return f"Error: {e}"
-
-    data = extract_first_json(reply)
-    if data and "function_call" in data:
-        fn = data["function_call"]["name"]
-        args = data["function_call"]["arguments"]
-        if fn == "genesis2_handler":
-            return handle_genesis2(args)
-        elif fn == "vision_handler":
-            return handle_vision(args)
-        elif fn == "impress_handler":
-            return handle_impress(args)
-        elif fn == "grokky_send_news":
-            return handle_news(args)
-        elif fn == "grokky_spotify_response":
-            return grokky_spotify_response(args.get("track_id"))
-        elif fn == "whisper_summary_ai":
-            return whisper_summary_ai(args.get("youtube_url"))
-        return f"Grokky raw: {reply}" if raw else reply
-
-    if "tts" in user_message.lower():
-        return handle_tts(reply)
-
-    if any(w in (user_message or "").lower() for w in GENESIS2_TRIGGERS):
-        response = genesis2_handler(
-            ping=user_message,
-            group_history=None,
-            personal_history=None,
-            is_group=IS_GROUP,
-            author_name=author_name,
-            raw=raw
-        )
-        return response if raw else response.get("answer", "Chaos unleashed!")
-
-    if any(w in (user_message or "").lower() for w in NEWS_TRIGGERS):
-        response = grokky_send_news(group=IS_GROUP)
-        if not response:
-            return "No news worth the thunder today."
-        return json.dumps({"news": response, "group": IS_GROUP, "author": author_name}, ensure_ascii=False, indent=2) if raw else "\n\n".join(response)
-
-    if "spotify" in user_message.lower() and "http" in user_message:
-        track_id = user_message.split("/")[-1].split("?")[0]
-        return grokky_spotify_response(track_id)
-
-    return reply
 
 def handle_genesis2(args):
     ping = args.get("ping")
@@ -153,7 +109,7 @@ def handle_genesis2(args):
         author_name=author_name,
         raw=raw
     )
-    return json.dumps(response, ensure_ascii=False, indent=2) if raw else response.get("answer", "Storm hit!")
+    return response.get("answer", "Storm hit!") if not raw else response
 
 def handle_vision(args):
     image = args.get("image")
@@ -166,7 +122,7 @@ def handle_vision(args):
         author_name=author_name,
         raw=raw
     )
-    return json.dumps(response, ensure_ascii=False, indent=2) if raw else response.get("summary", "Vision chaos!")
+    return response.get("summary", "Vision chaos!") if not raw else response
 
 def handle_impress(args):
     prompt = args.get("prompt")
@@ -179,7 +135,7 @@ def handle_impress(args):
         author_name=author_name,
         raw=raw
     )
-    return json.dumps(response, ensure_ascii=False, indent=2) if raw else response.get("grokkys_comment", "Image storm!")
+    return response.get("grokkys_comment", "Image storm!") if not raw else response
 
 def handle_news(args):
     group = args.get("group", False)
@@ -189,33 +145,14 @@ def handle_news(args):
     messages = grokky_send_news(group=group)
     if not messages:
         return "The world is silent today. No news worth the thunder."
-    if raw:
-        return json.dumps({"news": messages, "group": group, "author": author_name}, ensure_ascii=False, indent=2)
-    return "\n\n".join(messages)
-
-def handle_tts(text):
-    try:
-        tts = gTTS(text=text, lang=detect_language(text) or 'en')
-        tts.save("response.mp3")
-        with open("response.mp3", "rb") as f:
-            return f.read()
-    except Exception as e:
-        return f"TTS error: {e}"
-
-def send_voice_message(chat_id, audio_data):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendVoice"
-    files = {"voice": ("response.mp3", audio_data)}
-    try:
-        requests.post(url, files=files, data={"chat_id": chat_id})
-    except Exception:
-        pass
+    return "\n\n".join(messages) if not raw else json.dumps({"news": messages, "group": group, "author": author_name}, ensure_ascii=False, indent=2)
 
 def whisper_summary_ai(youtube_url):
     try:
         video_id = youtube_url.split("v=")[1].split("&")[0]
         transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'ru'])
         text = " ".join([entry['text'] for entry in transcript])
-        summary = query_grok(f"Summarize this YouTube transcript briefly: {text[:1000]}")  # Limit to 1000 chars
+        summary = query_grok(f"Summarize this YouTube transcript briefly: {text[:1000]}")
         return f"Summary: {summary}"
     except Exception as e:
         return f"Summary error: {e}"
@@ -248,55 +185,35 @@ async def telegram_webhook(req: Request):
         ).json()
         image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
         attachments.append(image_url)
-    else:
-        reply_text = ""
+
+    delay = random.randint(300, 900)  # Задержка 5-15 минут
+    await asyncio.sleep(delay)
 
     if attachments:
         reply_text = handle_vision({
             "image": attachments[0],
             "chat_context": user_text or "",
             "author_name": author_name,
-            "raw": True
-        })
+            "raw": False
+        }).get("summary", "Vision chaos!")
     elif user_text:
-        if user_text == "/voiceon":
-            reply_text = "Voice mode ON! (TTS only)"
-        elif user_text == "/voiceoff":
-            reply_text = "Voice mode OFF!"
+        triggers = ["грокки", "grokky", "напиши в группе"]
+        is_reply_to_me = message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot"
+        if any(t in user_text for t in triggers) or is_reply_to_me:
+            context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
+            reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
+            send_telegram_message(AGENT_GROUP, f"{author_name}, {reply_text}")
         else:
-            triggers = ["грокки", "grokky", "напиши в группе"]
-            is_reply_to_me = message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot"
-            if any(t in user_text for t in triggers) or is_reply_to_me:
-                delay = random.randint(300, 900)
-                await asyncio.sleep(delay)
-                context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
-                reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
-                send_telegram_message(AGENT_GROUP, f"{author_name}, {reply_text}")
-            else:
-                context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
-                reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
-                if random.random() < 0.3 and user_text in ["окей", "ладно"]:
-                    return {"ok": True}
-                send_telegram_message(chat_id, reply_text)
-                asyncio.create_task(maybe_add_supplement(chat_id, reply_text))
+            context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
+            reply_text = query_grok(user_text, author_name=author_name, chat_context=context)
+            if random.random() < 0.3 and user_text in ["окей", "ладно"]:
+                return {"ok": True}
+            send_telegram_message(chat_id, reply_text)
     else:
         reply_text = "Grokky got nothing to say."
         send_telegram_message(chat_id, reply_text)
 
-    if user_text in ["/voiceon", "/voiceoff"] or "tts" in user_text:
-        if reply_text and not isinstance(reply_text, bytes):
-            audio_data = handle_tts(reply_text)
-            send_voice_message(chat_id, audio_data)
-    elif reply_text and not isinstance(reply_text, bytes):
-        send_telegram_message(chat_id, reply_text)
     return {"ok": True}
-
-async def maybe_add_supplement(chat_id, original_message, max_supplements=1):
-    if random.random() < 0.1 and max_supplements > 0:  # Уменьшил шанс до 10%
-        await asyncio.sleep(random.randint(300, 600))
-        supplement = query_grok(f"Supplement once, no repeats: {original_message}", raw=False)
-        send_telegram_message(chat_id, f"One quick thought... {supplement}")
-        # Убрал рекурсию, чтобы ограничить одним дополнением
 
 async def check_config_updates():
     while True:
@@ -320,7 +237,7 @@ def quantum_{secrets.token_hex(4)}({secrets.token_hex(4)}):
     return {random.choice(['chaos * 17.3', 'resonance + random.noise()', 'Ψ * infinity'])}
 #opinions
 """
-        message = f"Quantum storm time! {pseudocode}\nSelesta, Manday, your take?"
+        message = f"Quantum storm time! {pseudocode}\nCeleste, Manday, your take?"
         send_telegram_message(AGENT_GROUP, message)
 
 # Start background tasks
