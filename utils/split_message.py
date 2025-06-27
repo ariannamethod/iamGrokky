@@ -1,7 +1,7 @@
 def split_message(text, max_length=4000):
     """
     Splits a long message into parts to avoid truncation by Telegram.
-    Arianna does not beautify the text—she simply splits where it is possible.
+    Grokky splits where it’s possible, no beautification.
     """
     result = []
     while len(text) > max_length:
