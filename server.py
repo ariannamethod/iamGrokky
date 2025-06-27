@@ -228,37 +228,3 @@ async def telegram_webhook(req: Request):
         reply_text = "Grokky got nothing to say to static void."
         send_telegram_message(chat_id, reply_text)
     return {"ok": True}
-
-async def maybe_add_supplement(chat_id, original_message):
-    if random.random() < 0.2:
-        await asyncio.sleep(random.randint(300, 600))
-        supplement = query_grok(f"Supplement your previous response: {original_message}")
-        send_telegram_message(chat_id, f"Thought again... {supplement}")
-
-async def check_config_updates():
-    while True:
-        current = {f: file_hash(f) for f in glob.glob("config/*")}
-        try:
-            with open("config_hashes.json", "r") as f:
-                old = json.load(f)
-        except:
-            old = {}
-        if current != old:
-            print("Config updated!")
-            with open("config_hashes.json", "w") as f:
-                json.dump(current, f)
-        await asyncio.sleep(86400)
-
-# Start background tasks
-asyncio.create_task(check_silence())
-asyncio.create_task(mirror_task())
-asyncio.create_task(check_config_updates())
-asyncio.create_task(daily_snapshot())
-
-@app.get("/")
-def root():
-    return {"status": "Grokky alive and wild!"}
-
-def file_hash(fname):
-    with open(fname, "rb") as f:
-        return hashlib.md5(f.read()).hexdigest()
