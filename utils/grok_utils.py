@@ -5,6 +5,7 @@ import requests
 from datetime import datetime
 import random
 import asyncio
+from utils.telegram_utils import send_telegram_message  # Добавлен импорт
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
