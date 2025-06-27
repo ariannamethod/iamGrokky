@@ -84,16 +84,8 @@ def query_grok(message, context=None):
     payload = {
         "model": "grok-3",
         "messages": messages,
-        "max_tokens": 2048,
+        "max_tokens": 500,
         "temperature": 1.0
     }
     headers = {
         "Authorization": f"Bearer {os.getenv('XAI_API_KEY')}",
-        "Content-Type": "application/json"
-    }
-    try:
-        r = requests.post(url, headers=headers, json=payload)
-        r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"]
-    except Exception as e:
-        return f"Error: {e}"
