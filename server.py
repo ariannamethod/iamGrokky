@@ -65,7 +65,7 @@ def query_grok(user_message, chat_context=None, author_name=None, attachments=No
     user_lang = detect_language(user_message)
     language_hint = {
         "role": "system",
-        "content": f"Always reply strictly in the language the user writes: {user_lang.upper()}. Give ONE unique, chaotic text response—NO repeats, rephrasing, extra messages, or JSON unless raw=True is explicitly set. Все сообщения проходят через Genesis2 для резонанса, кроме ссылок."
+        "content": f"Reply consistently in the language detected from the user’s input: {user_lang.upper()}. Maintain this language throughout the response without switching. Give ONE unique, chaotic text response—NO repeats, rephrasing, extra messages, or JSON unless raw=True is explicitly set. Все сообщения проходят через Genesis2 для резонанса, кроме ссылок."
     }
     messages = [
         {"role": "system", "content": system_prompt},
