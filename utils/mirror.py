@@ -16,7 +16,7 @@ def query_grok(message):
     payload = {
         "model": "grok-3",
         "messages": messages,
-        "max_tokens": 2048,
+        "max_tokens": 500,
         "temperature": 1.0
     }
     headers = {
