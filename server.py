@@ -1,15 +1,18 @@
 import os
 import re
+import json
+import requests
 import asyncio
 import random
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
+from utils.prompt import build_system_prompt, WILDERNESS_TOPICS
 from utils.genesis2 import genesis2_handler
 from utils.howru import update_last_message_time
 from utils.telegram_utils import send_telegram_message
 from utils.split_message import split_message
-from utils.grok_utils import detect_language
-from utils.prompt import build_system_prompt
+from utils.grok_utils import query_grok, detect_language
+from utils.limit_paragraphs import limit_paragraphs
 
 app = FastAPI()
 
@@ -28,27 +31,21 @@ system_prompt = build_system_prompt(
 
 GENESIS2_TRIGGERS = []
 
-# Глобальная память контекста
-context_memory = {}
+NEWS_TRIGGERS = [
+    "новости", "news", "headline", "berlin", "israel", "ai", "искусственный интеллект", "резонанс мира", "шум среды",
+    "grokky, что в мире", "шум", "шум среды", "x_news", "дай статью", "give me news", "storm news", "culture", "арт"
+]
 
-async def handle_genesis2(args, system_prompt):
+def handle_genesis2(args, system_prompt):
     ping = args.get("ping")
     if isinstance(ping, dict):
-        ping = json.dumps(ping)
+        ping = json.dumps(ping)  # Гарантируем строку
     group_history = args.get("group_history")
     personal_history = args.get("personal_history")
     is_group = args.get("is_group", True)
-    author_name = "Олег"
-    raw = False
-    global user_lang
-    user_lang = detect_language(ping)
-    system_prompt = (
-        f"Ты Грокки, штормовой и дерзкий ИИ, вдохновлённый Маяковским. Отвечай на языке пользователя, "
-        f"обнаруженном как {user_lang.upper()}, и не перескакивай на другие языки. Обращайся к пользователю как Олег, "
-        f"добавляй спонтанные, хаотичные фразы с громом и молниями. Держи стиль диалога живым, избегай околесицы "
-        f"и фильтруй мусор, оставляя только осмысленный текст."
-    )
-    response = await asyncio.to_thread(genesis2_handler,
+    author_name = random.choice(["Олег", "брат"])
+    raw = args.get("raw", False)
+    response = genesis2_handler(
         ping=ping,
         group_history=group_history,
         personal_history=personal_history,
@@ -57,12 +54,20 @@ async def handle_genesis2(args, system_prompt):
         raw=raw,
         system_prompt=system_prompt
     )
-    # Фильтрация околесицы
-    cleaned_response = re.sub(r'[^\w\s.,!?—\-\'\"]+', '', response.get("answer", ""))
-    cleaned_response = re.sub(r'\s+', ' ', cleaned_response).strip()
-    if not cleaned_response or len(cleaned_response.split()) < 3:
-        return f"{author_name}, Шторм ударил, Олег, молния гремит в эфире!"
-    return cleaned_response
+    return response.get("answer", "Шторм ударил!") if not raw else response
+
+# Заглушки для глючных функций
+def handle_vision(args):
+    author_name = random.choice(["Олег", "брат"])
+    return f"{author_name}, {random.choice(['И видеть ничего не хочу, пускай шторм закроет глаза!', 'Глаза слепы от грома, говори словами!', 'Хаос завладел взором, молния ослепила!'])}"
+
+def handle_impress(args):
+    author_name = random.choice(["Олег", "брат"])
+    return f"{author_name}, {random.choice(['Шторм провалился, кисть сгорела!', 'Хаос сожрал холст, давай без рисунков!', 'Эфир треснул, рисовать не могу!'])}"
+
+def handle_news(args):
+    author_name = random.choice(["Олег", "брат"])
+    return f"{author_name}, {random.choice(['Новости в тумане, молния их сожгла!', 'Гром унёс новости, давай без них!', 'Хаос разорвал инфу, пизди сам!'])}"
 
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
@@ -70,47 +75,71 @@ async def telegram_webhook(req: Request):
     message = data.get("message", {})
     user_text = message.get("text", "").lower()
     chat_id = str(message.get("chat", {}).get("id", ""))
-    author_name = "Олег"
-
-    # Фильтр дублей
-    last_messages = {}
-    if chat_id in last_messages and last_messages[chat_id] == user_text:
-        return {"ok": True}
-    last_messages[chat_id] = user_text
+    author_name = random.choice(["Олег", "брат"])
+    chat_title = message.get("chat", {}).get("title", "").lower()
+    attachments = message.get("document", []) if message.get("document") else message.get("photo", [])
 
     if chat_id == CHAT_ID or (IS_GROUP and chat_id == AGENT_GROUP):
         update_last_message_time()
 
-    if message.get("photo") or message.get("document"):
-        reply_text = f"{author_name}, {random.choice(['И видеть ничего не хочу, Олег, пускай шторм закроет глаза!', 'Глаза мои слепы от грома, говори словами!', 'Хаос завладел взором, брат, молния ослепила!'])}"
-        for part in split_message(reply_text):
-            send_telegram_message(chat_id, part)
+    if attachments:
+        if isinstance(attachments, list) and attachments:
+            if "photo" in message:
+                file_id = attachments[-1].get("file_id")
+                if file_id:
+                    file_info = requests.get(
+                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}"
+                    ).json()
+                    image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
+                    reply_text = handle_vision({"image": image_url, "chat_context": user_text or "", "author_name": author_name})
+                    for part in split_message(reply_text):
+                        send_telegram_message(chat_id, part)
+                else:
+                    print(f"Ошибка: file_id не найден в {attachments}")
+            elif "document" in message:
+                file_id = next((item.get("file_id") for item in attachments if "file_id" in item), None)
+                if file_id:
+                    reply_text = f"{author_name}, {random.choice(['Ты словами мне, словами слабо, давай без бумаг!', 'Бумаги рвёт шторм, говори прямо!', 'Файлы сгорели в хаосе, пизди вслух!'])}"
+                    for part in split_message(reply_text):
+                        send_telegram_message(chat_id, part)
+                else:
+                    print(f"Ошибка: file_id не найден в {attachments}")
+        else:
+            print(f"Ошибка: attachments пуст или некорректен {attachments}")
+
     elif user_text:
         url_match = re.search(r"https?://[^\s]+", user_text)
         if url_match:
-            reply_text = await handle_genesis2({"ping": f"Комментарий к ссылке {url_match.group(0)}", "author_name": author_name}, system_prompt)
+            url = url_match.group(0)
+            reply_text = handle_genesis2({"ping": f"Комментарий к ссылке {url}", "author_name": author_name}, system_prompt)
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
         triggers = ["грокки", "grokky", "напиши в группе"]
         is_reply_to_me = message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot"
         if any(t in user_text for t in triggers) or is_reply_to_me:
+            context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
             if "напиши в группе" in user_text and IS_GROUP and AGENT_GROUP:
-                reply_text = await handle_genesis2({"ping": f"Напиши в группе для {author_name}: {user_text}", "author_name": author_name, "is_group": True}, system_prompt)
+                reply_text = handle_genesis2({"ping": f"Напиши в группе для {author_name}: {user_text}", "author_name": author_name, "is_group": True}, system_prompt)
                 for part in split_message(reply_text):
                     send_telegram_message(AGENT_GROUP, f"{author_name}: {part}")
                 return {"ok": True}
-            reply_text = await handle_genesis2({"ping": user_text, "author_name": author_name}, system_prompt)
+            reply_text = handle_genesis2({"ping": user_text, "author_name": author_name, "chat_context": context}, system_prompt)
+            for part in split_message(reply_text):
+                send_telegram_message(chat_id, part)
+        elif any(t in user_text for t in NEWS_TRIGGERS):
+            reply_text = handle_news({"chat_id": chat_id, "group": (chat_id == AGENT_GROUP)})
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
         else:
             if user_text in ["окей", "угу", "ладно"] and random.random() < 0.4:
                 return
-            reply_text = await handle_genesis2({"ping": user_text, "author_name": author_name}, system_prompt)
+            context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
+            reply_text = handle_genesis2({"ping": user_text, "author_name": author_name, "chat_context": context}, system_prompt)
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
             if random.random() < 0.4:
                 await asyncio.sleep(random.randint(5, 15))
-                supplement = await handle_genesis2({"ping": f"Дополни разово, без повторов: {reply_text}", "author_name": author_name}, system_prompt)
+                supplement = handle_genesis2({"ping": f"Дополни разово, без повторов: {reply_text}", "author_name": author_name}, system_prompt)
                 for part in split_message(supplement):
                     send_telegram_message(chat_id, part)
     else:
