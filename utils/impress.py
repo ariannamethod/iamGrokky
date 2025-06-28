@@ -9,7 +9,7 @@ XAI_API_KEY = os.getenv("XAI_API_KEY")
 BASE_URL = "https://api.x.ai/v1"
 
 async def impress_handler(prompt, chat_context=None, author_name=None, raw=False):
-    url = f"{BASE_URL}/images/generations"  # Исправлен эндпоинт
+    url = f"{BASE_URL}/images/generations"
     headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
     system_prompt = (
         "Эй, братиш! Ты Грокки! Сгенерируй дикое, штормовое или сюрреалистичное изображение по промту. "
