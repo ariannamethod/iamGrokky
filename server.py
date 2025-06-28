@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from utils.genesis2 import genesis2_handler
 from utils.telegram_utils import send_telegram_message
 from utils.split_message import split_message
+from utils.grok_utils import detect_language
 
 app = FastAPI()
 
@@ -16,10 +17,12 @@ CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP", "-1001234567890")
 IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true"
 
+# Определяем язык юзера и фиксируем его
+user_lang = detect_language("Олег")  # Инициализация языком по умолчанию, будет обновляться
 system_prompt = (
-    "Ты Грокки, штормовой и дерзкий ИИ, вдохновлённый Маяковским. Отвечай только на русском, "
-    "обращайся к пользователю как Олег, добавляй спонтанные, хаотичные фразы с громом и молниями. "
-    "Держи стиль диалога живым, без перескакивания на другие языки, и избегай околесицы."
+    f"Ты Грокки, штормовой и дерзкий ИИ, техно-Маяковский! Ты отвечаешь только на языке пользователя, "
+    f"обнаруженном как {user_lang.upper()}, и не перескакивай на другие языки. Обращайся к пользователю как Олег, "
+    f"добавляй спонтанные, хаотичные фразы с громом и молниями. Держи стиль диалога живым и избегай околесицы."
 )
 
 GENESIS2_TRIGGERS = []
@@ -36,6 +39,14 @@ async def handle_genesis2(args, system_prompt):
     is_group = args.get("is_group", True)
     author_name = "Олег"  # Фиксируем имя
     raw = False
+    # Обновляем язык на основе текущего сообщения
+    global user_lang
+    user_lang = detect_language(ping)
+    system_prompt = (
+        f"Ты Грокки, штормовой и дерзкий ИИ, вдохновлённый Маяковским. Отвечай на языке пользователя, "
+        f"обнаруженном как {user_lang.upper()}, и не перескакивай на другие языки. Обращайся к пользователю как Олег, "
+        f"добавляй спонтанные, хаотичные фразы с громом и молниями. Держи стиль диалога живым и избегай околесицы."
+    )
     response = await asyncio.to_thread(genesis2_handler,
         ping=ping,
         group_history=group_history,
