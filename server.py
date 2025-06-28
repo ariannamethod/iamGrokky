@@ -6,7 +6,6 @@ import asyncio
 import random
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
-from youtube_transcript_api import YouTubeTranscriptApi
 from utils.prompt import build_system_prompt, WILDERNESS_TOPICS
 from utils.genesis2 import genesis2_handler
 from utils.vision import vision_handler
@@ -26,7 +25,7 @@ from utils.split_message import split_message
 app = FastAPI()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Только OpenAI
+XAI_API_KEY = os.getenv("XAI_API_KEY")  # Основной xAI
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
@@ -109,20 +108,6 @@ def handle_news(args):
         return f"{author_name}, в мире тишина, нет новостей для бури."
     return "\n\n".join(messages)
 
-def whisper_summary_ai(youtube_url):
-    try:
-        video_id = youtube_url.split("v=")[1].split("&")[0] if "v=" in youtube_url else youtube_url.split("youtu.be/")[1]
-        try:
-            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'ru'])
-            text = " ".join([entry['text'] for entry in transcript])
-        except Exception:
-            text = "Транскрипта нет, брат, но я могу поискать!"
-        limited_text = limit_paragraphs(text)
-        summary = query_grok(limited_text, system_prompt, raw=False)
-        return f"{random.choice(['Олег', 'брат'])}, сводка: {summary}"
-    except Exception as e:
-        return f"{random.choice(['Олег', 'брат'])}, ошибка сводки: {e}"
-
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
     data = await req.json()
@@ -132,6 +117,12 @@ async def telegram_webhook(req: Request):
     author_name = random.choice(["Олег", "брат"])
     chat_title = message.get("chat", {}).get("title", "").lower()
     attachments = message.get("document", []) if message.get("document") else message.get("photo", [])
+
+    # Фильтр дублей
+    last_messages = {}
+    if chat_id in last_messages and last_messages[chat_id] == user_text:
+        return {"ok": True}
+    last_messages[chat_id] = user_text
 
     if chat_id == CHAT_ID or (IS_GROUP and chat_id == AGENT_GROUP):
         update_last_message_time()
@@ -176,26 +167,19 @@ async def telegram_webhook(req: Request):
 
     elif user_text:
         url_match = re.search(r"https?://[^\s]+", user_text)
-        youtube_match = re.search(r"(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([\w-]+)", user_text)
         spotify_match = re.search(r"https://open\.spotify\.com/track/([a-zA-Z0-9]+)", user_text)
         if url_match:
             url = url_match.group(0)
-            loop = asyncio.get_event_loop()
-            if youtube_match:
-                reply_text = await loop.run_in_executor(None, lambda: whisper_summary_ai(url))
-                for part in split_message(reply_text):
-                    send_telegram_message(chat_id, part)
-            elif spotify_match:
-                track_id = spotify_match.group(1)
-                asyncio.create_task(grokky_spotify_response(track_id))
-                reply_text = f"{author_name}, слушаю трек, ща разберусь!"
-                for part in split_message(reply_text):
-                    send_telegram_message(chat_id, part)
-            else:
-                text = await extract_text_from_url(url)
-                reply_text = genesis2_handler({"ping": f"Комментарий к ссылке {url}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
-                for part in split_message(reply_text):
-                    send_telegram_message(chat_id, part)
+            text = await extract_text_from_url(url)
+            reply_text = genesis2_handler({"ping": f"Комментарий к ссылке {url}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
+            for part in split_message(reply_text):
+                send_telegram_message(chat_id, part)
+        elif spotify_match:
+            track_id = spotify_match.group(1)
+            asyncio.create_task(grokky_spotify_response(track_id))
+            reply_text = f"{author_name}, слушаю трек, ща разберусь!"
+            for part in split_message(reply_text):
+                send_telegram_message(chat_id, part)
         triggers = ["грокки", "grokky", "напиши в группе"]
         is_reply_to_me = message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot"
         if any(t in user_text for t in triggers) or is_reply_to_me:
