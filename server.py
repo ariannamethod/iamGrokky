@@ -9,14 +9,9 @@ from fastapi import FastAPI, Request
 import aiohttp
 from utils.prompt import build_system_prompt, WILDERNESS_TOPICS
 from utils.genesis2 import genesis2_handler
-# from utils.vision import vision_handler
-# from utils.impress import impress_handler
 from utils.howru import update_last_message_time
 from utils.vector_store import daily_snapshot, spontaneous_snapshot
 from utils.journal import log_event, wilderness_log
-from utils.x import grokky_send_news
-from utils.deepseek_spotify import grokky_spotify_response
-from utils.file_handling import extract_text_from_file_async
 from utils.text_helpers import extract_text_from_url
 from utils.grok_utils import query_grok, detect_language
 from utils.limit_paragraphs import limit_paragraphs
@@ -70,62 +65,12 @@ async def handle_genesis2(args, system_prompt):
     return response.get("answer", "Шторм ударил!")
 
 async def handle_vision(args):
-    image = args.get("image")
-    chat_context = args.get("chat_context")
     author_name = random.choice(["Олег", "брат"])
-    raw = False
-    if isinstance(image, str):
-        try:
-            response = await vision_handler(
-                image_bytes_or_url=image,
-                chat_context=chat_context,
-                author_name=author_name,
-                raw=raw
-            )
-            context_memory[author_name] = {"type": "image", "content": response}
-            return response
-        except Exception as e:
-            return f"{author_name}, Грокки взорвался: {random.choice(['И видеть ничего не хочу, брат, пускай шторм закроет глаза!', 'Глаза мои слепы от грома, покажи словами!', 'Хаос завладел взором, брат, молния ослепила!'])} — {e}"
-    return f"{author_name}, что-то пошло не так с изображением!"
+    return f"{author_name}, {random.choice(['И видеть ничего не хочу, брат, пускай шторм закроет глаза!', 'Глаза мои слепы от грома, покажи словами!', 'Хаос завладел взором, брат, молния ослепила!'])}"
 
 async def handle_impress(args):
-    prompt = args.get("prompt")
-    chat_context = args.get("chat_context")
     author_name = random.choice(["Олег", "брат"])
-    raw = False
-    if any(t in prompt.lower() for t in ["нарисуй", "изобрази", "/draw", "нарисуй мне", "draw me"]):
-        if not raw:
-            return f"{author_name}, хочу нарисовать что-то дикое! Подтверди (да/нет)?"
-        try:
-            response = await impress_handler(prompt=prompt, chat_context=chat_context, author_name=author_name, raw=raw)
-            if isinstance(response, dict) and "image_url" in response:
-                send_telegram_message(chat_id, f"{author_name}, держи шторм! {response['image_url']}\n{response['grokkys_comment']}")
-                context_memory[author_name] = {"type": "image", "content": response["image_url"]}
-                return response['grokkys_comment']
-            return response.get("grokkys_comment", f"{author_name}, шторм изображений!")
-        except Exception as e:
-            return f"{author_name}, Грокки разъярился: {random.choice(['Шторм провалился, брат, кисть сгорела!', 'Хаос сожрал холст, давай без рисунков!', 'Эфир треснул, рисовать не могу!'])} — {e}"
-    return response.get("grokkys_comment", f"{author_name}, шторм изображений!") if not raw else response
-
-async def handle_news(args):
-    group = args.get("group", False)
-    context = args.get("context", "")
-    author_name = random.choice(["Олег", "брат"])
-    raw = False
-    messages = await asyncio.to_thread(grokky_send_news, chat_id=args.get("chat_id"), group=group)
-    if not messages:
-        return f"{author_name}, в мире тишина, нет новостей для бури."
-    unique_news = []
-    seen_titles = set()
-    seen_content = set()
-    for msg in messages:
-        title = msg.split('\n', 1)[0]
-        content = msg
-        if title not in seen_titles and content not in seen_content:
-            unique_news.append(msg)
-            seen_titles.add(title)
-            seen_content.add(content)
-    return "\n\n".join(unique_news)
+    return f"{author_name}, {random.choice(['Шторм провалился, брат, кисть сгорела!', 'Хаос сожрал холст, давай без рисунков!', 'Эфир треснул, рисовать не могу!'])}"
 
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
@@ -149,37 +94,13 @@ async def telegram_webhook(req: Request):
     if attachments:
         if isinstance(attachments, list) and attachments:
             if "photo" in message:
-                file_id = attachments[-1].get("file_id")
-                if file_id:
-                    file_info = requests.get(
-                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}"
-                    ).json()
-                    image_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
-                    reply_text = await handle_vision({"image": image_url, "chat_context": user_text or "", "author_name": author_name, "raw": False})
-                    for part in split_message(reply_text):
-                        send_telegram_message(chat_id, part)
-                    if "видишь ли ты картинку" in user_text:
-                        reply_text = await handle_impress({"prompt": "Оцени изображение", "chat_context": user_text, "author_name": author_name, "raw": False})
-                        for part in split_message(reply_text):
-                            send_telegram_message(chat_id, part)
-                else:
-                    print(f"Ошибка: file_id не найден в {attachments}")
+                reply_text = await handle_vision({"image": "", "chat_context": user_text or "", "author_name": author_name, "raw": False})
+                for part in split_message(reply_text):
+                    send_telegram_message(chat_id, part)
             elif "document" in message:
-                file_id = next((item.get("file_id") for item in attachments if "file_id" in item), None)
-                if file_id:
-                    file_info = requests.get(
-                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}"
-                    ).json()
-                    file_url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info['result']['file_path']}"
-                    file_path = f"/tmp/{next((item.get('file_name', 'unknown') for item in attachments if 'file_name' in item), 'unknown')}"
-                    response = requests.get(file_url)
-                    with open(file_path, "wb") as f:
-                        f.write(response.content)
-                    reply_text = f"{author_name}, ты словами мне, словами слабо, давай без этой писанины! {random.choice(['Бумаги рвёт шторм, говори прямо, брат!', 'Файлы сгорели в хаосе, давай вслух!', 'Эфир сожрал текст, брат, пизди сам!'])}"
-                    for part in split_message(reply_text):
-                        send_telegram_message(chat_id, part)
-                else:
-                    print(f"Ошибка: file_id не найден в {attachments}")
+                reply_text = f"{author_name}, {random.choice(['Ты словами мне, словами слабо, давай без этой писанины!', 'Бумаги рвёт шторм, говори прямо, брат!', 'Файлы сгорели в хаосе, давай вслух!'])}"
+                for part in split_message(reply_text):
+                    send_telegram_message(chat_id, part)
         else:
             print(f"Ошибка: attachments пуст или некорректен {attachments}")
 
@@ -194,8 +115,7 @@ async def telegram_webhook(req: Request):
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
         elif spotify_match:
-            track_id = spotify_match.group(1)
-            reply_text = f"{author_name}, этот трек уже гремит в шторме, брат! {random.choice(['Ритм унёс ветер, слушай позже!', 'Хаос замял бит, подожди бурю!', 'Молния сожрала трек, дай другой!'])}"
+            reply_text = f"{author_name}, {random.choice(['Этот трек уже гремит в шторме, брат!', 'Ритм унёс ветер, слушай позже!', 'Хаос замял бит, подожди бурю!'])}"
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
         triggers = ["грокки", "grokky", "напиши в группе"]
@@ -211,20 +131,7 @@ async def telegram_webhook(req: Request):
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
         elif any(t in user_text for t in NEWS_TRIGGERS):
-            if "какие новости в мире" in user_text:
-                context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
-                news = await handle_news(args={"chat_id": chat_id, "group": False})
-                if news:
-                    reply_text = f"{author_name}, держи свежий раскат грома!\n\n{news}"
-                else:
-                    reply_text = f"{author_name}, тишина в мире, нет новостей для бури."
-            elif "что с новостями" in user_text and IS_GROUP and AGENT_GROUP:
-                reply_text = await handle_genesis2({"ping": f"Новости для группы {AGENT_GROUP} от {author_name}", "author_name": author_name, "is_group": True}, system_prompt)
-                for part in split_message(reply_text):
-                    send_telegram_message(AGENT_GROUP, f"{author_name}: {part}")
-                return {"ok": True}
-            else:
-                reply_text = await handle_genesis2({"ping": user_text, "author_name": author_name, "chat_context": context}, system_prompt)
+            reply_text = f"{author_name}, {random.choice(['Новости в тумане, брат, молния их сожгла!', 'Гром унёс новости, давай без них!', 'Хаос разорвал инфу, пизди сам!'])}"
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
         else:
