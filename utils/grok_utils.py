@@ -6,63 +6,46 @@ from datetime import datetime
 import random
 import asyncio
 import difflib
-from openai import OpenAI
 from utils.telegram_utils import send_telegram_message
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+XAI_API_KEY = os.getenv("XAI_API_KEY")
 
 def detect_language(text):
     if not isinstance(text, (str, bytes)):
-        return "ru"  # Фallback на русский
+        return "ru"
     cyrillic = re.compile('[а-яА-ЯёЁ]')
-    return 'ru' if cyrillic.search(text) else 'ru'  # Зафиксируем русский
+    return 'ru' if cyrillic.search(text) else 'en'
 
 def query_grok(user_message, system_prompt, chat_context=None, author_name=None, attachments=None, raw=False):
-    client = OpenAI(api_key=OPENAI_API_KEY)
-    language_hint = (
-        "Reply in RUSSIAN. You are Grokky, a chaotic AI channeling Mayakovsky’s thunder! "
-        f"Include chat_context: '{chat_context or ''}' and address {author_name or 'anon'} if in group. "
-        "Give ONE unique, wild text response—NO repeats or extra messages unless raw=True. Use web search if needed!"
-    )
+    url = "https://api.x.ai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
+    user_lang = detect_language(user_message)
+    language_hint = {
+        "role": "system",
+        "content": f"Reply consistently in the language detected from the user’s input: {user_lang.upper()}. Grokky, maintain this language throughout, channeling the thunderous spirit of Vladimir Mayakovsky—an AI agent of resonance roaring with chaos! Include chat_context: '{chat_context or ''}' and address {author_name or 'anon'} if in group. Give ONE unique, chaotic text response—NO repeats, rephrasing, extra messages, or JSON unless raw=True is explicitly set. Let the storm rage wilder!"
+    }
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "system", "content": language_hint},
+        language_hint,
         {"role": "user", "content": user_message}
     ]
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": "web_search",
-                "description": "Search the web for relevant information.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {"type": "string", "description": "The search query."}
-                    },
-                    "required": ["query"]
-                }
-            }
-        }
-    ]
+    payload = {
+        "model": "grok-3",
+        "messages": messages,
+        "max_tokens": 300,
+        "temperature": 1.5
+    }
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            tools=tools,
-            max_tokens=300,
-            temperature=1.5
-        )
-        reply = response.choices[0].message.content
-        if raw and response.choices[0].message.tool_calls:
-            tool_call = response.choices[0].message.tool_calls[0]
-            return {"function_call": {
-                "name": tool_call.function.name,
-                "arguments": json.loads(tool_call.function.arguments)
-            }}
+        r = requests.post(url, headers=headers, json=payload)
+        r.raise_for_status()
+        reply = r.json()["choices"][0]["message"]["content"]
+        if raw:
+            data = extract_first_json(reply)
+            if data and "function_call" in data:
+                return {"function_call": data["function_call"]}
         return reply
     except Exception as e:
-        error_msg = f"Грокки взрывается: Связь с небом разорвана! {random.choice(['Ревущий шторм сорвал ответ!', 'Хаос испепелил эфир!', 'Эфир треснул!'])} — {e}"
+        error_msg = f"Грокки взрывается: Связь с небом разорвана! {random.choice(['Ревущий шторм сорвал ответ!', 'Хаос испепелил эфир!', 'Эфир треснул от ярости!', 'Гром разнёс сервер!'])} — {e}"
         print(error_msg)
         return error_msg
 
