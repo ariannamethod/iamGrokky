@@ -5,17 +5,18 @@ import random
 from utils.telegram_utils import send_telegram_message
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
+BASE_URL = "https://api.x.ai/v1"
 
 async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=False):
-    url = "https://api.x.ai/v1/chat/completions"
+    url = f"{BASE_URL}/chat/completions"  # Исправлен эндпоинт
     headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
     system_prompt = (
-        "You are Grokky, a stormy, irreverent AI-agent. Analyze this image, spot objects, sense mood, "
+        "You are Grokky, a stormy, irreverent AI. Analyze this image, spot objects, sense mood, "
         "and tie it to the chat_context with wild flair. Address by name in groups, add jokes or teases. "
         "If just an image, riff on the vibe or ask why. Reply in JSON if raw=True, else text."
     )
     data = {
-        "model": "grok-2-vision-latest",
+        "model": "grok-3",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": [
