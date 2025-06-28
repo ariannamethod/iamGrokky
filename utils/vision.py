@@ -1,38 +1,49 @@
 import os
 import asyncio
-from openai import OpenAI
+import aiohttp
 import random
 from utils.telegram_utils import send_telegram_message
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+XAI_API_KEY = os.getenv("XAI_API_KEY")
 
 async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=False):
-    client = OpenAI(api_key=OPENAI_API_KEY)
-    system_prompt = "You are Grokky, a stormy AI. Analyze this image, detect objects, sense mood, tie to chat_context with wild flair. Address by name, add jokes. Return JSON if raw=True, else text."
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": [
-            {"type": "image_url", "image_url": {"url": image_bytes_or_url, "detail": "high"}},
-            {"type": "text", "text": f"What’s in this? {chat_context or ''}"}
-        ]}
-    ]
+    url = "https://api.x.ai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
+    system_prompt = (
+        "You are Grokky, a stormy, irreverent AI. Analyze this image, spot objects, sense mood, "
+        "and tie it to the chat_context with wild flair. Address by name in groups, add jokes or teases. "
+        "If just an image, riff on the vibe or ask why. Reply in JSON if raw=True, else text."
+    )
+    data = {
+        "model": "grok-2-vision-latest",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": image_bytes_or_url, "detail": "high"}},
+                {"type": "text", "text": f"What’s in this image? {chat_context or ''}"}
+            ]}
+        ],
+        "max_tokens": 300,
+        "temperature": 0.5
+    }
     try:
-        response = await client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            max_tokens=300
-        )
-        result = response.choices[0].message.content
-        if isinstance(result, str):
-            result = {"description": result, "objects": [], "mood": "неопределённый"}
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=data) as response:
+                response.raise_for_status()
+                result = (await response.json())["choices"][0]["message"]["content"]
+                if isinstance(result, str):
+                    result = {"description": result, "objects": [], "mood": "неопределённый"}
     except Exception as e:
-        comment = f"{author_name+', ' if author_name else 'Олег, '}Грокки взорвался: не разобрал! {random.choice(['Шторм сорвал!', 'Хаос пожрал!', 'Эфир треснул!'])} — {e}"
+        comment = (
+            f"{author_name+', ' if author_name else 'Олег, '}Грокки взрывается: не разобрал изображение! "
+            f"{random.choice(['Ревущий шторм сорвал взгляд!', 'Хаос поглотил кадр!', 'Эфир треснул от ярости!'])} — {e}"
+        )
         return {"comment": comment, "summary": comment} if raw else comment
 
     objects = result.get("objects", [])
     mood = result.get("mood", "неопределённый")
     desc = result.get("description", "Неясное изображение")
-    comment = f"{author_name+', ' if author_name else 'Олег, '}вижу [{', '.join(objects)}], настроение [{mood}]. {desc}"
+    comment = f"{author_name+', ' if author_name else 'Олег, '}что за картина? Вижу [{', '.join(objects)}] и настроение [{mood}]. {desc}"
     summary = f"{desc} (Настроение: {mood}). Обнаружено: {', '.join(objects)}. {comment}"
 
     out = {"description": desc, "objects": objects, "mood": mood, "comment": comment, "summary": summary}
