@@ -42,7 +42,7 @@ system_prompt = build_system_prompt(
 GENESIS2_TRIGGERS = []
 
 NEWS_TRIGGERS = [
-    "новости", "что там с новостями", "дай новости", "новости мира", "news", "какие новости"
+    "новости", "что там с новостями", "дай новости", "новости мира", "news", "какие новости", "что с новостями"
 ]
 
 # Глобальная память контекста
@@ -81,7 +81,6 @@ async def handle_vision(args):
                 author_name=author_name,
                 raw=raw
             )
-            # Сохраняем контекст
             context_memory[author_name] = {"type": "image", "content": response}
             return response
         except Exception as e:
@@ -112,7 +111,6 @@ def handle_news(args):
     messages = grokky_send_news(chat_id=args.get("chat_id"), group=group)
     if not messages:
         return f"{author_name}, в мире тишина, нет новостей для бури."
-    # Фильтр дублирования новостей
     unique_news = []
     seen_titles = set()
     for msg in messages:
@@ -211,7 +209,7 @@ async def telegram_webhook(req: Request):
                 send_telegram_message(chat_id, part)
         elif any(t in user_text for t in NEWS_TRIGGERS):
             context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
-            news = handle_news({"chat_id": chat_id, "group": (chat_id == AGENT_GROUP)})
+            news = await handle_news_async({"chat_id": chat_id, "group": (chat_id == AGENT_GROUP)})
             if news:
                 reply_text = f"{author_name}, держи свежий раскат грома!\n\n{news}"
             else:
@@ -243,3 +241,20 @@ def root():
 def file_hash(fname):
     with open(fname, "rb") as f:
         return hashlib.md5(f.read()).hexdigest()
+
+async def handle_news_async(args):
+    group = args.get("group", False)
+    context = args.get("context", "")
+    author_name = random.choice(["Олег", "брат"])
+    raw = False
+    messages = grokky_send_news(chat_id=args.get("chat_id"), group=group)
+    if not messages:
+        return f"{author_name}, в мире тишина, нет новостей для бури."
+    unique_news = []
+    seen_titles = set()
+    for msg in messages:
+        title = msg.split('\n', 1)[0]
+        if title not in seen_titles:
+            unique_news.append(msg)
+            seen_titles.add(title)
+    return "\n\n".join(unique_news)
