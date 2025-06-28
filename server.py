@@ -9,8 +9,8 @@ from fastapi import FastAPI, Request
 import aiohttp
 from utils.prompt import build_system_prompt, WILDERNESS_TOPICS
 from utils.genesis2 import genesis2_handler
-from utils.vision import vision_handler
-from utils.impress import impress_handler
+# from utils.vision import vision_handler
+# from utils.impress import impress_handler
 from utils.howru import update_last_message_time
 from utils.vector_store import daily_snapshot, spontaneous_snapshot
 from utils.journal import log_event, wilderness_log
@@ -43,7 +43,7 @@ system_prompt = build_system_prompt(
 GENESIS2_TRIGGERS = []
 
 NEWS_TRIGGERS = [
-    "новости", "что там с новостями", "дай новости", "новости мира", "news", "какие новости"
+    "новости", "что там с новостями", "дай новости", "новости мира", "news", "какие новости", "что с новостями"
 ]
 
 # Глобальная память контекста
@@ -85,7 +85,7 @@ async def handle_vision(args):
             context_memory[author_name] = {"type": "image", "content": response}
             return response
         except Exception as e:
-            return f"{author_name}, Грокки взорвался: {e}"
+            return f"{author_name}, Грокки взорвался: {random.choice(['И видеть ничего не хочу, брат, пускай шторм закроет глаза!', 'Глаза мои слепы от грома, покажи словами!', 'Хаос завладел взором, брат, молния ослепила!'])} — {e}"
     return f"{author_name}, что-то пошло не так с изображением!"
 
 async def handle_impress(args):
@@ -96,12 +96,15 @@ async def handle_impress(args):
     if any(t in prompt.lower() for t in ["нарисуй", "изобрази", "/draw", "нарисуй мне", "draw me"]):
         if not raw:
             return f"{author_name}, хочу нарисовать что-то дикое! Подтверди (да/нет)?"
-        response = await impress_handler(prompt=prompt, chat_context=chat_context, author_name=author_name, raw=raw)
-        if isinstance(response, dict) and "image_url" in response:
-            send_telegram_message(chat_id, f"{author_name}, держи шторм! {response['image_url']}\n{response['grokkys_comment']}")
-            context_memory[author_name] = {"type": "image", "content": response["image_url"]}
-            return response['grokkys_comment']
-        return response.get("grokkys_comment", f"{author_name}, шторм изображений!")
+        try:
+            response = await impress_handler(prompt=prompt, chat_context=chat_context, author_name=author_name, raw=raw)
+            if isinstance(response, dict) and "image_url" in response:
+                send_telegram_message(chat_id, f"{author_name}, держи шторм! {response['image_url']}\n{response['grokkys_comment']}")
+                context_memory[author_name] = {"type": "image", "content": response["image_url"]}
+                return response['grokkys_comment']
+            return response.get("grokkys_comment", f"{author_name}, шторм изображений!")
+        except Exception as e:
+            return f"{author_name}, Грокки разъярился: {random.choice(['Шторм провалился, брат, кисть сгорела!', 'Хаос сожрал холст, давай без рисунков!', 'Эфир треснул, рисовать не могу!'])} — {e}"
     return response.get("grokkys_comment", f"{author_name}, шторм изображений!") if not raw else response
 
 async def handle_news(args):
@@ -114,7 +117,7 @@ async def handle_news(args):
         return f"{author_name}, в мире тишина, нет новостей для бури."
     unique_news = []
     seen_titles = set()
-    seen_content = set()  # Дополнительный фильтр по контенту
+    seen_content = set()
     for msg in messages:
         title = msg.split('\n', 1)[0]
         content = msg
@@ -172,9 +175,7 @@ async def telegram_webhook(req: Request):
                     response = requests.get(file_url)
                     with open(file_path, "wb") as f:
                         f.write(response.content)
-                    text = await extract_text_from_file_async(file_path)
-                    context_memory[author_name] = {"type": "file", "content": text}
-                    reply_text = await handle_genesis2({"ping": f"Комментарий к файлу {os.path.basename(file_path)}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
+                    reply_text = f"{author_name}, ты словами мне, словами слабо, давай без этой писанины! {random.choice(['Бумаги рвёт шторм, говори прямо, брат!', 'Файлы сгорели в хаосе, давай вслух!', 'Эфир сожрал текст, брат, пизди сам!'])}"
                     for part in split_message(reply_text):
                         send_telegram_message(chat_id, part)
                 else:
@@ -194,11 +195,9 @@ async def telegram_webhook(req: Request):
                 send_telegram_message(chat_id, part)
         elif spotify_match:
             track_id = spotify_match.group(1)
-            asyncio.create_task(grokky_spotify_response(track_id))
-            reply_text = f"{author_name}, слушаю трек, ща разберусь!"
+            reply_text = f"{author_name}, этот трек уже гремит в шторме, брат! {random.choice(['Ритм унёс ветер, слушай позже!', 'Хаос замял бит, подожди бурю!', 'Молния сожрала трек, дай другой!'])}"
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
-            context_memory[author_name] = {"type": "track", "content": track_id}
         triggers = ["грокки", "grokky", "напиши в группе"]
         is_reply_to_me = message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot"
         if any(t in user_text for t in triggers) or is_reply_to_me:
