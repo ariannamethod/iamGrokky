@@ -25,7 +25,7 @@ from utils.split_message import split_message
 app = FastAPI()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-XAI_API_KEY = os.getenv("XAI_API_KEY")  # Основной xAI
+XAI_API_KEY = os.getenv("XAI_API_KEY")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
@@ -44,6 +44,9 @@ GENESIS2_TRIGGERS = []
 NEWS_TRIGGERS = [
     "новости", "что там с новостями", "дай новости", "новости мира", "news", "какие новости"
 ]
+
+# Глобальная память контекста
+context_memory = {}
 
 def handle_genesis2(args, system_prompt):
     ping = args.get("ping")
@@ -72,12 +75,15 @@ def handle_vision(args):
     raw = False
     if isinstance(image, str):
         try:
-            response = asyncio.run(vision_handler(
+            loop = asyncio.get_event_loop()
+            response = await loop.run_until_complete(vision_handler(
                 image_bytes_or_url=image,
                 chat_context=chat_context,
                 author_name=author_name,
                 raw=raw
             ))
+            # Сохраняем контекст
+            context_memory[author_name] = {"type": "image", "content": response}
             return response
         except Exception as e:
             return f"{author_name}, Грокки взорвался: {e}"
@@ -91,9 +97,11 @@ def handle_impress(args):
     if any(t in prompt.lower() for t in ["нарисуй", "изобрази", "/draw", "нарисуй мне", "draw me"]):
         if not raw:
             return f"{author_name}, хочу нарисовать что-то дикое! Подтверди (да/нет)?"
-        response = asyncio.run(impress_handler(prompt=prompt, chat_context=chat_context, author_name=author_name, raw=raw))
+        loop = asyncio.get_event_loop()
+        response = await loop.run_until_complete(impress_handler(prompt=prompt, chat_context=chat_context, author_name=author_name, raw=raw))
         if isinstance(response, dict) and "image_url" in response:
             send_telegram_message(chat_id, f"{author_name}, держи шторм! {response['image_url']}\n{response['grokkys_comment']}")
+            context_memory[author_name] = {"type": "image", "content": response["image_url"]}
             return response['grokkys_comment']
         return response.get("grokkys_comment", f"{author_name}, шторм изображений!")
     return response.get("grokkys_comment", f"{author_name}, шторм изображений!") if not raw else response
@@ -106,7 +114,15 @@ def handle_news(args):
     messages = grokky_send_news(chat_id=args.get("chat_id"), group=group)
     if not messages:
         return f"{author_name}, в мире тишина, нет новостей для бури."
-    return "\n\n".join(messages)
+    # Фильтр дублирования новостей
+    unique_news = []
+    seen_titles = set()
+    for msg in messages:
+        title = msg.split('\n', 1)[0]
+        if title not in seen_titles:
+            unique_news.append(msg)
+            seen_titles.add(title)
+    return "\n\n".join(unique_news)
 
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
@@ -157,6 +173,7 @@ async def telegram_webhook(req: Request):
                     with open(file_path, "wb") as f:
                         f.write(response.content)
                     text = await extract_text_from_file_async(file_path)
+                    context_memory[author_name] = {"type": "file", "content": text}
                     reply_text = genesis2_handler({"ping": f"Комментарий к файлу {os.path.basename(file_path)}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
                     for part in split_message(reply_text):
                         send_telegram_message(chat_id, part)
@@ -171,6 +188,7 @@ async def telegram_webhook(req: Request):
         if url_match:
             url = url_match.group(0)
             text = await extract_text_from_url(url)
+            context_memory[author_name] = {"type": "link", "content": text}
             reply_text = genesis2_handler({"ping": f"Комментарий к ссылке {url}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
@@ -180,18 +198,24 @@ async def telegram_webhook(req: Request):
             reply_text = f"{author_name}, слушаю трек, ща разберусь!"
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
+            context_memory[author_name] = {"type": "track", "content": track_id}
         triggers = ["грокки", "grokky", "напиши в группе"]
         is_reply_to_me = message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot"
         if any(t in user_text for t in triggers) or is_reply_to_me:
             context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
+            if "напиши в группе" in user_text and IS_GROUP and AGENT_GROUP:
+                reply_text = query_grok(f"Напиши в группе для {author_name}: {user_text}", system_prompt, author_name=author_name, chat_context=context)
+                for part in split_message(reply_text):
+                    send_telegram_message(AGENT_GROUP, f"{author_name}: {part}")
+                return {"ok": True}
             reply_text = query_grok(user_text, system_prompt, author_name=author_name, chat_context=context)
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
         elif any(t in user_text for t in NEWS_TRIGGERS):
             context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
-            news = grokky_send_news(chat_id=chat_id, group=(chat_id == AGENT_GROUP))
+            news = handle_news({"chat_id": chat_id, "group": (chat_id == AGENT_GROUP)})
             if news:
-                reply_text = f"{author_name}, держи свежий раскат грома!\n\n" + "\n\n".join(news)
+                reply_text = f"{author_name}, держи свежий раскат грома!\n\n{news}"
             else:
                 reply_text = f"{author_name}, тишина в мире, нет новостей для бури."
             for part in split_message(reply_text):
