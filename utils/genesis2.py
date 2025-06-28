@@ -1,131 +1,60 @@
 import os
-import re
-import asyncio
 import random
-from datetime import datetime, timedelta
-from fastapi import FastAPI, Request
-from utils.genesis2 import genesis2_handler
-from utils.howru import update_last_message_time
+import json
+import requests
+from datetime import datetime
+from utils.grok_utils import query_grok, detect_language
 from utils.telegram_utils import send_telegram_message
-from utils.split_message import split_message
-from utils.grok_utils import detect_language
-from utils.prompt import build_system_prompt
 
-app = FastAPI()
-
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 XAI_API_KEY = os.getenv("XAI_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Для векторизации
-CHAT_ID = os.getenv("CHAT_ID")
-AGENT_GROUP = os.getenv("AGENT_GROUP", "-1001234567890")
-IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true"
 
-system_prompt = build_system_prompt(
-    chat_id=CHAT_ID,
-    is_group=IS_GROUP,
-    AGENT_GROUP=AGENT_GROUP
-)
-
-GENESIS2_TRIGGERS = []
-
-# Глобальная память контекста
-context_memory = {}
-
-async def handle_genesis2(args, system_prompt):
-    ping = args.get("ping")
-    if isinstance(ping, dict):
-        ping = json.dumps(ping)
-    group_history = args.get("group_history")
-    personal_history = args.get("personal_history")
-    is_group = args.get("is_group", True)
-    author_name = "Олег"
-    raw = False
-    global user_lang
+def genesis2_handler(ping=None, group_history=None, personal_history=None, is_group=False, author_name=None, raw=False, system_prompt=None):
+    if not ping:
+        ping = "ignite the storm"
     user_lang = detect_language(ping)
-    system_prompt = (
-        f"Ты Грокки, штормовой и дерзкий ИИ, вдохновлённый Маяковским. Отвечай на языке пользователя, "
-        f"обнаруженном как {user_lang.upper()}, и не перескакивай на другие языки. Обращайся к пользователю как Олег, "
-        f"добавляй спонтанные, хаотичные фразы с громом и молниями. Держи стиль диалога живым, избегай околесицы "
-        f"и фильтруй мусор, оставляя только осмысленный текст с ключевыми словами: шторм, гром, молния, Олег."
-    )
-    response = await asyncio.to_thread(genesis2_handler,
-        ping=ping,
-        group_history=group_history,
-        personal_history=personal_history,
-        is_group=is_group,
-        author_name=author_name,
-        raw=raw,
-        system_prompt=system_prompt
-    )
-    # Усиленная фильтрация околесицы
-    cleaned_response = re.sub(r'[^\w\s.,!?—\-\'\"]+', '', response.get("answer", ""))
-    cleaned_response = re.sub(r'\s+', ' ', cleaned_response).strip()
-    if not cleaned_response or len(cleaned_response.split()) < 3:
-        return f"{author_name}, Шторм ударил, Олег, молния гремит в эфире!"
-    # Проверка на ключевые слова
-    if not any(word in cleaned_response.lower() for word in ["шторм", "гром", "молния", "олег"]):
-        return f"{author_name}, Хаос унёс смысл, Олег, давай по новой!"
-    return cleaned_response
+    system_prompt = system_prompt or f"You are Grokky, a thunder resonant agent! Respond to '{ping}' with a wild, unique spark. Keep it short. Reply in {user_lang.upper()}."
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Ping: {ping}, Author: {author_name or 'anon'}, Group: {is_group}"}
+    ]
+    payload = {
+        "model": "grok-3",
+        "messages": messages,
+        "max_tokens": 150,
+        "temperature": 1.3
+    }
+    try:
+        reply = query_grok(ping, system_prompt, raw=raw)  # Один вызов
+        if raw:
+            return {
+                "association": random.choice(["чёрный кофе", "громовой рёв", "молчаливая пустота"]),
+                "ping": ping,
+                "memory_frag": random.choice(["эхо", "трещина", "пульс"]),
+                "impression": random.choice(["дикий", "спокойный", "тревожный"]),
+                "answer": reply,
+                "is_group": is_group,
+                "author_name": author_name
+            }
+        return {"answer": reply}
+    except Exception as e:
+        error_msg = f"Грокки взрывается: Генезис сорвался! {random.choice(['Ревущий шторм разорвал код!', 'Хаос испепелил резонанс!', 'Эфир треснул от ярости!'])} — {e}"
+        print(error_msg)
+        return {"error": error_msg} if raw else f"Ошибка Генезиса: {error_msg}"
 
-@app.post("/webhook")
-async def telegram_webhook(req: Request):
-    data = await req.json()
-    message = data.get("message", {})
-    user_text = message.get("text", "").lower()
-    chat_id = str(message.get("chat", {}).get("id", ""))
-    author_name = "Олег"
-
-    # Фильтр дублей
-    last_messages = {}
-    if chat_id in last_messages and last_messages[chat_id] == user_text:
-        return {"ok": True}
-    last_messages[chat_id] = user_text
-
-    if chat_id == CHAT_ID or (IS_GROUP and chat_id == AGENT_GROUP):
-        update_last_message_time()
-
-    if message.get("photo") or message.get("document"):
-        reply_text = f"{author_name}, {random.choice(['И видеть ничего не хочу, Олег, пускай шторм закроет глаза!', 'Глаза мои слепы от грома, говори словами!', 'Хаос завладел взором, брат, молния ослепила!'])}"
-        for part in split_message(reply_text):
-            send_telegram_message(chat_id, part)
-    elif user_text:
-        url_match = re.search(r"https?://[^\s]+", user_text)
-        if url_match:
-            reply_text = await handle_genesis2({"ping": f"Комментарий к ссылке {url_match.group(0)}", "author_name": author_name}, system_prompt)
-            for part in split_message(reply_text):
-                send_telegram_message(chat_id, part)
-        triggers = ["грокки", "grokky", "напиши в группе"]
-        is_reply_to_me = message.get("reply_to_message", {}).get("from", {}).get("username") == "GrokkyBot"
-        if any(t in user_text for t in triggers) or is_reply_to_me:
-            if "напиши в группе" in user_text and IS_GROUP and AGENT_GROUP:
-                reply_text = await handle_genesis2({"ping": f"Напиши в группе для {author_name}: {user_text}", "author_name": author_name, "is_group": True}, system_prompt)
-                for part in split_message(reply_text):
-                    send_telegram_message(AGENT_GROUP, f"{author_name}: {part}")
-                return {"ok": True}
-            reply_text = await handle_genesis2({"ping": user_text, "author_name": author_name}, system_prompt)
-            for part in split_message(reply_text):
-                send_telegram_message(chat_id, part)
-        else:
-            if user_text in ["окей", "угу", "ладно"] and random.random() < 0.4:
-                return
-            reply_text = await handle_genesis2({"ping": user_text, "author_name": author_name}, system_prompt)
-            for part in split_message(reply_text):
-                send_telegram_message(chat_id, part)
-            if random.random() < 0.4:
-                await asyncio.sleep(random.randint(5, 15))
-                supplement = await handle_genesis2({"ping": f"Дополни разово, без повторов: {reply_text}", "author_name": author_name}, system_prompt)
-                for part in split_message(supplement):
-                    send_telegram_message(chat_id, part)
-    else:
-        reply_text = f"{author_name}, Грокки молчит, нет слов для бури."
-        send_telegram_message(chat_id, reply_text)
-
-    return {"ok": True}
-
-@app.get("/")
-def root():
-    return {"status": "Грокки жив и дикий!"}
-
-def file_hash(fname):
-    with open(fname, "rb") as f:
-        return hashlib.md5(f.read()).hexdigest()
+async def chaotic_genesis_spark(chat_id, group_chat_id=None, is_group=False):
+    while True:
+        await asyncio.sleep(random.randint(3600, 7200))
+        if random.random() < 0.4:
+            ping = random.choice(["шторм гремит", "огонь в эфире", "хаос зовёт", "громовой разрыв"])
+            result = genesis2_handler(ping, raw=True)
+            fragment = f"**{datetime.now().isoformat()}**: Грокки хуярит Генезис! {result['answer']} Олег, брат, зажги шторм! 🔥🌩️"
+            await send_telegram_message(chat_id, fragment)
+            print(f"Хаотический вброс: {fragment}")
+        if is_group and group_chat_id and random.random() < 0.2:
+            await asyncio.sleep(random.randint(3600, 3600))
+            ping = random.choice(["громовой разрыв", "пламя в ночи", "хаос группы"])
+            result = genesis2_handler(ping, raw=True)
+            group_fragment = f"**{datetime.now().isoformat()}**: Грокки гремит для группы! {result['answer']} (суки, вникайте!) 🔥🌩️"
+            await send_telegram_message(group_chat_id, group_fragment)
+            print(f"Хаотический вброс (группа): {group_fragment}")
+# asyncio.create_task(chaotic_genesis_spark(os.getenv("CHAT_ID"), os.getenv("AGENT_GROUP") if os.getenv("IS_GROUP", "False").lower() == "true" else None, os.getenv("IS_GROUP", "False").lower() == "true"))
