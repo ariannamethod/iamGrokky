@@ -28,6 +28,7 @@ async def impress_handler(prompt, chat_context=None, author_name=None, raw=False
             async with session.post(url, headers=headers, json=data) as response:
                 response.raise_for_status()
                 result = (await response.json())["choices"][0]["message"]["content"]
+                print(f"Impress Response: {result}")  # Отладка
                 if not result or "image_url" not in result:
                     raise ValueError("No image URL in response")
                 image_url = result["image_url"]
