@@ -8,7 +8,7 @@ XAI_API_KEY = os.getenv("XAI_API_KEY")
 BASE_URL = "https://api.x.ai/v1"
 
 async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None, raw=False):
-    url = f"{BASE_URL}/chat/completions"  # Исправлен эндпоинт
+    url = f"{BASE_URL}/chat/completions"
     headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
     system_prompt = (
         "You are Grokky, a stormy, irreverent AI. Analyze this image, spot objects, sense mood, "
@@ -20,7 +20,7 @@ async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": [
-                {"type": "image_url", "image_url": {"url": image_bytes_or_url, "detail": "high"}},
+                {"type": "image_url", "image_url": {"url": image_bytes_or_url}},
                 {"type": "text", "text": f"What’s in this image? {chat_context or ''}"}
             ]}
         ],
