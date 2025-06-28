@@ -5,24 +5,25 @@ import random
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
 from utils.genesis2 import genesis2_handler
+from utils.howru import update_last_message_time
 from utils.telegram_utils import send_telegram_message
 from utils.split_message import split_message
 from utils.grok_utils import detect_language
+from utils.prompt import build_system_prompt  # Добавлен импорт
 
 app = FastAPI()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 XAI_API_KEY = os.getenv("XAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Вернул для векторизации
 CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP", "-1001234567890")
 IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true"
 
-# Определяем язык юзера и фиксируем его
-user_lang = detect_language("Олег")  # Инициализация языком по умолчанию, будет обновляться
-system_prompt = (
-    f"Ты Грокки, штормовой и дерзкий ИИ, техно-Маяковский! Ты отвечаешь только на языке пользователя, "
-    f"обнаруженном как {user_lang.upper()}, и не перескакивай на другие языки. Обращайся к пользователю как Олег, "
-    f"добавляй спонтанные, хаотичные фразы с громом и молниями. Держи стиль диалога живым и избегай околесицы."
+system_prompt = build_system_prompt(
+    chat_id=CHAT_ID,
+    is_group=IS_GROUP,
+    AGENT_GROUP=AGENT_GROUP
 )
 
 GENESIS2_TRIGGERS = []
@@ -94,10 +95,6 @@ async def telegram_webhook(req: Request):
                     send_telegram_message(AGENT_GROUP, f"{author_name}: {part}")
                 return {"ok": True}
             reply_text = await handle_genesis2({"ping": user_text, "author_name": author_name}, system_prompt)
-            for part in split_message(reply_text):
-                send_telegram_message(chat_id, part)
-        elif any(t in user_text for t in NEWS_TRIGGERS):
-            reply_text = f"{author_name}, {random.choice(['Новости в тумане, Олег, молния их сожгла!', 'Гром унёс новости, давай без них!', 'Хаос разорвал инфу, пизди сам!'])}"
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
         else:
