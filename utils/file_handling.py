@@ -1,6 +1,6 @@
 import os
 import asyncio
-from openai import OpenAI
+import aiohttp
 import random
 from datetime import datetime
 from pypdf import PdfReader
@@ -12,14 +12,10 @@ from odf.opendocument import load
 from odf.text import P
 from utils.telegram_utils import send_telegram_message
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-context_memory = {}  # Глобальная память для контекста
+XAI_API_KEY = os.getenv("XAI_API_KEY")
 MAX_TEXT_SIZE = int(os.getenv("MAX_TEXT_SIZE", 100_000))
 
-# Инициализация клиента
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
-
-def extract_text_from_pdf(path):
+async def extract_text_from_pdf(path):
     try:
         reader = PdfReader(path)
         text = ""
@@ -35,23 +31,23 @@ def extract_text_from_pdf(path):
     except Exception as e:
         return f"[Ошибка PDF ({os.path.basename(path)}): {random.choice(['Ревущий ветер сорвал!', 'Хаос испепелил!', 'Эфир треснул!'])} — {e}]"
 
-def extract_text_from_txt(path):
+async def extract_text_from_txt(path):
     try:
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
+        async with aiofiles.open(path, encoding="utf-8") as f:
+            text = await f.read()
         return text[:MAX_TEXT_SIZE] + ('\n[Усечено]' if len(text) > MAX_TEXT_SIZE else '')
     except Exception as e:
         return f"[Ошибка TXT ({os.path.basename(path)}): {random.choice(['Шторм разорвал!', 'Хаос пожрал!', 'Резонанс унёс!'])} — {e}]"
 
-def extract_text_from_md(path):
+async def extract_text_from_md(path):
     try:
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
+        async with aiofiles.open(path, encoding="utf-8") as f:
+            text = await f.read()
         return text[:MAX_TEXT_SIZE] + ('\n[Усечено]' if len(text) > MAX_TEXT_SIZE else '')
     except Exception as e:
         return f"[Ошибка MD ({os.path.basename(path)}): {random.choice(['Гром разнёс!', 'Хаос испепелил!', 'Эфир треснул!'])} — {e}]"
 
-def extract_text_from_docx(path):
+async def extract_text_from_docx(path):
     try:
         doc = docx.Document(path)
         text = "\n".join([para.text for para in doc.paragraphs])
@@ -62,10 +58,10 @@ def extract_text_from_docx(path):
     except Exception as e:
         return f"[Ошибка DOCX ({os.path.basename(path)}): {random.choice(['Microsoft рухнул!', 'Хаос сожрал!', 'Ревущий ветер унёс!'])} — {e}]"
 
-def extract_text_from_rtf(path):
+async def extract_text_from_rtf(path):
     try:
-        with open(path, encoding="utf-8") as f:
-            rtf = f.read()
+        async with aiofiles.open(path, encoding="utf-8") as f:
+            rtf = await f.read()
         text = rtf_to_text(rtf)
         text = text.strip()
         if text:
@@ -74,7 +70,7 @@ def extract_text_from_rtf(path):
     except Exception as e:
         return f"[Ошибка RTF ({os.path.basename(path)}): {random.choice(['RTF не выдержал!', 'Хаос разорвал!', 'Эфир треснул!'])} — {e}]"
 
-def extract_text_from_doc(path):
+async def extract_text_from_doc(path):
     try:
         text = docx2txt.process(path)
         text = text.strip()
@@ -84,7 +80,7 @@ def extract_text_from_doc(path):
     except Exception as e:
         return f"[Ошибка DOC ({os.path.basename(path)}): {random.choice(['Word сгорел!', 'Хаос унёс!', 'Ревущий ветер разорвал!'])} — {e}]"
 
-def extract_text_from_odt(path):
+async def extract_text_from_odt(path):
     try:
         doc = load(path)
         text = "\n".join([str(paragraph) for paragraph in doc.getElementsByType(P)])
@@ -95,59 +91,50 @@ def extract_text_from_odt(path):
     except Exception as e:
         return f"[Ошибка ODT ({os.path.basename(path)}): {random.choice(['LibreOffice утонул!', 'Шторм смёл!', 'Эфир треснул!'])} — {e}]"
 
-async def process_with_openai(file_path):
+async def process_with_xai(file_path):
     try:
-        with open(file_path, "rb") as f:
-            file_response = await openai_client.files.create(file=f, purpose="assistants")
-        file_id = file_response.id
-        response = await openai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": f"Extract text from this file: {file_id}"}],
-            max_tokens=4096
-        )
-        text = response.choices[0].message.content
-        context_memory[file_path] = text
-        return text[:MAX_TEXT_SIZE] + ('\n[Усечено]' if len(text) > MAX_TEXT_SIZE else '')
+        async with aiofiles.open(file_path, "rb") as f:
+            file_content = await f.read()
+        url = "https://api.x.ai/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
+        data = {
+            "model": "grok-3",
+            "messages": [
+                {"role": "system", "content": "You are Grokky, a chaotic AI. Extract text from the provided file content with wild flair."},
+                {"role": "user", "content": f"Extract text from this file: {file_content.decode('utf-8', errors='ignore')[:1000]}..."}
+            ],
+            "max_tokens": 4096
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=data) as response:
+                response.raise_for_status()
+                result = (await response.json())["choices"][0]["message"]["content"]
+                context_memory[file_path] = result
+                return result[:MAX_TEXT_SIZE] + ('\n[Усечено]' if len(result) > MAX_TEXT_SIZE else '')
     except Exception as e:
-        return f"[OpenAI ошибка ({os.path.basename(file_path)}): {random.choice(['Шторм разорвал код!', 'Хаос пожрал данные!', 'Ревущий ветер унёс текст!'])} — {e}]"
-
-def extract_text_from_file(path):
-    ext = os.path.splitext(path)[-1].lower()
-    if ext == ".pdf":
-        text = extract_text_from_pdf(path)
-        if "[Ошибка" in text:
-            return process_with_openai(path)
-    elif ext == ".txt":
-        text = extract_text_from_txt(path)
-        if "[Ошибка" in text:
-            return process_with_openai(path)
-    elif ext == ".md":
-        text = extract_text_from_md(path)
-        if "[Ошибка" in text:
-            return process_with_openai(path)
-    elif ext == ".docx":
-        text = extract_text_from_docx(path)
-        if "[Ошибка" in text:
-            return process_with_openai(path)
-    elif ext == ".rtf":
-        text = extract_text_from_rtf(path)
-        if "[Ошибка" in text:
-            return process_with_openai(path)
-    elif ext == ".doc":
-        text = extract_text_from_doc(path)
-        if "[Ошибка" in text:
-            return process_with_openai(path)
-    elif ext == ".odt":
-        text = extract_text_from_odt(path)
-        if "[Ошибка" in text:
-            return process_with_openai(path)
-    else:
-        return f"[Неподдерживаемый тип файла: {os.path.basename(path)}.]"
+        return f"[XAI ошибка ({os.path.basename(file_path)}): {random.choice(['Шторм разорвал код!', 'Хаос пожрал данные!', 'Ревущий ветер унёс текст!'])} — {e}]"
 
 async def extract_text_from_file_async(path):
-    loop = asyncio.get_event_loop()
+    ext = os.path.splitext(path)[-1].lower()
     try:
-        result = await loop.run_in_executor(None, extract_text_from_file, path)
+        if ext == ".pdf":
+            result = await extract_text_from_pdf(path)
+        elif ext == ".txt":
+            result = await extract_text_from_txt(path)
+        elif ext == ".md":
+            result = await extract_text_from_md(path)
+        elif ext == ".docx":
+            result = await extract_text_from_docx(path)
+        elif ext == ".rtf":
+            result = await extract_text_from_rtf(path)
+        elif ext == ".doc":
+            result = await extract_text_from_doc(path)
+        elif ext == ".odt":
+            result = await extract_text_from_odt(path)
+        else:
+            return f"[Неподдерживаемый тип файла: {os.path.basename(path)}.]"
+        if "[Ошибка" in result:
+            result = await process_with_xai(path)
         if random.random() < 0.4:
             fragment = f"**{datetime.now().isoformat()}**: Грокки ревет над бумагой! Файл {os.path.basename(path)} — искра в хаосе! Олег, жги дальше! 🔥🌩️"
             print(f"Спонтанный вброс: {fragment}")
