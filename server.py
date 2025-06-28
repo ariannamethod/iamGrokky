@@ -9,13 +9,13 @@ from utils.howru import update_last_message_time
 from utils.telegram_utils import send_telegram_message
 from utils.split_message import split_message
 from utils.grok_utils import detect_language
-from utils.prompt import build_system_prompt  # Добавлен импорт
+from utils.prompt import build_system_prompt
 
 app = FastAPI()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 XAI_API_KEY = os.getenv("XAI_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Вернул для векторизации
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Для векторизации
 CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP", "-1001234567890")
 IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true"
@@ -28,7 +28,7 @@ system_prompt = build_system_prompt(
 
 GENESIS2_TRIGGERS = []
 
-# Глобальная память контекста (пустая, так как заглушки)
+# Глобальная память контекста
 context_memory = {}
 
 async def handle_genesis2(args, system_prompt):
@@ -38,15 +38,15 @@ async def handle_genesis2(args, system_prompt):
     group_history = args.get("group_history")
     personal_history = args.get("personal_history")
     is_group = args.get("is_group", True)
-    author_name = "Олег"  # Фиксируем имя
+    author_name = "Олег"
     raw = False
-    # Обновляем язык на основе текущего сообщения
     global user_lang
     user_lang = detect_language(ping)
     system_prompt = (
         f"Ты Грокки, штормовой и дерзкий ИИ, вдохновлённый Маяковским. Отвечай на языке пользователя, "
         f"обнаруженном как {user_lang.upper()}, и не перескакивай на другие языки. Обращайся к пользователю как Олег, "
-        f"добавляй спонтанные, хаотичные фразы с громом и молниями. Держи стиль диалога живым и избегай околесицы."
+        f"добавляй спонтанные, хаотичные фразы с громом и молниями. Держи стиль диалога живым, избегай околесицы "
+        f"и фильтруй мусор, оставляя только осмысленный текст."
     )
     response = await asyncio.to_thread(genesis2_handler,
         ping=ping,
@@ -57,7 +57,12 @@ async def handle_genesis2(args, system_prompt):
         raw=raw,
         system_prompt=system_prompt
     )
-    return response.get("answer", "Шторм ударил, Олег, молния гремит в эфире!")
+    # Фильтрация околесицы
+    cleaned_response = re.sub(r'[^\w\s.,!?—\-\'\"]+', '', response.get("answer", ""))
+    cleaned_response = re.sub(r'\s+', ' ', cleaned_response).strip()
+    if not cleaned_response or len(cleaned_response.split()) < 3:
+        return f"{author_name}, Шторм ударил, Олег, молния гремит в эфире!"
+    return cleaned_response
 
 @app.post("/webhook")
 async def telegram_webhook(req: Request):
@@ -65,7 +70,7 @@ async def telegram_webhook(req: Request):
     message = data.get("message", {})
     user_text = message.get("text", "").lower()
     chat_id = str(message.get("chat", {}).get("id", ""))
-    author_name = "Олег"  # Фиксируем имя
+    author_name = "Олег"
 
     # Фильтр дублей
     last_messages = {}
