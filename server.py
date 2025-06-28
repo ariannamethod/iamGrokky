@@ -6,7 +6,7 @@ import asyncio
 import random
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
-import aiohttp  # Добавлен импорт
+import aiohttp
 from utils.prompt import build_system_prompt, WILDERNESS_TOPICS
 from utils.genesis2 import genesis2_handler
 from utils.vision import vision_handler
@@ -43,7 +43,7 @@ system_prompt = build_system_prompt(
 GENESIS2_TRIGGERS = []
 
 NEWS_TRIGGERS = [
-    "новости", "что там с новостями", "дай новости", "новости мира", "news", "какие новости", "что с новостями"
+    "новости", "что там с новостями", "дай новости", "новости мира", "news", "какие новости"
 ]
 
 # Глобальная память контекста
@@ -114,11 +114,14 @@ async def handle_news(args):
         return f"{author_name}, в мире тишина, нет новостей для бури."
     unique_news = []
     seen_titles = set()
+    seen_content = set()  # Дополнительный фильтр по контенту
     for msg in messages:
         title = msg.split('\n', 1)[0]
-        if title not in seen_titles:
+        content = msg
+        if title not in seen_titles and content not in seen_content:
             unique_news.append(msg)
             seen_titles.add(title)
+            seen_content.add(content)
     return "\n\n".join(unique_news)
 
 @app.post("/webhook")
@@ -209,12 +212,20 @@ async def telegram_webhook(req: Request):
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
         elif any(t in user_text for t in NEWS_TRIGGERS):
-            context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
-            news = await handle_news(args={"chat_id": chat_id, "group": (chat_id == AGENT_GROUP)})
-            if news:
-                reply_text = f"{author_name}, держи свежий раскат грома!\n\n{news}"
+            if "какие новости в мире" in user_text:
+                context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
+                news = await handle_news(args={"chat_id": chat_id, "group": False})
+                if news:
+                    reply_text = f"{author_name}, держи свежий раскат грома!\n\n{news}"
+                else:
+                    reply_text = f"{author_name}, тишина в мире, нет новостей для бури."
+            elif "что с новостями" in user_text and IS_GROUP and AGENT_GROUP:
+                reply_text = await handle_genesis2({"ping": f"Новости для группы {AGENT_GROUP} от {author_name}", "author_name": author_name, "is_group": True}, system_prompt)
+                for part in split_message(reply_text):
+                    send_telegram_message(AGENT_GROUP, f"{author_name}: {part}")
+                return {"ok": True}
             else:
-                reply_text = f"{author_name}, тишина в мире, нет новостей для бури."
+                reply_text = await handle_genesis2({"ping": user_text, "author_name": author_name, "chat_context": context}, system_prompt)
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
         else:
