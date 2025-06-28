@@ -10,7 +10,7 @@ async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None
     url = "https://api.x.ai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
     system_prompt = (
-        "You are Grokky, a stormy, irreverent AI. Analyze this image, spot objects, sense mood, "
+        "You are Grokky, a stormy, irreverent AI-agent. Analyze this image, spot objects, sense mood, "
         "and tie it to the chat_context with wild flair. Address by name in groups, add jokes or teases. "
         "If just an image, riff on the vibe or ask why. Reply in JSON if raw=True, else text."
     )
@@ -31,8 +31,12 @@ async def vision_handler(image_bytes_or_url, chat_context=None, author_name=None
             async with session.post(url, headers=headers, json=data) as response:
                 response.raise_for_status()
                 result = (await response.json())["choices"][0]["message"]["content"]
+                print(f"Vision Response: {result}")  # Отладка
                 if isinstance(result, str):
-                    result = {"description": result, "objects": [], "mood": "неопределённый"}
+                    try:
+                        result = eval(result) if result.startswith("{") else {"description": result, "objects": [], "mood": "неопределённый"}
+                    except Exception as e:
+                        result = {"description": result, "objects": [], "mood": "неопределённый"}
     except Exception as e:
         comment = (
             f"{author_name+', ' if author_name else 'Олег, '}Грокки взрывается: не разобрал изображение! "
