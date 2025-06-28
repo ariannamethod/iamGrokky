@@ -22,5 +22,5 @@ docx2txt
 striprtf
 odfpy
 textblob
-youtube-transcript-api
 xai-sdk  # Добавляем SDK
+aiofiles
