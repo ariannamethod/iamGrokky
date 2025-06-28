@@ -18,7 +18,7 @@ def get_news():
         articles = resp.get("articles", [])[:3]
         comments = ["Дико!", "Пожар!", "Хаос!", "Бум!", "Эпично!"]
         news_list = [f"{a['title']}\n{a['url']}\nГрокки: {random.choice(comments)}" for a in articles]
-        print(f"Новости: {news_list}")
+        print(f"Новости: {news_list}")  # Отладка
         return news_list
     except Exception as e:
         print(f"Грокки ревет: Ошибка в новостях! {random.choice(['Шторм сорвал связь!', 'Эфир треснул от гнева!', 'Космос плюнул в лицо!'])} — {e}")
