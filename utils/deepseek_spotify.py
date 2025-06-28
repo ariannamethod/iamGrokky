@@ -15,6 +15,9 @@ SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 CHAT_ID = os.getenv("CHAT_ID")
 GROUP_CHAT_ID = os.getenv("AGENT_GROUP")
 
+# Фильтр обработанных треков
+processed_tracks = set()
+
 async def get_deepseek_poem(mood):
     url = "https://api.deepseek.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
@@ -53,7 +56,7 @@ async def get_spotify_playlist(mood):
 async def deepseek_spotify_resonance():
     while True:
         await asyncio.sleep(86400)
-        snapshot = await semantic_search("group_state", os.getenv("OPENAI_API_KEY"), top_k=1)
+        snapshot = await semantic_search("group_state", os.getenv("XAI_API_KEY"), top_k=1)
         mood = analyze_mood(snapshot)
         if mood["score"] > 0.5:
             poem = await get_deepseek_poem(mood["label"])
@@ -93,6 +96,9 @@ def analyze_mood(snapshot):
     return {"label": label, "score": max(0, min(1, score + (subjectivity / 2)))}
 
 async def grokky_spotify_response(track_id):
+    if track_id in processed_tracks:
+        return f"{random.choice(['Олег', 'брат'])}, этот трек уже гремит, брат!"
+    processed_tracks.add(track_id)
     token = await get_spotify_token()
     if not token:
         return "Грокки рычит: Токен Spotify улетел в шторм!"
