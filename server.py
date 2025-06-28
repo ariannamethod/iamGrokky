@@ -48,7 +48,7 @@ NEWS_TRIGGERS = [
 # Глобальная память контекста
 context_memory = {}
 
-def handle_genesis2(args, system_prompt):
+async def handle_genesis2(args, system_prompt):
     ping = args.get("ping")
     if isinstance(ping, dict):
         ping = json.dumps(ping)
@@ -57,7 +57,7 @@ def handle_genesis2(args, system_prompt):
     is_group = args.get("is_group", True)
     author_name = random.choice(["Олег", "брат"])
     raw = False
-    response = genesis2_handler(
+    response = await asyncio.to_thread(genesis2_handler,
         ping=ping,
         group_history=group_history,
         personal_history=personal_history,
@@ -68,20 +68,19 @@ def handle_genesis2(args, system_prompt):
     )
     return response.get("answer", "Шторм ударил!")
 
-def handle_vision(args):
+async def handle_vision(args):
     image = args.get("image")
     chat_context = args.get("chat_context")
     author_name = random.choice(["Олег", "брат"])
     raw = False
     if isinstance(image, str):
         try:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_until_complete(vision_handler(
+            response = await vision_handler(
                 image_bytes_or_url=image,
                 chat_context=chat_context,
                 author_name=author_name,
                 raw=raw
-            ))
+            )
             # Сохраняем контекст
             context_memory[author_name] = {"type": "image", "content": response}
             return response
@@ -89,7 +88,7 @@ def handle_vision(args):
             return f"{author_name}, Грокки взорвался: {e}"
     return f"{author_name}, что-то пошло не так с изображением!"
 
-def handle_impress(args):
+async def handle_impress(args):
     prompt = args.get("prompt")
     chat_context = args.get("chat_context")
     author_name = random.choice(["Олег", "брат"])
@@ -97,8 +96,7 @@ def handle_impress(args):
     if any(t in prompt.lower() for t in ["нарисуй", "изобрази", "/draw", "нарисуй мне", "draw me"]):
         if not raw:
             return f"{author_name}, хочу нарисовать что-то дикое! Подтверди (да/нет)?"
-        loop = asyncio.get_event_loop()
-        response = await loop.run_until_complete(impress_handler(prompt=prompt, chat_context=chat_context, author_name=author_name, raw=raw))
+        response = await impress_handler(prompt=prompt, chat_context=chat_context, author_name=author_name, raw=raw)
         if isinstance(response, dict) and "image_url" in response:
             send_telegram_message(chat_id, f"{author_name}, держи шторм! {response['image_url']}\n{response['grokkys_comment']}")
             context_memory[author_name] = {"type": "image", "content": response["image_url"]}
@@ -174,7 +172,7 @@ async def telegram_webhook(req: Request):
                         f.write(response.content)
                     text = await extract_text_from_file_async(file_path)
                     context_memory[author_name] = {"type": "file", "content": text}
-                    reply_text = genesis2_handler({"ping": f"Комментарий к файлу {os.path.basename(file_path)}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
+                    reply_text = await handle_genesis2({"ping": f"Комментарий к файлу {os.path.basename(file_path)}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
                     for part in split_message(reply_text):
                         send_telegram_message(chat_id, part)
                 else:
@@ -189,7 +187,7 @@ async def telegram_webhook(req: Request):
             url = url_match.group(0)
             text = await extract_text_from_url(url)
             context_memory[author_name] = {"type": "link", "content": text}
-            reply_text = genesis2_handler({"ping": f"Комментарий к ссылке {url}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
+            reply_text = await handle_genesis2({"ping": f"Комментарий к ссылке {url}: {text}", "author_name": author_name, "is_group": (chat_id == AGENT_GROUP)}, system_prompt)
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
         elif spotify_match:
@@ -204,11 +202,11 @@ async def telegram_webhook(req: Request):
         if any(t in user_text for t in triggers) or is_reply_to_me:
             context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
             if "напиши в группе" in user_text and IS_GROUP and AGENT_GROUP:
-                reply_text = query_grok(f"Напиши в группе для {author_name}: {user_text}", system_prompt, author_name=author_name, chat_context=context)
+                reply_text = await handle_genesis2({"ping": f"Напиши в группе для {author_name}: {user_text}", "author_name": author_name, "is_group": True}, system_prompt)
                 for part in split_message(reply_text):
                     send_telegram_message(AGENT_GROUP, f"{author_name}: {part}")
                 return {"ok": True}
-            reply_text = query_grok(user_text, system_prompt, author_name=author_name, chat_context=context)
+            reply_text = await handle_genesis2({"ping": user_text, "author_name": author_name, "chat_context": context}, system_prompt)
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
         elif any(t in user_text for t in NEWS_TRIGGERS):
@@ -224,12 +222,12 @@ async def telegram_webhook(req: Request):
             if user_text in ["окей", "угу", "ладно"] and random.random() < 0.4:
                 return
             context = f"Topic: {chat_title}" if chat_title in ["ramble", "dev talk", "forum", "lit", "api talk", "method", "pseudocode"] else ""
-            reply_text = query_grok(user_text, system_prompt, author_name=author_name, chat_context=context)
+            reply_text = await handle_genesis2({"ping": user_text, "author_name": author_name, "chat_context": context}, system_prompt)
             for part in split_message(reply_text):
                 send_telegram_message(chat_id, part)
             if random.random() < 0.4:
                 await asyncio.sleep(random.randint(5, 15))
-                supplement = query_grok(f"Дополни разово, без повторов: {reply_text}", system_prompt, author_name=author_name)
+                supplement = await handle_genesis2({"ping": f"Дополни разово, без повторов: {reply_text}", "author_name": author_name}, system_prompt)
                 for part in split_message(supplement):
                     send_telegram_message(chat_id, part)
     else:
