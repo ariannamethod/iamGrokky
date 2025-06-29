@@ -33,7 +33,11 @@ def query_grok(user_message, system_prompt, chat_context=None, author_name=None,
         "model": "grok-3",
         "messages": messages,
         "max_tokens": 300,
-        "temperature": 1.5
+        "temperature": 1.5,
+        # utils/grok_utils.py  – добавь к payload
+        "presence_penalty": 0.4, 
+        "frequency_penalty": 0.3
+
     }
     try:
         r = requests.post(url, headers=headers, json=payload)
