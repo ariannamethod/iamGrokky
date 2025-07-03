@@ -2,9 +2,9 @@ import random
 import json
 from datetime import datetime
 import httpx
+from prompt import build_system_prompt
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
-from prompt import build_system_prompt
 
 async def genesis2_handler(ping=None, chaos_type=None, intensity=None, group_history=None, personal_history=None, is_group=False, author_name=None, raw=False):
     if chaos_type and intensity:
