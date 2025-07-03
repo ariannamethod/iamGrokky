@@ -10,7 +10,7 @@ from aiogram.utils.chat_action import ChatActionSender
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 from glob import glob
-from genesis2 import genesis2_handler
+from utils.genesis2 import genesis2_handler
 from prompt import build_system_prompt
 
 bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
