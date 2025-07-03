@@ -1,8 +1,6 @@
 fastapi
 uvicorn[standard]>=0.30.0
-aiogram>=3.0.0
 aiohttp
-httpx
 requests
 python-dotenv
 feedparser
@@ -25,3 +23,5 @@ xai-sdk  # Добавляем SDK
 aiofiles
 aioredis==2.0.1
 openai==1.30.0
+aiogram==3.20.0
+httpx==0.27.0
