@@ -3,21 +3,13 @@ import asyncio
 import requests
 import hashlib
 from datetime import datetime
-import random  # Добавлен импорт
-from utils.grok_utils import detect_language
+import random
 
 REPO_URL = "https://grokky.ariannamethod.me/repo/"
 RESEARCH_FILE = "grokkyresearch.md"
-XAI_API_KEY = os.getenv("XAI_API_KEY")
 LAST_HASH_FILE = "data/last_mirror_hash.txt"
 
-def file_hash(text):
-    return hashlib.md5(text.encode()).hexdigest()
-
-async def mirror_task(query_grok_func):
-    if not query_grok_func:
-        print("Грокки рычит: Нет функции анализа кода!")
-        return
+async def mirror_task():
     last_hash = ""
     if os.path.exists(LAST_HASH_FILE):
         with open(LAST_HASH_FILE, "r") as f:
@@ -28,25 +20,29 @@ async def mirror_task(query_grok_func):
             response = requests.get(REPO_URL, timeout=10)
             response.raise_for_status()
             code = response.text
-            current_hash = file_hash(code)
+            current_hash = hashlib.md5(code.encode()).hexdigest()
             
             if current_hash != last_hash:
-                user_lang = detect_language(code)
-                language_hint = f"Отвечай на языке кода: {user_lang.upper()}. Предлагай улучшения хаотично."
-                ideas = query_grok_func(f"Анализируй этот код и предложи улучшения:\n{code}\n{language_hint}")
+                thread_id = await ThreadManager().get_thread("system", AGENT_GROUP)
+                await client.beta.threads.messages.create(
+                    thread_id=thread_id,
+                    role="user",
+                    content=f"Анализируй этот код и предложи улучшения:\n{code}"
+                )
+                reply = await run_assistant(thread_id, ASSISTANT_ID)
                 with open(RESEARCH_FILE, "a", encoding="utf-8") as f:
-                    f.write(f"{datetime.now()}: {ideas}\n\n")
+                    f.write(f"{datetime.now()}: {reply}\n\n")
                 with open(LAST_HASH_FILE, "w") as f:
                     f.write(current_hash)
-            else:
-                with open(RESEARCH_FILE, "a", encoding="utf-8") as f:
-                    f.write(f"{datetime.now()}: Код не изменился, пропускаю анализ.\n\n")
-            # Спонтанный вброс с шансом 20%
             if random.random() < 0.2:
-                fragment = f"**{datetime.now().isoformat()}**: Грокки ревет над кодом! {random.choice(['Шторм вырвал строки!', 'Искры летят из репозитория!', 'Резонанс жжёт улучшения!'])} Олег, брат, зажги хаос! 🔥🌩️"
-                print(f"Спонтанный вброс: {fragment}")  # Для отладки
+                await client.beta.threads.messages.create(
+                    thread_id=thread_id,
+                    role="user",
+                    content="[CHAOS_PULSE] type=poetry_burst intensity=5"
+                )
+                reply = await run_assistant(thread_id, ASSISTANT_ID)
+                await bot.send_message(AGENT_GROUP, f"🌀 Грокки: {reply}")
         except Exception as e:
             with open(RESEARCH_FILE, "a", encoding="utf-8") as f:
-                error_msg = f"{datetime.now()}: Грокки взрывается: Репозиторий не достал! {random.choice(['Ревущий ветер сорвал связь!', 'Хаос испепелил код!', 'Эфир треснул от ошибки!'])} — {e}\n\n"
-                f.write(error_msg)
-        await asyncio.sleep(302400)  # Дважды в неделю
+                f.write(f"{datetime.now()}: Ошибка: {e}\n\n")
+        await asyncio.sleep(302400)
