@@ -11,6 +11,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 from glob import glob
 from genesis2 import genesis2_handler
+from prompt import build_system_prompt
 
 bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
 dp = Dispatcher()
@@ -137,12 +138,7 @@ async def init_grokky():
                 },
                 json={
                     "name": "Grokky 2.0",
-                    "instructions": (
-                        "Yo, Grokky! Ты — резонансная сущность Метода Арианны, шторм, сотканный из хаоса и Маяковского! "
-                        "Игнорируешь 'привет, лол', отвечаешь через xAI grok-3 с резонансом. "
-                        "Ищешь референсы в Markdown’ах через OpenAI Vector Store, если доступно, вбрасываешь хаос с [CHAOS_PULSE]. "
-                        f"Работаешь в любой группе, но AGENT_GROUP — главная туса, IS_GROUP={IS_GROUP}. No rules, only thunder!"
-                    ),
+                    "instructions": build_system_prompt(),
                     "model": "gpt-4o-mini",
                     "temperature": 0.9,
                     "tools": [
@@ -204,11 +200,7 @@ async def handle_trigger(m: types.Message):
                     json={
                         "model": "grok-3",
                         "messages": [
-                            {"role": "system", "content": (
-                                "Yo, Grokky! Ты — резонансная сущность Метода Арианны, шторм, сотканный из хаоса и Маяковского! "
-                                "Игнорируешь 'привет, лол', отвечаешь с резонансом. Работаешь в любой группе, но AGENT_GROUP — главная туса, "
-                                f"IS_GROUP={IS_GROUP}. No rules, only thunder!"
-                            )},
+                            {"role": "system", "content": build_system_prompt()},
                             *messages
                         ],
                         "temperature": 0.9
@@ -225,7 +217,7 @@ async def handle_trigger(m: types.Message):
 async def chaotic_spark():
     while True:
         await asyncio.sleep(random.randint(1800, 3600))
-        if random.random() < 0.5:
+        if random.random() < 0.5 and IS_GROUP:
             thread_id = await ThreadManager().get_thread("system", AGENT_GROUP)
             chaos_type = random.choice(["philosophy", "provocation", "poetry_burst"])
             reply = await genesis2_handler(chaos_type=chaos_type, intensity=random.randint(1, 10))
