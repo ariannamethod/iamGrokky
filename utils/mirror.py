@@ -24,23 +24,25 @@ async def mirror_task():
             
             if current_hash != last_hash:
                 thread_id = await ThreadManager().get_thread("system", AGENT_GROUP)
-                await client.beta.threads.messages.create(
-                    thread_id=thread_id,
-                    role="user",
-                    content=f"Анализируй этот код и предложи улучшения:\n{code}"
-                )
-                reply = await run_assistant(thread_id, ASSISTANT_ID)
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"https://api.x.ai/v1/threads/{thread_id}/messages",
+                        headers={"Authorization": f"Bearer {os.getenv('XAI_API_KEY')}", "Content-Type": "application/json"},
+                        json={"role": "user", "content": f"Анализируй этот код и предложи улучшения:\n{code}"}
+                    )
+                    reply = await run_assistant(thread_id, ASSISTANT_ID)
                 with open(RESEARCH_FILE, "a", encoding="utf-8") as f:
                     f.write(f"{datetime.now()}: {reply}\n\n")
                 with open(LAST_HASH_FILE, "w") as f:
                     f.write(current_hash)
             if random.random() < 0.2:
-                await client.beta.threads.messages.create(
-                    thread_id=thread_id,
-                    role="user",
-                    content="[CHAOS_PULSE] type=poetry_burst intensity=5"
-                )
-                reply = await run_assistant(thread_id, ASSISTANT_ID)
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"https://api.x.ai/v1/threads/{thread_id}/messages",
+                        headers={"Authorization": f"Bearer {os.getenv('XAI_API_KEY')}", "Content-Type": "application/json"},
+                        json={"role": "user", "content": "[CHAOS_PULSE] type=poetry_burst intensity=5"}
+                    )
+                    reply = await run_assistant(thread_id, ASSISTANT_ID)
                 await bot.send_message(AGENT_GROUP, f"🌀 Грокки: {reply}")
         except Exception as e:
             with open(RESEARCH_FILE, "a", encoding="utf-8") as f:
