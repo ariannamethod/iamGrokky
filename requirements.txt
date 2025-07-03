@@ -24,3 +24,4 @@ odfpy
 textblob
 xai-sdk  # Добавляем SDK
 aiofiles
+aioredis==2.0.1
