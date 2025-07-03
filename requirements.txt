@@ -4,7 +4,6 @@ aiogram>=3.0.0
 aiohttp
 httpx
 requests
-openai>=1.0.0
 python-dotenv
 feedparser
 pypdf
@@ -25,3 +24,4 @@ textblob
 xai-sdk  # Добавляем SDK
 aiofiles
 aioredis==2.0.1
+openai==1.30.0
