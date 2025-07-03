@@ -1,21 +1,3 @@
-# fastapi
-# uvicorn[standard]>=0.30.0
-# aiohttp
-# requests
-# python-dotenv
-# feedparser
-# pypdf
-# pdfminer.six
-# tiktoken>=0.6.0
-# beautifulsoup4
-# pillow
-pinecone
-# pydub>=0.25.1
-# pyyaml
-# rich
-# tenacity
-# python-docx
-# docx2txt
 aiogram==3.20.0
 httpx==0.27.0
 python-dotenv
