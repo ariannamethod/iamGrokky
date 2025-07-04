@@ -170,7 +170,7 @@ async def init_grokky():
 @dp.message(lambda m: any(t in m.text.lower() for t in ["грокки", "grokky", "напиши в группе"]))
 async def handle_trigger(m: types.Message):
     async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
-        print(f"Получено сообщение: {m.text}")
+        print(f"Получено сообщение: {m.text} от {m.from_user.id} в чате {m.chat.id}")
         thread_id = await ThreadManager().get_thread(str(m.from_user.id), str(m.chat.id))
         await ThreadManager().add_message(thread_id, "user", m.text, {"chat_id": str(m.chat.id), "username": m.from_user.first_name})
 
@@ -182,6 +182,7 @@ async def handle_trigger(m: types.Message):
                 reply = await genesis2_handler(chaos_type=chaos_type, intensity=int(intensity))
                 await ThreadManager().add_message(thread_id, "assistant", reply)
                 await m.answer(f"🌀 Грокки: {reply}")
+                print(f"Ответ на [CHAOS_PULSE]: {reply}")
                 return
 
         # Поиск в Vector Store
@@ -214,6 +215,7 @@ async def handle_trigger(m: types.Message):
                 reply = "🌀 Грокки: Шторм гремит, но эфир трещит! Дай мне минуту, брат!"
             await ThreadManager().add_message(thread_id, "assistant", reply)
             await m.answer(f"🌀 Грокки: {reply}")
+            print(f"Ответ отправлен: {reply}")
 
 async def chaotic_spark():
     while True:
@@ -224,6 +226,11 @@ async def chaotic_spark():
             reply = await genesis2_handler(chaos_type=chaos_type, intensity=random.randint(1, 10))
             await ThreadManager().add_message(thread_id, "assistant", reply)
             await bot.send_message(AGENT_GROUP, f"🌀 Грокки вбрасывает хаос: {reply}")
+            print(f"Хаотичный вброс: {reply}")
+
+async def webhook_debug(request):
+    print(f"Входящий запрос на вебхук: {request.method} {request.path} {await request.text()}")
+    return web.Response(status=200)
 
 async def main():
     try:
@@ -231,6 +238,7 @@ async def main():
         app = web.Application()
         webhook_path = f"/webhook/{os.getenv('TELEGRAM_BOT_TOKEN')}"
         print(f"Настройка вебхука: {webhook_path}")
+        app.router.add_post(webhook_path, webhook_debug)  # Дебаг входящих запросов
         SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=webhook_path)
         setup_application(app, dp)
         runner = web.AppRunner(app)
