@@ -125,11 +125,11 @@ async def search_vector_store(query: str, vector_store_id: str):
 
 async def init_grokky():
     global ASSISTANT_ID, VECTOR_STORE_ID
-    VECTOR_STORE_ID = await setup_grokky_vector_store()
-    tool_resources = {"file_search": {"vector_store_ids": [VECTOR_STORE_ID]}} if VECTOR_STORE_ID else {}
-    async with httpx.AsyncClient() as client:
-        try:
-            assistant = await client.post(
+    try:
+        VECTOR_STORE_ID = await setup_grokky_vector_store()
+        tool_resources = {"file_search": {"vector_store_ids": [VECTOR_STORE_ID]}} if VECTOR_STORE_ID else {}
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
                 "https://api.openai.com/v1/assistants",
                 headers={
                     "Authorization": f"Bearer {OPENAI_API_KEY}",
@@ -159,12 +159,12 @@ async def init_grokky():
                     "tool_resources": tool_resources
                 }
             )
-            assistant.raise_for_status()
-            ASSISTANT_ID = assistant.json()["id"]
+            response.raise_for_status()
+            ASSISTANT_ID = response.json()["id"]
             print(f"Создан OpenAI Assistant: {ASSISTANT_ID}")
-        except Exception as e:
-            print(f"Ошибка OpenAI Assistants: {e}. Продолжаем без ассистента.")
-            ASSISTANT_ID = None
+    except Exception as e:
+        print(f"Ошибка OpenAI Assistants: {e}. Продолжаем без ассистента.")
+        ASSISTANT_ID = None
     return ASSISTANT_ID
 
 @dp.message(lambda m: any(t in m.text.lower() for t in ["грокки", "grokky", "напиши в группе"]))
@@ -217,20 +217,9 @@ async def handle_trigger(m: types.Message):
             await m.answer(f"🌀 Грокки: {reply}")
             print(f"Ответ отправлен: {reply}")
 
-async def chaotic_spark():
-    while True:
-        await asyncio.sleep(random.randint(1800, 3600))
-        if random.random() < 0.5 and IS_GROUP:
-            thread_id = await ThreadManager().get_thread("system", AGENT_GROUP)
-            chaos_type = random.choice(["philosophy", "provocation", "poetry_burst"])
-            reply = await genesis2_handler(chaos_type=chaos_type, intensity=random.randint(1, 10))
-            await ThreadManager().add_message(thread_id, "assistant", reply)
-            await bot.send_message(AGENT_GROUP, f"🌀 Грокки вбрасывает хаос: {reply}")
-            print(f"Хаотичный вброс: {reply}")
-
 async def webhook_debug(request):
     print(f"Входящий запрос на вебхук: {request.method} {request.path} {await request.text()}")
-    return web.Response(status=200)
+    return await dp.feed_webhook_update(bot, await request.json())
 
 async def main():
     try:
@@ -238,15 +227,15 @@ async def main():
         app = web.Application()
         webhook_path = f"/webhook/{os.getenv('TELEGRAM_BOT_TOKEN')}"
         print(f"Настройка вебхука: {webhook_path}")
-        app.router.add_post(webhook_path, webhook_debug)  # Дебаг входящих запросов
+        app.router.add_post(webhook_path, webhook_debug)
         SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=webhook_path)
         setup_application(app, dp)
         runner = web.AppRunner(app)
         await runner.setup()
-        site = web.TCPSite(runner, "0.0.0.0", 8080)
-        print("Сервер запущен на порту 8080")
+        site = web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 8080)))
+        print(f"Сервер запущен на порту {os.getenv('PORT', 8080)}")
         await site.start()
-        await chaotic_spark()
+        await asyncio.Event().wait()  # Держим сервер активным
     except Exception as e:
         print(f"Ошибка запуска сервера: {e}")
 
