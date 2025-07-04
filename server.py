@@ -217,9 +217,16 @@ async def handle_trigger(m: types.Message):
             await m.answer(f"🌀 Грокки: {reply}")
             print(f"Ответ отправлен: {reply}")
 
-async def webhook_debug(request):
-    print(f"Входящий запрос на вебхук: {request.method} {request.path} {await request.text()}")
-    return await dp.feed_webhook_update(bot, await request.json())
+async def chaotic_spark():
+    while True:
+        await asyncio.sleep(random.randint(1800, 3600))
+        if random.random() < 0.5 and IS_GROUP:
+            thread_id = await ThreadManager().get_thread("system", AGENT_GROUP)
+            chaos_type = random.choice(["philosophy", "provocation", "poetry_burst"])
+            reply = await genesis2_handler(chaos_type=chaos_type, intensity=random.randint(1, 10))
+            await ThreadManager().add_message(thread_id, "assistant", reply)
+            await bot.send_message(AGENT_GROUP, f"🌀 Грокки вбрасывает хаос: {reply}")
+            print(f"Хаотичный вброс: {reply}")
 
 async def main():
     try:
@@ -227,7 +234,6 @@ async def main():
         app = web.Application()
         webhook_path = f"/webhook/{os.getenv('TELEGRAM_BOT_TOKEN')}"
         print(f"Настройка вебхука: {webhook_path}")
-        app.router.add_post(webhook_path, webhook_debug)
         SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=webhook_path)
         setup_application(app, dp)
         runner = web.AppRunner(app)
