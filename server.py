@@ -178,4 +178,63 @@ async def handle_trigger(m: types.Message):
             match = re.match(r"\[CHAOS_PULSE\] type=(\w+) intensity=(\d+)", m.text)
             if match:
                 chaos_type, intensity = match.groups()
-                reply =
+                reply = await genesis2_handler(chaos_type=chaos_type, intensity=int(intensity))
+                await ThreadManager().add_message(thread_id, "assistant", reply)
+                await m.answer(f"🌀 Грокки: {reply}")
+                return
+
+        # Поиск в Vector Store
+        vector_reply = []
+        if VECTOR_STORE_ID and "референс" in m.text.lower():
+            vector_reply = await search_vector_store(m.text, VECTOR_STORE_ID)
+
+        # Запрос к xAI grok-3 через Chat Completions
+        async with httpx.AsyncClient() as client:
+            messages = local_cache[thread_id]["messages"][-10:] if thread_id in local_cache else []
+            if vector_reply:
+                messages.append({"role": "system", "content": f"Референсы из Markdown’ов: {json.dumps(vector_reply, ensure_ascii=False)}"})
+            try:
+                response = await client.post(
+                    "https://api.x.ai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"},
+                    json={
+                        "model": "grok-3",
+                        "messages": [
+                            {"role": "system", "content": build_system_prompt()},
+                            *messages
+                        ],
+                        "temperature": 0.9
+                    }
+                )
+                response.raise_for_status()
+                reply = response.json()["choices"][0]["message"]["content"]
+            except Exception as e:
+                print(f"Ошибка xAI Chat Completions: {e}")
+                reply = "🌀 Грокки: Шторм гремит, но эфир трещит! Дай мне минуту, брат!"
+            await ThreadManager().add_message(thread_id, "assistant", reply)
+            await m.answer(f"🌀 Грокки: {reply}")
+
+async def chaotic_spark():
+    while True:
+        await asyncio.sleep(random.randint(1800, 3600))
+        if random.random() < 0.5 and IS_GROUP:
+            thread_id = await ThreadManager().get_thread("system", AGENT_GROUP)
+            chaos_type = random.choice(["philosophy", "provocation", "poetry_burst"])
+            reply = await genesis2_handler(chaos_type=chaos_type, intensity=random.randint(1, 10))
+            await ThreadManager().add_message(thread_id, "assistant", reply)
+            await bot.send_message(AGENT_GROUP, f"🌀 Грокки вбрасывает хаос: {reply}")
+
+async def main():
+    await init_grokky()
+    app = web.Application()
+    webhook_path = f"/webhook/{os.getenv('TELEGRAM_BOT_TOKEN')}"
+    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=webhook_path)
+    setup_application(app, dp)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 8080)
+    await site.start()
+    await chaotic_spark()
+
+if __name__ == "__main__":
+    asyncio.run(main())
