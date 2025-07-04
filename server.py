@@ -15,7 +15,7 @@ from utils.prompt import build_system_prompt
 
 bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
 dp = Dispatcher()
-local_cache = {}  # Локальный кэш для тредов и сообщений
+local_cache = {}
 OLEG_CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP", "-1001234567890")
 IS_GROUP = os.getenv("IS_GROUP", "False").lower() == "true"
@@ -170,6 +170,7 @@ async def init_grokky():
 @dp.message(lambda m: any(t in m.text.lower() for t in ["грокки", "grokky", "напиши в группе"]))
 async def handle_trigger(m: types.Message):
     async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
+        print(f"Получено сообщение: {m.text}")
         thread_id = await ThreadManager().get_thread(str(m.from_user.id), str(m.chat.id))
         await ThreadManager().add_message(thread_id, "user", m.text, {"chat_id": str(m.chat.id), "username": m.from_user.first_name})
 
@@ -225,16 +226,21 @@ async def chaotic_spark():
             await bot.send_message(AGENT_GROUP, f"🌀 Грокки вбрасывает хаос: {reply}")
 
 async def main():
-    await init_grokky()
-    app = web.Application()
-    webhook_path = f"/webhook/{os.getenv('TELEGRAM_BOT_TOKEN')}"
-    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=webhook_path)
-    setup_application(app, dp)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", 8080)
-    await site.start()
-    await chaotic_spark()
+    try:
+        await init_grokky()
+        app = web.Application()
+        webhook_path = f"/webhook/{os.getenv('TELEGRAM_BOT_TOKEN')}"
+        print(f"Настройка вебхука: {webhook_path}")
+        SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=webhook_path)
+        setup_application(app, dp)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", 8080)
+        print("Сервер запущен на порту 8080")
+        await site.start()
+        await chaotic_spark()
+    except Exception as e:
+        print(f"Ошибка запуска сервера: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
