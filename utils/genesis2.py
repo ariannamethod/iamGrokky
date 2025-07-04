@@ -2,7 +2,7 @@ import random
 import json
 from datetime import datetime
 import httpx
-from prompt import build_system_prompt
+from utils.prompt import build_system_prompt
 
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
