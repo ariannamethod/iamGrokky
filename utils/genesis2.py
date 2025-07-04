@@ -1,6 +1,6 @@
-import os
 import random
 import json
+import os
 from datetime import datetime
 import httpx
 from utils.prompt import build_system_prompt
