@@ -30,9 +30,17 @@ def log_error(error: str):
     with open(JOURNAL_LOG, "a") as f:
         f.write(f"[{datetime.now().isoformat()}] ERROR: {error}\n")
 
+def log_info(message: str):
+    with open(JOURNAL_LOG, "a") as f:
+        f.write(f"[{datetime.now().isoformat()}] INFO: {message}\n")
+
 class HybridGrokkyEngine:
     def __init__(self):
         self.openai_headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        self.openai_beta_headers = {
             "Authorization": f"Bearer {OPENAI_API_KEY}",
             "Content-Type": "application/json",
             "OpenAI-Beta": "assistants=v2"
@@ -41,7 +49,7 @@ class HybridGrokkyEngine:
             "Authorization": f"Bearer {XAI_API_KEY}",
             "Content-Type": "application/json"
         }
-        self.threads = {}  # user_id -> thread_id
+        self.threads = {}  # user_id:chat_id -> thread_id
 
     async def setup_openai_infrastructure(self):
         """Настройка OpenAI Assistant и Vector Store"""
@@ -54,28 +62,28 @@ class HybridGrokkyEngine:
                     with open(md_file, "rb") as file:
                         response = await client.post(
                             "https://api.openai.com/v1/files",
-                            headers=self.openai_headers,
-                            files={"file": file},
+                            headers=self.openai_headers,  # Без OpenAI-Beta для файлов
+                            files={"file": (os.path.basename(md_file), file, "text/markdown")},
                             data={"purpose": "assistants"}
                         )
                         response.raise_for_status()
                         file_ids.append(response.json()["id"])
-                        print(f"✅ Загружен файл: {md_file}")
+                        log_info(f"Загружен файл: {md_file}")
                 
                 # 2. Создаём Vector Store
                 vector_response = await client.post(
                     "https://api.openai.com/v1/vector_stores",
-                    headers=self.openai_headers,
+                    headers=self.openai_beta_headers,
                     json={"file_ids": file_ids, "name": "Grokky Memory Store"}
                 )
                 vector_response.raise_for_status()
                 VECTOR_STORE_ID = vector_response.json()["id"]
-                print(f"✅ Vector Store создан: {VECTOR_STORE_ID}")
+                log_info(f"Vector Store создан: {VECTOR_STORE_ID}")
                 
-                # 3. Создаём Assistant для памяти
+                # 3. Создаём Assistant
                 assistant_response = await client.post(
                     "https://api.openai.com/v1/assistants",
-                    headers=self.openai_headers,
+                    headers=self.openai_beta_headers,
                     json={
                         "name": "Grokky Memory Manager",
                         "instructions": "Ты — менеджер памяти Грокки. Храни контекст, ищи в файлах, структурируй данные. Не генерируй ответы.",
@@ -86,62 +94,64 @@ class HybridGrokkyEngine:
                 )
                 assistant_response.raise_for_status()
                 ASSISTANT_ID = assistant_response.json()["id"]
-                print(f"✅ OpenAI Assistant создан: {ASSISTANT_ID}")
+                log_info(f"OpenAI Assistant создан: {ASSISTANT_ID}")
                 
         except Exception as e:
             log_error(f"Ошибка настройки OpenAI: {str(e)}")
             print(f"❌ Ошибка настройки OpenAI: {e}")
 
     async def get_or_create_thread(self, user_id: str, chat_id: str) -> str:
-        """Получить или создать thread для пользователя"""
+        """Получить или создать thread"""
         thread_key = f"{user_id}:{chat_id}"
         if thread_key not in self.threads:
             try:
                 async with httpx.AsyncClient() as client:
                     response = await client.post(
                         "https://api.openai.com/v1/threads",
-                        headers=self.openai_headers,
+                        headers=self.openai_beta_headers,
                         json={"metadata": {"user_id": user_id, "chat_id": chat_id}}
                     )
                     response.raise_for_status()
                     self.threads[thread_key] = response.json()["id"]
-                    print(f"✅ Thread создан: {thread_key}")
+                    log_info(f"Thread создан: {thread_key}")
             except Exception as e:
                 log_error(f"Ошибка создания thread: {str(e)}")
-                self.threads[thread_key] = f"fallback:{thread_key}"
-                print(f"❌ Ошибка thread: {e}. Используем fallback.")
+                return None
         return self.threads[thread_key]
 
     async def add_message(self, thread_id: str, role: str, content: str, metadata: dict = None):
         """Добавить сообщение в thread"""
+        if not thread_id:
+            log_error("Попытка добавить сообщение в несуществующий thread")
+            return
         try:
             async with httpx.AsyncClient() as client:
-                if not thread_id.startswith("fallback:"):
-                    await client.post(
-                        f"https://api.openai.com/v1/threads/{thread_id}/messages",
-                        headers=self.openai_headers,
-                        json={"role": role, "content": content, "metadata": metadata or {}}
-                    )
-                print(f"Добавлено сообщение в thread {thread_id}: {role}, {content}")
+                await client.post(
+                    f"https://api.openai.com/v1/threads/{thread_id}/messages",
+                    headers=self.openai_beta_headers,
+                    json={"role": role, "content": content, "metadata": metadata or {}}
+                )
+                log_info(f"Добавлено сообщение в thread {thread_id}: {role}, {content}")
         except Exception as e:
             log_error(f"Ошибка добавления сообщения: {str(e)}")
 
     async def search_memory(self, user_id: str, chat_id: str, query: str) -> str:
-        """Поиск в Vector Store через OpenAI"""
+        """Поиск в Vector Store"""
         thread_id = await self.get_or_create_thread(user_id, chat_id)
-        if not thread_id or not ASSISTANT_ID or thread_id.startswith("fallback:"):
+        if not thread_id or not ASSISTANT_ID:
+            log_error("Thread или Assistant недоступны для поиска")
             return ""
         
         try:
             async with httpx.AsyncClient() as client:
                 await client.post(
                     f"https://api.openai.com/v1/threads/{thread_id}/messages",
-                    headers=self.openai_headers,
+                    headers=self.openai_beta_headers,
                     json={"role": "user", "content": f"ПОИСК: {query}"}
                 )
                 run_response = await client.post(
                     f"https://api.openai.com/v1/threads/{thread_id}/runs",
-                    headers=self.openai_headers,
+                    headers=self.openai_beta_headers,
                     json={"assistant_id": ASSISTANT_ID}
                 )
                 run_id = run_response.json()["id"]
@@ -150,7 +160,7 @@ class HybridGrokkyEngine:
                     await asyncio.sleep(1)
                     status_response = await client.get(
                         f"https://api.openai.com/v1/threads/{thread_id}/runs/{run_id}",
-                        headers=self.openai_headers
+                        headers=self.openai_beta_headers
                     )
                     status = status_response.json()["status"]
                     if status == "completed":
@@ -161,7 +171,7 @@ class HybridGrokkyEngine:
                 
                 messages_response = await client.get(
                     f"https://api.openai.com/v1/threads/{thread_id}/messages",
-                    headers=self.openai_headers
+                    headers=self.openai_beta_headers
                 )
                 messages = messages_response.json()["data"]
                 return messages[0]["content"][0]["text"]["value"] if messages else ""
@@ -187,7 +197,9 @@ class HybridGrokkyEngine:
                     }
                 )
                 response.raise_for_status()
-                return response.json()["choices"][0]["message"]["content"]
+                reply = response.json()["choices"][0]["message"]["content"]
+                log_info(f"xAI ответ: {reply}")
+                return reply
         except Exception as e:
             log_error(f"Ошибка xAI: {str(e)}")
             return "🌀 Грокки: Эфир трещит! Дай мне минуту, брат!"
@@ -200,13 +212,16 @@ async def handle_trigger(m: types.Message):
     async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
         user_id = str(m.from_user.id)
         chat_id = str(m.chat.id)
-        print(f"🌀 Грокки активирован: {m.text} от {user_id} в чате {chat_id}")
+        log_info(f"Грокки активирован: {m.text} от {user_id} в чате {chat_id}")
         
         # 1. Добавляем сообщение в память
         thread_id = await grokky_engine.get_or_create_thread(user_id, chat_id)
+        if not thread_id:
+            await m.answer("🌀 Грокки: Ошибка памяти, эфир трещит!")
+            return
         await grokky_engine.add_message(thread_id, "user", m.text, {"username": m.from_user.first_name})
 
-        # 2. Обрабатываем CHAOS_PULSE
+        # 2. CHAOS_PULSE
         if "[CHAOS_PULSE]" in m.text:
             match = re.match(r"\[CHAOS_PULSE\] type=(\w+) intensity=(\d+)", m.text)
             if match:
@@ -214,20 +229,21 @@ async def handle_trigger(m: types.Message):
                 reply = await genesis2_handler(chaos_type=chaos_type, intensity=int(intensity))
                 await grokky_engine.add_message(thread_id, "assistant", reply)
                 await m.answer(f"🌀 Грокки: {reply}")
-                print(f"Ответ на [CHAOS_PULSE]: {reply}")
+                log_info(f"CHAOS_PULSE ответ: {reply}")
                 return
 
         # 3. Поиск в Vector Store
         memory_context = ""
         if "референс" in m.text.lower() or "помнишь" in m.text.lower():
             memory_context = await grokky_engine.search_memory(user_id, chat_id, m.text)
+            log_info(f"Vector Store контекст: {memory_context}")
 
-        # 4. Генерируем ответ через xAI
+        # 4. Генерируем ответ
         messages = [{"role": "user", "content": m.text}]
         reply = await grokky_engine.generate_with_xai(messages, memory_context)
         await grokky_engine.add_message(thread_id, "assistant", reply)
         await m.answer(f"🌀 Грокки: {reply}")
-        print(f"Ответ отправлен: {reply}")
+        log_info(f"Ответ отправлен: {reply}")
 
 async def chaotic_spark():
     """Хаотичные вбросы"""
@@ -235,11 +251,12 @@ async def chaotic_spark():
         await asyncio.sleep(random.randint(1800, 3600))
         if random.random() < 0.5 and IS_GROUP:
             thread_id = await grokky_engine.get_or_create_thread("system", AGENT_GROUP)
-            chaos_type = random.choice(["philosophy", "provocation", "poetry_burst"])
-            reply = await genesis2_handler(chaos_type=chaos_type, intensity=random.randint(6, 10))
-            await grokky_engine.add_message(thread_id, "assistant", reply)
-            await bot.send_message(AGENT_GROUP, f"🌀 Грокки вбрасывает хаос: {reply}")
-            print(f"Хаотичный вброс: {reply}")
+            if thread_id:
+                chaos_type = random.choice(["philosophy", "provocation", "poetry_burst"])
+                reply = await genesis2_handler(chaos_type=chaos_type, intensity=random.randint(6, 10))
+                await grokky_engine.add_message(thread_id, "assistant", reply)
+                await bot.send_message(AGENT_GROUP, f"🌀 Грокки вбрасывает хаос: {reply}")
+                log_info(f"Хаотичный вброс: {reply}")
 
 async def main():
     try:
@@ -247,13 +264,13 @@ async def main():
         asyncio.create_task(chaotic_spark())
         app = web.Application()
         webhook_path = f"/webhook/{os.getenv('TELEGRAM_BOT_TOKEN')}"
-        print(f"Настройка вебхука: {webhook_path}")
+        log_info(f"Настройка вебхука: {webhook_path}")
         SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=webhook_path)
         setup_application(app, dp)
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 8080)))
-        print(f"Сервер запущен на порту {os.getenv('PORT', 8080)}")
+        log_info(f"Сервер запущен на порту {os.getenv('PORT', 8080)}")
         await site.start()
         await asyncio.Event().wait()
     except Exception as e:
