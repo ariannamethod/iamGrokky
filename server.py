@@ -25,7 +25,7 @@ ASSISTANT_ID = None
 VECTOR_STORE_ID = None
 JOURNAL_LOG = "journal.json"
 
-# Логирование ошибок
+# Логирование
 def log_error(error: str):
     with open(JOURNAL_LOG, "a") as f:
         f.write(f"[{datetime.now().isoformat()}] ERROR: {error}\n")
@@ -37,8 +37,7 @@ def log_info(message: str):
 class HybridGrokkyEngine:
     def __init__(self):
         self.openai_headers = {
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
+            "Authorization": f"Bearer {OPENAI_API_KEY}"
         }
         self.openai_beta_headers = {
             "Authorization": f"Bearer {OPENAI_API_KEY}",
@@ -49,20 +48,20 @@ class HybridGrokkyEngine:
             "Authorization": f"Bearer {XAI_API_KEY}",
             "Content-Type": "application/json"
         }
-        self.threads = {}  # user_id:chat_id -> thread_id
+        self.threads = {}
 
     async def setup_openai_infrastructure(self):
         """Настройка OpenAI Assistant и Vector Store"""
         global ASSISTANT_ID, VECTOR_STORE_ID
         try:
             async with httpx.AsyncClient() as client:
-                # 1. Загружаем файлы для Vector Store
+                # 1. Загружаем файлы
                 file_ids = []
                 for md_file in glob("data/*.md"):
                     with open(md_file, "rb") as file:
                         response = await client.post(
                             "https://api.openai.com/v1/files",
-                            headers=self.openai_headers,  # Без OpenAI-Beta для файлов
+                            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
                             files={"file": (os.path.basename(md_file), file, "text/markdown")},
                             data={"purpose": "assistants"}
                         )
@@ -217,6 +216,7 @@ async def handle_trigger(m: types.Message):
         # 1. Добавляем сообщение в память
         thread_id = await grokky_engine.get_or_create_thread(user_id, chat_id)
         if not thread_id:
+            log_error("Не удалось создать thread")
             await m.answer("🌀 Грокки: Ошибка памяти, эфир трещит!")
             return
         await grokky_engine.add_message(thread_id, "user", m.text, {"username": m.from_user.first_name})
