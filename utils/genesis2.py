@@ -11,6 +11,7 @@ import asyncio
 from datetime import datetime
 from openai import OpenAI
 from utils.prompt import get_random_author_name, get_chaos_response
+from utils.http_helpers import check_openai_response, log_openai_exception
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -67,6 +68,7 @@ async def genesis2_handler(ping=None, group_history=None, personal_history=None,
             presence_penalty=0.6,
             frequency_penalty=0.8
         )
+        check_openai_response(response)
         
         reply = response.choices[0].message.content
         
@@ -85,6 +87,7 @@ async def genesis2_handler(ping=None, group_history=None, personal_history=None,
         return {"answer": reply}
         
     except Exception as e:
+        log_openai_exception(e)
         error_msg = f"Грокки взрывается: Генезис сорвался! {get_chaos_response()} — {e}"
         print(error_msg)
         return {"error": error_msg} if raw else error_msg

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from openai import OpenAI
 from utils.prompt import get_random_author_name, get_chaos_response
 from utils.telegram_utils import send_telegram_message_async
+from utils.http_helpers import check_openai_response, log_openai_exception
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -104,6 +105,7 @@ async def get_news_via_openai(topics=None):
             max_tokens=800,
             temperature=1.2
         )
+        check_openai_response(response)
         
         content = response.choices[0].message.content
         
@@ -127,6 +129,7 @@ async def get_news_via_openai(topics=None):
         }]
         
     except Exception as e:
+        log_openai_exception(e)
         print(f"Ошибка получения новостей через OpenAI: {e}")
         return [{
             "title": "Грокки взрывается!",

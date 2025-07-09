@@ -12,6 +12,7 @@ import glob
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 from openai import OpenAI
+from utils.http_helpers import check_openai_response, log_openai_exception
 import aiofiles
 
 # Опциональный импорт Pinecone
@@ -93,6 +94,7 @@ class HybridMemoryEngine:
                 try:
                     # Проверяем существование thread
                     thread = self.openai_client.beta.threads.retrieve(thread_id)
+                    check_openai_response(thread)
                     return thread_id
                 except Exception:
                     # Thread не существует, создаем новый
@@ -100,6 +102,7 @@ class HybridMemoryEngine:
             
             # Создаем новый thread
             thread = self.openai_client.beta.threads.create()
+            check_openai_response(thread)
             thread_id = thread.id
             
             # Сохраняем thread ID для пользователя
@@ -162,11 +165,12 @@ class HybridMemoryEngine:
                 content = f"{metadata_prefix} {message}"
             
             # Добавляем сообщение в thread
-            self.openai_client.beta.threads.messages.create(
+            msg_resp = self.openai_client.beta.threads.messages.create(
                 thread_id=thread_id,
                 role="user",
                 content=content
             )
+            check_openai_response(msg_resp)
             
             # Логируем
             await self.log_memory_event({
@@ -200,6 +204,7 @@ class HybridMemoryEngine:
                 thread_id=thread_id,
                 limit=limit
             )
+            check_openai_response(messages)
             
             memory_items = []
             for message in reversed(messages.data):
@@ -318,8 +323,10 @@ class HybridMemoryEngine:
                 model="text-embedding-ada-002",
                 input=text
             )
+            check_openai_response(response)
             return response.data[0].embedding
         except Exception as e:
+            log_openai_exception(e)
             print(f"Ошибка получения embedding: {e}")
             return None
 
