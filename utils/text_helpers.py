@@ -1,3 +1,9 @@
+
+"""
+Grokky AI Assistant - Text Helpers
+Вспомогательные функции для работы с текстом
+"""
+
 import os
 import re
 import asyncio
