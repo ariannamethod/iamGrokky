@@ -32,16 +32,22 @@ Create a `.env` file in the project root using `.env.example` as a template. Eac
 | `PINECONE_INDEX` | no | Name of the Pinecone index to use. | – |
 | `PORT` | no | Custom port for the FastAPI server. | `8000` |
 
-### Feature notes
+### Variable descriptions
 
-Optional variables activate additional functionality:
+Each environment variable controls a specific aspect of the bot:
 
-- `XAI_API_KEY` enables the XAI mirror endpoints.
-- `IS_GROUP` and `AGENT_GROUP` enable group mode.
-- `PINECONE_API_KEY` and `PINECONE_INDEX` enable the Pinecone vector store.
-- `NEWS_API_KEY` is required for news retrieval (can be ignored if that feature is disabled).
+- `TELEGRAM_BOT_TOKEN` – authenticates your Telegram bot.
+- `OPENAI_API_KEY` – allows requests to OpenAI.
+- `CHAT_ID` – chat ID for personal messages when not in group mode.
+- `XAI_API_KEY` – key for the XAI mirror endpoints (optional).
+- `IS_GROUP` – toggles group mode.
+- `AGENT_GROUP` – group chat ID used when `IS_GROUP` is `True`.
+- `PINECONE_API_KEY` – enables the optional Pinecone vector store.
+- `PINECONE_INDEX` – name of the Pinecone index to use.
+- `PORT` – port for the FastAPI server.
+- `NEWS_API_KEY` – key used for news retrieval (optional and currently unused).
 
-Unused optional variables are ignored when their features are disabled. Currently `NEWS_API_KEY` is unused unless you enable news retrieval.
+Unused optional variables are ignored when their features are disabled.
 
 ## Running the server
 
