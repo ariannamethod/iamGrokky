@@ -93,6 +93,7 @@ GROKKY_TRIGGERS = [
 ]
 
 
+
 def get_user_id_from_message(message: dict) -> str:
     """Extract user id from a Telegram message."""
     user = message.get("from", {})
