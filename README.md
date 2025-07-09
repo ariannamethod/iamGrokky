@@ -30,7 +30,6 @@ Create a `.env` file in the project root using `.env.example` as a template. Eac
 | `AGENT_GROUP` | no | Group chat ID used when `IS_GROUP` is enabled. | `-1001234567890` |
 | `PINECONE_API_KEY` | no | API key for the Pinecone vector store (required only if you use the vector store). | – |
 | `PINECONE_INDEX` | no | Name of the Pinecone index to use. | – |
-| `NEWS_API_KEY` | no | Key for retrieving news headlines. | – |
 | `PORT` | no | Custom port for the FastAPI server. | `8000` |
 
 ## Running the server
