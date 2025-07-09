@@ -1,3 +1,9 @@
+
+"""
+Grokky AI Assistant - Journal System
+Система журналирования событий и дикости
+"""
+
 import os
 import json
 import asyncio
