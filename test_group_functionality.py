@@ -8,8 +8,9 @@ import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# Добавляем путь к проекту
-sys.path.insert(0, '/home/ubuntu/grokky-ai-assistant')
+# Dynamically add repository root to sys.path
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, REPO_ROOT)
 
 # Мокаем переменные окружения
 os.environ.setdefault('TELEGRAM_BOT_TOKEN', 'test_token')
