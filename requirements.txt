@@ -1,128 +1,122 @@
 
-# Grokky AI Assistant - Dependencies
-# Основные зависимости для AI ассистента с памятью
+# Grokky AI Assistant - Dependencies (Python 3.12 Compatible)
+# Исправленные зависимости для совместимости с Python 3.12
 
-# FastAPI и веб-сервер
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart==0.0.6
+# Критически важно: setuptools для замены distutils в Python 3.12
+setuptools>=69.0.0
 
-# OpenAI API
-openai==1.3.7
+# FastAPI и веб-сервер (обновленные версии)
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
 
-# Telegram Bot
-python-telegram-bot==20.7
-aiohttp==3.9.1
-requests==2.31.0
+# OpenAI API (обновленная версия)
+openai==1.35.0
 
-# Аудио обработка (Whisper + TTS)
+# Telegram Bot (обновленная версия, совместимая с Python 3.12)
+python-telegram-bot==21.3
+aiohttp==3.9.5
+requests==2.32.3
+
+# Аудио обработка (Whisper + TTS) - обновленные версии
 pydub==0.25.1
 ffmpeg-python==0.2.0
 
 # Обработка текста и HTML
-beautifulsoup4==4.12.2
-lxml==4.9.3
+beautifulsoup4==4.12.3
+lxml==5.2.2
 
-# Vector Store (опционально)
-pinecone-client==2.2.4
+# Vector Store (обновленная версия)
+pinecone-client==4.1.0
 
 # Асинхронные файлы
 aiofiles==23.2.1
 
 # Переменные окружения
-python-dotenv==1.0.0
+python-dotenv==1.0.1
 
-# Утилиты
-tiktoken==0.5.2
-numpy==1.24.4
-pandas==2.1.4
+# Утилиты (обновленные версии)
+tiktoken==0.7.0
+numpy==1.26.4
+pandas==2.2.2
 
 # Логирование и мониторинг
-structlog==23.2.0
+structlog==24.2.0
 
 # Дата и время
-python-dateutil==2.8.2
+python-dateutil==2.9.0
 
-# JSON и сериализация
-orjson==3.9.10
+# JSON и сериализация (обновленная версия)
+orjson==3.10.5
 
-# HTTP клиент
-httpx==0.25.2
+# HTTP клиент (обновленная версия)
+httpx==0.27.0
 
-# Валидация данных
-pydantic==2.5.0
+# Валидация данных (обновленная версия)
+pydantic==2.7.4
 
-# Криптография (для безопасности)
-cryptography==41.0.8
+# Криптография (обновленная версия для Python 3.12)
+cryptography==42.0.8
 
 # Регулярные выражения
-regex==2023.10.3
+regex==2024.5.15
 
-# Работа с изображениями
-Pillow==10.1.0
+# Работа с изображениями (обновленная версия)
+Pillow==10.4.0
 
-# Математические операции
-scipy==1.11.4
+# Математические операции (обновленная версия)
+scipy==1.13.1
 
 # Кэширование
-cachetools==5.3.2
+cachetools==5.3.3
 
 # Конфигурация
 pyyaml==6.0.1
 
 # Мониторинг производительности
-psutil==5.9.6
+psutil==6.0.0
 
 # Работа с временными зонами
-pytz==2023.3
+pytz==2024.1
 
 # Валидация URL
-validators==0.22.0
+validators==0.28.3
 
 # Работа с markdown
-markdown==3.5.1
+markdown==3.6
 
 # Цветной вывод в консоль
 colorama==0.4.6
 
 # Прогресс-бары
-tqdm==4.66.1
+tqdm==4.66.4
 
 # Работа с JSON схемами
-jsonschema==4.20.0
+jsonschema==4.22.0
 
-# Хеширование
-hashlib-compat==1.0.1
-
-# Работа с путями
-pathlib2==2.3.7
+# Работа с путями (удалено hashlib-compat и pathlib2 - не нужны в Python 3.12)
 
 # Асинхронные утилиты
 asyncio-throttle==1.0.2
 
 # Retry механизмы
-tenacity==8.2.3
+tenacity==8.4.2
 
 # Метрики и статистика
-prometheus-client==0.19.0
+prometheus-client==0.20.0
 
 # Сжатие данных
 zstandard==0.22.0
 
 # Работа с CSV
-csvkit==1.1.1
+csvkit==2.0.0
 
 # Парсинг аргументов командной строки
 click==8.1.7
 
-# Работа с конфигурационными файлами
-configparser==6.0.0
+# Генерация UUID (удалено - встроено в Python)
 
-# Генерация UUID
-uuid==1.30
-
-# Работа с base64
-base64io==1.0.3
+# Работа с base64 (удалено - встроено в Python)
 
 # Сетевые утилиты
 netifaces==0.11.0
@@ -131,10 +125,17 @@ netifaces==0.11.0
 xmltodict==0.13.0
 
 # Генерация случайных данных
-faker==20.1.0
+faker==25.8.0
 
-# Работа с архивами
-zipfile38==0.0.3
+# Работа с архивами (удалено zipfile38 - встроено в Python)
 
 # Мультипроцессинг
 multiprocessing-logging==0.3.4
+
+# Дополнительные зависимости для голосовых функций
+speechrecognition==3.10.4
+pyaudio==0.2.14
+
+# Для работы с медиафайлами
+mutagen==1.47.0
+
