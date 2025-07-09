@@ -33,6 +33,17 @@ Create a `.env` file in the project root using `.env.example` as a template. Eac
 | `NEWS_API_KEY` | no | Key for retrieving news headlines. | – |
 | `PORT` | no | Custom port for the FastAPI server. | `8000` |
 
+### Feature notes
+
+Optional variables activate additional functionality:
+
+- `XAI_API_KEY` enables the XAI mirror endpoints.
+- `IS_GROUP` and `AGENT_GROUP` enable group mode.
+- `PINECONE_API_KEY` and `PINECONE_INDEX` enable the Pinecone vector store.
+- `NEWS_API_KEY` is required for news retrieval (can be ignored if that feature is disabled).
+
+Unused optional variables are ignored when their features are disabled. Currently `NEWS_API_KEY` is unused unless you enable news retrieval.
+
 ## Running the server
 
 After setting the environment variables, start the bot with:
