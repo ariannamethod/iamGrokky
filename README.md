@@ -48,3 +48,7 @@ You may also run the server with `uvicorn` directly if preferred:
 ```bash
 uvicorn server:app --host 0.0.0.0 --port 8000
 ```
+
+## Webhook troubleshooting
+
+If the bot is not receiving updates, verify the Telegram webhook configuration. See [WEBHOOK_FIX_INSTRUCTIONS.md](WEBHOOK_FIX_INSTRUCTIONS.md) for step-by-step instructions or run `python fix_webhook.py` to fix it automatically.
