@@ -1,3 +1,9 @@
+
+"""
+Grokky AI Assistant - Vision Handler
+Обработка изображений через OpenAI Vision API
+"""
+
 import os
 import random
 from openai import OpenAI
