@@ -18,21 +18,20 @@ Grokky AI Assistant is a Telegram bot powered by FastAPI. This project contains 
 
 ## Environment variables
 
-Create a `.env` file in the project root using `.env.example` as a template. The following variables are required:
+Create a `.env` file in the project root using `.env.example` as a template. Each variable is described below.
 
-- `TELEGRAM_BOT_TOKEN` – token from @BotFather.
-- `OPENAI_API_KEY` – OpenAI API key.
-- `CHAT_ID` – Telegram chat ID for direct messages.
-
-Optional variables enable extra features:
-
-- `XAI_API_KEY` – for the XAI mirror endpoints.
-- `IS_GROUP` and `AGENT_GROUP` – enable group mode.
-- `PINECONE_API_KEY` and `PINECONE_INDEX` – use the Pinecone vector store.
-- `NEWS_API_KEY` – API key for news retrieval.
-- `PORT` – custom server port (defaults to 8000).
-
-Refer to `.env.example` for the complete list of supported variables and default values.
+| Variable | Required | Description | Default |
+|----------|---------|-------------|---------|
+| `TELEGRAM_BOT_TOKEN` | yes | Token for your Telegram bot obtained from @BotFather. | – |
+| `OPENAI_API_KEY` | yes | API key for OpenAI requests. | – |
+| `CHAT_ID` | yes | Telegram chat ID used for personal messages. | – |
+| `XAI_API_KEY` | no | Key for the XAI mirror endpoints. | – |
+| `IS_GROUP` | no | Set to `True` to enable group mode. | `False` |
+| `AGENT_GROUP` | no | Group chat ID used when `IS_GROUP` is enabled. | `-1001234567890` |
+| `PINECONE_API_KEY` | no | API key for the Pinecone vector store (required only if you use the vector store). | – |
+| `PINECONE_INDEX` | no | Name of the Pinecone index to use. | – |
+| `NEWS_API_KEY` | no | Key for retrieving news headlines. | – |
+| `PORT` | no | Custom port for the FastAPI server. | `8000` |
 
 ## Running the server
 
