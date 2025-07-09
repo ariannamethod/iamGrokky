@@ -4,14 +4,72 @@ import json
 import re
 import random
 from datetime import datetime
-import httpx
 
-from aiogram import Bot, Dispatcher, types
-from aiogram.utils.chat_action import ChatActionSender
-from aiohttp import web
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+try:
+    from aiogram import Bot, Dispatcher, types
+    from aiogram.utils.chat_action import ChatActionSender
+    from aiohttp import web
+    from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+except ModuleNotFoundError:  # pragma: no cover - used only for tests
+    class Bot:
+        def __init__(self, token):
+            self.token = token
 
-from utils.hybrid_engine import HybridGrokkyEngine
+        async def send_message(self, chat_id, text):
+            print(f"Mock send_message to {chat_id}: {text}")
+
+    class Dispatcher:
+        def __init__(self):
+            pass
+
+        def message(self, *_args, **_kwargs):
+            def decorator(handler):
+                return handler
+            return decorator
+
+    class types:
+        class Message:
+            def __init__(self, chat=None, from_user=None, text=""):
+                self.chat = chat
+                self.from_user = from_user
+                self.text = text
+
+    class ChatActionSender:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+    class SimpleRequestHandler:
+        def __init__(self, dispatcher, bot):
+            pass
+
+        def register(self, app, path):
+            app[path] = True
+
+    def setup_application(app, dp):
+        pass
+    from types import SimpleNamespace as web
+
+try:
+    from utils.hybrid_engine import HybridGrokkyEngine
+except ModuleNotFoundError:  # pragma: no cover - used only for tests
+    class HybridGrokkyEngine:
+        async def add_memory(self, *args, **kwargs):
+            pass
+
+        async def search_memory(self, *args, **kwargs):
+            return ""
+
+        async def generate_with_xai(self, *_args, **_kwargs):
+            return ""
+
+        async def setup_openai_infrastructure(self):
+            pass
 from utils.genesis2 import genesis2_handler
 from utils.prompt import build_system_prompt
 
@@ -22,6 +80,18 @@ IS_GROUP      = os.getenv("IS_GROUP", "False").lower() == "true"
 bot = Bot(token=BOT_TOKEN)
 dp  = Dispatcher()
 engine = HybridGrokkyEngine()
+
+# Trigger phrases that activate Grokky in group chats
+GROKKY_TRIGGERS = ["грокки", "grokky"]
+
+
+def get_user_id_from_message(message: dict) -> str:
+    """Extract user id from a Telegram message."""
+    user = message.get("from", {})
+    user_id = user.get("id")
+    if user_id is not None:
+        return str(user_id)
+    return os.getenv("CHAT_ID", "")
 
 @dp.message(lambda m: any(t in m.text.lower() for t in ["грокки", "grokky"]))
 async def handle_grокky(m: types.Message):
@@ -73,7 +143,8 @@ async def main():
 
     # 2. Запускаем Telegram через webhook
     app = web.Application()
-    wh_path = f"/webhook/{BOT_TOKEN}"
+    # Telegram should send updates to `/webhook` without the token
+    wh_path = "/webhook"
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=wh_path)
     setup_application(app, dp)
     runner = web.AppRunner(app)
