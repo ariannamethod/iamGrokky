@@ -1,3 +1,9 @@
+
+"""
+Grokky AI Assistant - Voice Handler
+Обработка голосовых сообщений через Whisper и TTS
+"""
+
 import os
 import asyncio
 import tempfile
