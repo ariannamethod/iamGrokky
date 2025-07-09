@@ -1,3 +1,9 @@
+
+"""
+Grokky AI Assistant - System Prompt
+Системный промпт для AI ассистента Grokky с хаотичным характером
+"""
+
 import os
 import random
 from datetime import datetime
