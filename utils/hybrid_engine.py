@@ -1,6 +1,7 @@
 """
 Grokky AI Assistant - Hybrid Memory Engine
 Память через OpenAI threads и vector store с поддержкой Pinecone
+ИСПРАВЛЕНО: Единая память для пользователя независимо от контекста (группа/личка)
 """
 
 import os
@@ -30,9 +31,8 @@ class HybridMemoryEngine:
         self.agent_group = os.getenv("AGENT_GROUP")
         self.is_group = os.getenv("IS_GROUP", "False").lower() == "true"
         
-        # OpenAI Threads
-        self.personal_thread_id = None
-        self.group_thread_id = None
+        # OpenAI Threads - теперь по user_id, а не по chat_id
+        self.user_threads = {}  # user_id -> thread_id
         
         # Vector Store (Pinecone опционально)
         self.pinecone_client = None
@@ -40,7 +40,7 @@ class HybridMemoryEngine:
         self.setup_vector_store()
         
         # Локальные файлы
-        self.threads_file = "data/threads.json"
+        self.threads_file = "data/user_threads.json"  # Переименовано для ясности
         self.vector_meta_file = "data/vector_meta.json"
         self.memory_log_file = "data/memory_log.json"
         
@@ -78,14 +78,16 @@ class HybridMemoryEngine:
                 print(f"Ошибка инициализации Pinecone: {e}")
                 self.pinecone_client = None
 
-    async def get_or_create_thread(self, is_group_context=False):
-        """Получает или создает OpenAI thread"""
+    async def get_or_create_thread(self, user_id: str):
+        """
+        Получает или создает OpenAI thread для пользователя
+        ИСПРАВЛЕНО: Теперь использует user_id вместо chat_id
+        """
         try:
             # Загружаем существующие threads
             threads_data = await self.load_threads_data()
             
-            thread_key = "group_thread_id" if is_group_context else "personal_thread_id"
-            thread_id = threads_data.get(thread_key)
+            thread_id = threads_data.get(user_id)
             
             if thread_id:
                 try:
@@ -100,11 +102,11 @@ class HybridMemoryEngine:
             thread = self.openai_client.beta.threads.create()
             thread_id = thread.id
             
-            # Сохраняем thread ID
-            threads_data[thread_key] = thread_id
+            # Сохраняем thread ID для пользователя
+            threads_data[user_id] = thread_id
             await self.save_threads_data(threads_data)
             
-            print(f"Создан новый {'групповой' if is_group_context else 'личный'} thread: {thread_id}")
+            print(f"Создан новый thread для пользователя {user_id}: {thread_id}")
             return thread_id
             
         except Exception as e:
@@ -131,15 +133,33 @@ class HybridMemoryEngine:
         except Exception as e:
             print(f"Ошибка сохранения threads: {e}")
 
-    async def add_message_to_thread(self, message: str, is_group_context=False, author_name=None):
-        """Добавляет сообщение в OpenAI thread"""
+    async def add_memory(self, user_id: str, message: str, chat_id: str = None, context_type: str = "unknown", author_name: str = None):
+        """
+        Добавляет сообщение в память пользователя с метаданными о контексте
+        ИСПРАВЛЕНО: Единая память с метаданными о контексте
+        """
         try:
-            thread_id = await self.get_or_create_thread(is_group_context)
+            thread_id = await self.get_or_create_thread(user_id)
             if not thread_id:
                 return False
             
-            # Формируем контент сообщения
-            content = f"[{author_name or 'User'}]: {message}" if author_name else message
+            # Определяем тип контекста
+            if not context_type or context_type == "unknown":
+                if chat_id == self.agent_group:
+                    context_type = "group"
+                elif chat_id == self.chat_id:
+                    context_type = "personal"
+                else:
+                    context_type = "other"
+            
+            # Формируем контент сообщения с метаданными
+            timestamp = datetime.now().isoformat()
+            metadata_prefix = f"[{timestamp}|{context_type}|{chat_id or 'unknown'}]"
+            
+            if author_name:
+                content = f"{metadata_prefix} {author_name}: {message}"
+            else:
+                content = f"{metadata_prefix} {message}"
             
             # Добавляем сообщение в thread
             self.openai_client.beta.threads.messages.create(
@@ -150,9 +170,11 @@ class HybridMemoryEngine:
             
             # Логируем
             await self.log_memory_event({
-                "type": "thread_message_added",
+                "type": "memory_added",
+                "user_id": user_id,
                 "thread_id": thread_id,
-                "is_group": is_group_context,
+                "chat_id": chat_id,
+                "context_type": context_type,
                 "author": author_name,
                 "message_length": len(message)
             })
@@ -160,13 +182,16 @@ class HybridMemoryEngine:
             return True
             
         except Exception as e:
-            print(f"Ошибка добавления сообщения в thread: {e}")
+            print(f"Ошибка добавления в память: {e}")
             return False
 
-    async def get_thread_context(self, is_group_context=False, limit=20):
-        """Получает контекст из OpenAI thread"""
+    async def search_memory(self, user_id: str, query: str = None, limit: int = 20, context_filter: str = None):
+        """
+        Поиск в памяти пользователя по всем контекстам
+        ИСПРАВЛЕНО: Поиск по всем контекстам пользователя
+        """
         try:
-            thread_id = await self.get_or_create_thread(is_group_context)
+            thread_id = await self.get_or_create_thread(user_id)
             if not thread_id:
                 return []
             
@@ -176,23 +201,116 @@ class HybridMemoryEngine:
                 limit=limit
             )
             
-            context = []
+            memory_items = []
             for message in reversed(messages.data):
                 if hasattr(message, 'content') and message.content:
                     for content_block in message.content:
                         if hasattr(content_block, 'text'):
-                            context.append({
+                            content = content_block.text.value
+                            
+                            # Парсим метаданные из контента
+                            metadata = self._parse_message_metadata(content)
+                            
+                            # Применяем фильтр контекста если указан
+                            if context_filter and metadata.get("context_type") != context_filter:
+                                continue
+                            
+                            # Применяем текстовый поиск если указан
+                            if query and query.lower() not in content.lower():
+                                continue
+                            
+                            memory_items.append({
                                 "role": message.role,
-                                "content": content_block.text.value,
-                                "timestamp": message.created_at
+                                "content": content,
+                                "timestamp": message.created_at,
+                                "metadata": metadata
                             })
             
-            return context
+            return memory_items
             
         except Exception as e:
-            print(f"Ошибка получения контекста thread: {e}")
+            print(f"Ошибка поиска в памяти: {e}")
             return []
 
+    def _parse_message_metadata(self, content: str):
+        """Парсит метаданные из сообщения"""
+        metadata = {
+            "context_type": "unknown",
+            "chat_id": None,
+            "timestamp": None
+        }
+        
+        # Ищем метаданные в формате [timestamp|context_type|chat_id]
+        if content.startswith('['):
+            try:
+                end_bracket = content.find(']')
+                if end_bracket > 0:
+                    meta_str = content[1:end_bracket]
+                    parts = meta_str.split('|')
+                    if len(parts) >= 3:
+                        metadata["timestamp"] = parts[0]
+                        metadata["context_type"] = parts[1]
+                        metadata["chat_id"] = parts[2] if parts[2] != 'unknown' else None
+            except Exception:
+                pass
+        
+        return metadata
+
+    async def get_context_for_user(self, user_id: str, query: str = None, limit: int = 10):
+        """
+        Получает контекст для пользователя из всех источников
+        ИСПРАВЛЕНО: Единый контекст из всех источников
+        """
+        context = {
+            "thread_context": [],
+            "semantic_context": [],
+            "query": query,
+            "user_id": user_id
+        }
+        
+        # Получаем контекст из thread (все контексты пользователя)
+        thread_context = await self.search_memory(user_id, query, limit)
+        context["thread_context"] = thread_context
+        
+        # Получаем семантический контекст если доступен
+        if query:
+            semantic_results = await self.semantic_search(query, top_k=3)
+            context["semantic_context"] = semantic_results
+        
+        return context
+
+    # Методы для обратной совместимости
+    async def add_message_to_thread(self, message: str, is_group_context=False, author_name=None):
+        """
+        Обратная совместимость - определяем user_id из переменных окружения
+        DEPRECATED: Используйте add_memory() с явным user_id
+        """
+        # Для обратной совместимости используем CHAT_ID как user_id
+        user_id = self.chat_id
+        chat_id = self.agent_group if is_group_context else self.chat_id
+        context_type = "group" if is_group_context else "personal"
+        
+        return await self.add_memory(user_id, message, chat_id, context_type, author_name)
+
+    async def get_thread_context(self, is_group_context=False, limit=20):
+        """
+        Обратная совместимость
+        DEPRECATED: Используйте search_memory() с явным user_id
+        """
+        user_id = self.chat_id
+        context_filter = "group" if is_group_context else "personal"
+        
+        return await self.search_memory(user_id, limit=limit, context_filter=context_filter)
+
+    async def get_hybrid_context(self, query: str, is_group_context=False):
+        """
+        Обратная совместимость
+        DEPRECATED: Используйте get_context_for_user() с явным user_id
+        """
+        user_id = self.chat_id
+        return await self.get_context_for_user(user_id, query)
+
+    # Остальные методы остаются без изменений
     async def get_embedding(self, text: str):
         """Получает embedding через OpenAI"""
         try:
@@ -394,37 +512,18 @@ class HybridMemoryEngine:
         except Exception as e:
             print(f"Ошибка логирования: {e}")
 
-    async def get_hybrid_context(self, query: str, is_group_context=False):
-        """Получает гибридный контекст из threads + vector search"""
-        context = {
-            "thread_context": [],
-            "semantic_context": [],
-            "query": query
-        }
-        
-        # Получаем контекст из thread
-        thread_context = await self.get_thread_context(is_group_context, limit=10)
-        context["thread_context"] = thread_context
-        
-        # Получаем семантический контекст
-        semantic_results = await self.semantic_search(query, top_k=3)
-        context["semantic_context"] = semantic_results
-        
-        return context
-
-    async def create_snapshot(self, snapshot_type="daily"):
+    async def create_snapshot(self, user_id: str, snapshot_type="daily"):
         """Создает снимок состояния для векторизации"""
         try:
-            # Получаем контекст из обоих threads
-            personal_context = await self.get_thread_context(False, limit=20)
-            group_context = await self.get_thread_context(True, limit=20) if self.is_group else []
+            # Получаем контекст пользователя из всех источников
+            context = await self.get_context_for_user(user_id, limit=50)
             
             # Формируем снимок
             snapshot = {
                 "type": snapshot_type,
+                "user_id": user_id,
                 "timestamp": datetime.now().isoformat(),
-                "personal_context": personal_context,
-                "group_context": group_context
+                "context": context
             }
             
             # Векторизуем снимок если доступен vector store
@@ -433,12 +532,13 @@ class HybridMemoryEngine:
                 embedding = await self.get_embedding(snapshot_text)
                 
                 if embedding:
-                    snapshot_id = f"snapshot_{snapshot_type}_{datetime.now().date()}"
+                    snapshot_id = f"snapshot_{user_id}_{snapshot_type}_{datetime.now().date()}"
                     self.vector_index.upsert(vectors=[{
                         "id": snapshot_id,
                         "values": embedding,
                         "metadata": {
                             "type": "snapshot",
+                            "user_id": user_id,
                             "snapshot_type": snapshot_type,
                             "timestamp": datetime.now().isoformat()
                         }
@@ -446,9 +546,9 @@ class HybridMemoryEngine:
             
             await self.log_memory_event({
                 "type": "snapshot_created",
+                "user_id": user_id,
                 "snapshot_type": snapshot_type,
-                "personal_messages": len(personal_context),
-                "group_messages": len(group_context)
+                "messages_count": len(context.get("thread_context", []))
             })
             
             return snapshot
@@ -459,3 +559,4 @@ class HybridMemoryEngine:
 
 # Глобальный экземпляр движка памяти
 memory_engine = HybridMemoryEngine()
+
