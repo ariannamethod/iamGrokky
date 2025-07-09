@@ -45,8 +45,6 @@ Each environment variable controls a specific aspect of the bot:
 - `PINECONE_API_KEY` – enables the optional Pinecone vector store.
 - `PINECONE_INDEX` – name of the Pinecone index to use.
 - `PORT` – port for the FastAPI server.
-- `NEWS_API_KEY` – key used for news retrieval (optional and currently unused).
-
 Unused optional variables are ignored when their features are disabled.
 
 ## Running the server
@@ -68,3 +66,15 @@ uvicorn server:app --host 0.0.0.0 --port 8000
 ## Webhook troubleshooting
 
 If the bot is not receiving updates, verify the Telegram webhook configuration. The webhook URL **must** point to `/webhook` on your domain without the bot token appended. Running `python fix_webhook.py` sets this path automatically. See [WEBHOOK_FIX_INSTRUCTIONS.md](WEBHOOK_FIX_INSTRUCTIONS.md) for step-by-step instructions.
+
+## Running tests
+
+The repository includes simple test scripts that mock external dependencies. After installing the requirements and exporting the variables from `.env.example`, execute:
+
+```bash
+python test_group_functionality.py
+python test_memory_fix.py
+python test_server_integration.py
+```
+
+These tests can run offline and validate basic logic.

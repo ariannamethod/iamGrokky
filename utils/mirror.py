@@ -1,31 +1,34 @@
 import os
 import asyncio
-import requests
 import hashlib
 from datetime import datetime
 import random
 import httpx
+from aiogram import Bot
 from utils.prompt import build_system_prompt
-from utils.http_helpers import check_httpx_response
 
 REPO_URL = "https://grokky.ariannamethod.me/repo/"
 RESEARCH_FILE = "grokkyresearch.md"
 LAST_HASH_FILE = "data/last_mirror_hash.txt"
 XAI_API_KEY = os.getenv("XAI_API_KEY")
+AGENT_GROUP = os.getenv("AGENT_GROUP")
+
+bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
 
 async def mirror_task():
     last_hash = ""
     if os.path.exists(LAST_HASH_FILE):
         with open(LAST_HASH_FILE, "r") as f:
             last_hash = f.read().strip()
-    
+
     while True:
         try:
-            response = requests.get(REPO_URL, timeout=10)
-            response.raise_for_status()
-            code = response.text
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(REPO_URL, timeout=10)
+                resp.raise_for_status()
+                code = resp.text
             current_hash = hashlib.md5(code.encode()).hexdigest()
-            
+
             if current_hash != last_hash:
                 async with httpx.AsyncClient() as client:
                     try:
@@ -41,7 +44,6 @@ async def mirror_task():
                                 "temperature": 0.9
                             }
                         )
-                        check_httpx_response(response)
                         response.raise_for_status()
                         reply = response.json()["choices"][0]["message"]["content"]
                     except Exception as e:
@@ -66,13 +68,13 @@ async def mirror_task():
                                 "temperature": 0.9
                             }
                         )
-                        check_httpx_response(response)
                         response.raise_for_status()
                         reply = response.json()["choices"][0]["message"]["content"]
                     except Exception as e:
                         print(f"Ошибка xAI mirror_task: {e}")
                         reply = "🌀 Грокки: Хаос не врубился, но шторм гремит!"
-                await bot.send_message(AGENT_GROUP, f"🌀 Грокки: {reply}")
+                if AGENT_GROUP:
+                    await bot.send_message(AGENT_GROUP, f"🌀 Грокки: {reply}")
         except Exception as e:
             with open(RESEARCH_FILE, "a", encoding="utf-8") as f:
                 f.write(f"{datetime.now()}: Ошибка: {e}\n\n")
