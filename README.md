@@ -48,3 +48,36 @@ You may also run the server with `uvicorn` directly if preferred:
 ```bash
 uvicorn server:app --host 0.0.0.0 --port 8000
 ```
+
+## Fixing the Telegram webhook
+
+Telegram requires a valid webhook URL before it can deliver messages to your bot.
+Run the helper script after setting up your `.env` file:
+
+```bash
+python fix_webhook.py
+```
+
+The script checks that `TELEGRAM_BOT_TOKEN` is real, removes any old webhook and
+sets a new one using the public URL of your deployment.
+
+**Common pitfalls**
+
+- Keeping the placeholder token (`your_telegram_bot_token_here`) causes Telegram
+  to hit `/webhook` with an invalid token, leading to `404` errors.
+- Ensure the application URL you provide is reachable from the internet so that
+  Telegram can access `<app-url>/webhook`.
+
+## Running the tests
+
+This repository contains self‑contained scripts that demonstrate key features.
+Execute them from the project root after installing the dependencies:
+
+```bash
+python test_group_functionality.py      # group triggers and document handling
+python test_memory_fix.py               # unified memory tests
+python test_server_integration.py       # server integration checks
+```
+
+The tests rely only on the installed dependencies and do not require actual
+Telegram or OpenAI credentials.
