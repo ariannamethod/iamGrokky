@@ -10,6 +10,7 @@ import tempfile
 from openai import OpenAI
 from pydub import AudioSegment
 from utils.telegram_utils import send_voice_message, download_file, get_file_url
+from utils.http_helpers import check_openai_response, log_openai_exception
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -60,6 +61,7 @@ class VoiceHandler:
                         file=audio_file,
                         language="ru"  # Можно сделать автоопределение
                     )
+                check_openai_response(transcript)
                 
                 return transcript.text
                 
@@ -73,6 +75,7 @@ class VoiceHandler:
                     pass
                     
         except Exception as e:
+            log_openai_exception(e)
             print(f"Ошибка транскрипции: {e}")
             return f"Грокки не смог разобрать голос: {e}"
     
@@ -89,10 +92,13 @@ class VoiceHandler:
                 input=text,
                 response_format="opus"  # Для Telegram лучше opus
             )
-            
+
+            check_openai_response(response)
+
             return response.content
             
         except Exception as e:
+            log_openai_exception(e)
             print(f"Ошибка TTS: {e}")
             return None
     

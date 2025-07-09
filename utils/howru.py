@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from aiogram import Bot
 import httpx
 from utils.prompt import build_system_prompt
+from utils.http_helpers import check_httpx_response
 
 bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
 OLEG_CHAT_ID = os.getenv("CHAT_ID")
@@ -31,6 +32,7 @@ async def check_silence():
                             "temperature": 0.9
                         }
                     )
+                    check_httpx_response(response)
                     response.raise_for_status()
                     reply = response.json()["choices"][0]["message"]["content"]
                 except Exception as e:
@@ -52,6 +54,7 @@ async def check_silence():
                             "temperature": 0.9
                         }
                     )
+                    check_httpx_response(response)
                     response.raise_for_status()
                     reply = response.json()["choices"][0]["message"]["content"]
                 except Exception as e:
@@ -73,6 +76,7 @@ async def check_silence():
                             "temperature": 0.9
                         }
                     )
+                    check_httpx_response(response)
                     response.raise_for_status()
                     reply = response.json()["choices"][0]["message"]["content"]
                 except Exception as e:

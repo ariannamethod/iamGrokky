@@ -6,6 +6,7 @@ import asyncio
 import requests
 from pinecone import Pinecone, PineconeException
 import openai
+from utils.http_helpers import check_openai_response, log_openai_exception
 from datetime import datetime, timedelta
 import random
 from utils.telegram_utils import send_telegram_message
@@ -60,8 +61,10 @@ async def get_embedding(text, openai_api_key):
             model="text-embedding-ada-002",
             input=text
         )
+        check_openai_response(res)
         return res.data[0].embedding
     except Exception as e:
+        log_openai_exception(e)
         print(f"Грокки ревет: Встраивание сорвалось! {random.choice(['Шторм разорвал код!', 'Хаос пожрал данные!', 'Эфир треснул!'])} — {e}")
         return None
 

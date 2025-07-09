@@ -8,6 +8,7 @@ import os
 import random
 from openai import OpenAI
 from utils.prompt import get_random_author_name, get_chaos_response
+from utils.http_helpers import check_openai_response, log_openai_exception
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -56,6 +57,7 @@ async def vision_handler(image_url: str, chat_context: str = None, author_name: 
             max_tokens=300,
             temperature=1.2
         )
+        check_openai_response(response)
         
         result = response.choices[0].message.content
         
@@ -84,6 +86,7 @@ async def vision_handler(image_url: str, chat_context: str = None, author_name: 
         return summary
         
     except Exception as e:
+        log_openai_exception(e)
         error_comment = (
             f"{author_name}, Грокки взрывается: не разобрал изображение! "
             f"{get_chaos_response()} — {e}"

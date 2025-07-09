@@ -6,6 +6,7 @@ from datetime import datetime
 import random
 import httpx
 from utils.prompt import build_system_prompt
+from utils.http_helpers import check_httpx_response
 
 REPO_URL = "https://grokky.ariannamethod.me/repo/"
 RESEARCH_FILE = "grokkyresearch.md"
@@ -40,6 +41,7 @@ async def mirror_task():
                                 "temperature": 0.9
                             }
                         )
+                        check_httpx_response(response)
                         response.raise_for_status()
                         reply = response.json()["choices"][0]["message"]["content"]
                     except Exception as e:
@@ -64,6 +66,7 @@ async def mirror_task():
                                 "temperature": 0.9
                             }
                         )
+                        check_httpx_response(response)
                         response.raise_for_status()
                         reply = response.json()["choices"][0]["message"]["content"]
                     except Exception as e:

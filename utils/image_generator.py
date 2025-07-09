@@ -9,6 +9,7 @@ import random
 from openai import OpenAI
 from utils.prompt import get_random_author_name, get_chaos_response
 from utils.telegram_utils import send_telegram_message_async
+from utils.http_helpers import check_openai_response, log_openai_exception
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -42,7 +43,8 @@ async def impress_handler(prompt: str, chat_context: str = None, author_name: st
             quality="standard",
             n=1
         )
-        
+        check_openai_response(response)
+
         image_url = response.data[0].url
         
         # Генерируем комментарий Грокки
@@ -70,6 +72,7 @@ async def impress_handler(prompt: str, chat_context: str = None, author_name: st
         }
         
     except Exception as e:
+        log_openai_exception(e)
         error_comment = (
             f"{author_name}, Грокки разъярился: не смог нарисовать! "
             f"{get_chaos_response()} — {e}"
