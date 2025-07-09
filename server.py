@@ -82,7 +82,15 @@ dp  = Dispatcher()
 engine = HybridGrokkyEngine()
 
 # Trigger phrases that activate Grokky in group chats
-GROKKY_TRIGGERS = ["грокки", "grokky"]
+GROKKY_TRIGGERS = [
+    "грокки",
+    "grokky",
+    "grokkki",
+    "грок",
+    "grok",
+    "grokki",
+    "groky",
+]
 
 
 def get_user_id_from_message(message: dict) -> str:
@@ -93,12 +101,23 @@ def get_user_id_from_message(message: dict) -> str:
         return str(user_id)
     return os.getenv("CHAT_ID", "")
 
-@dp.message(lambda m: any(t in m.text.lower() for t in ["грокки", "grokky"]))
+@dp.message(lambda m: m.text and any(t in m.text.lower() for t in GROKKY_TRIGGERS))
 async def handle_grокky(m: types.Message):
-    async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
-        user_id = str(m.from_user.id)
-        text    = m.text
+    chat_id = str(m.chat.id)
+    user_id = str(m.from_user.id)
+    text = m.text
 
+    # Random delay before responding
+    if chat_id == AGENT_GROUP:
+        await asyncio.sleep(random.randint(60, 300))
+    else:
+        await asyncio.sleep(random.randint(10, 30))
+
+    # 30% chance to ignore trivial acknowledgements
+    if text.strip().lower() in {"окей", "угу", "да", "ok"} and random.random() < 0.3:
+        return
+
+    async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
         # 1. Добавляем пользователя и сообщение в память OpenAI
         await engine.add_memory(user_id, text, role="user")
 
@@ -123,6 +142,19 @@ async def handle_grокky(m: types.Message):
         # 5. Сохраняем в память и шлём пользователю
         await engine.add_memory(user_id, resp, role="assistant")
         await m.reply(f"🌀 Грокки: {resp}")
+
+    # Возможное последующее сообщение через 30-60 минут
+    asyncio.create_task(schedule_followup(chat_id))
+
+
+async def schedule_followup(chat_id: str):
+    await asyncio.sleep(random.randint(1800, 3600))
+    if random.random() < 0.25:
+        follow = await genesis2_handler(
+            chaos_type="reflection",
+            intensity=random.randint(1, 5)
+        )
+        await bot.send_message(chat_id, f"🌀 Грокки: {follow}")
 
 async def chaos_spark():
     while True:
