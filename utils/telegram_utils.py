@@ -1,3 +1,9 @@
+
+"""
+Grokky AI Assistant - Telegram Utilities
+Утилиты для работы с Telegram API
+"""
+
 import os
 import requests
 import asyncio
