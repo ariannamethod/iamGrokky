@@ -1,5 +1,3 @@
-
-
 """
 Grokky AI Assistant - Main Server
 Главный файл Telegram бота с webhook, обработкой сообщений и голосом
