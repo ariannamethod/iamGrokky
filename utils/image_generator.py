@@ -1,3 +1,9 @@
+
+"""
+Grokky AI Assistant - Image Generator
+Генерация изображений через OpenAI DALL-E
+"""
+
 import os
 import random
 from openai import OpenAI
