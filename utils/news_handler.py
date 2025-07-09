@@ -1,7 +1,7 @@
 
 """
 Grokky AI Assistant - News Handler
-Получение новостей через OpenAI function calling
+Получение новостей через OpenAI function calling 
 """
 
 import os
