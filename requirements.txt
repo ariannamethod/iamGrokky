@@ -13,8 +13,7 @@ python-multipart==0.0.9
 # OpenAI API (обновленная версия)
 openai==1.35.0
 
-# Telegram Bot (обновленная версия, совместимая с Python 3.12)
-python-telegram-bot==21.3
+# Telegram Bot utilities use direct HTTP requests
 aiohttp==3.9.5
 requests==2.32.3
 
