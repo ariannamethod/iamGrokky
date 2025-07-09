@@ -24,13 +24,13 @@ bot = Bot(token=BOT_TOKEN)
 dp  = Dispatcher()
 engine = HybridGrokkyEngine()
 
-
 def should_respond(m: types.Message) -> bool:
     text = (m.text or "").lower()
     triggered = any(t in text for t in GROKKY_TRIGGERS)
     if m.reply_to_message and m.reply_to_message.from_user.id == bot.id:
         triggered = True
     return triggered
+
 @dp.message(lambda m: should_respond(m))
 async def handle_grокky(m: types.Message):
     async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
