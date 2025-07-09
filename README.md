@@ -1,6 +1,6 @@
 # Grokky-2
 
-Grokky AI Assistant is a Telegram bot powered by FastAPI. This project contains the server code and utility scripts used to run the assistant.
+Grokky AI Assistant is a Telegram bot built with **Aiogram** and `aiohttp`. It contains the server and utility scripts needed to run the assistant.
 
 ## Installation
 
@@ -24,13 +24,10 @@ Create a `.env` file in the project root using `.env.example` as a template. Eac
 |----------|---------|-------------|---------|
 | `TELEGRAM_BOT_TOKEN` | yes | Token for your Telegram bot obtained from @BotFather. | – |
 | `OPENAI_API_KEY` | yes | API key for OpenAI requests. | – |
-| `CHAT_ID` | yes | Telegram chat ID used for personal messages. | – |
 | `XAI_API_KEY` | no | Key for the XAI mirror endpoints. | – |
 | `IS_GROUP` | no | Set to `True` to enable group mode. | `False` |
 | `AGENT_GROUP` | no | Group chat ID used when `IS_GROUP` is enabled. | `-1001234567890` |
-| `PINECONE_API_KEY` | no | API key for the Pinecone vector store (required only if you use the vector store). | – |
-| `PINECONE_INDEX` | no | Name of the Pinecone index to use. | – |
-| `PORT` | no | Custom port for the FastAPI server. | `8000` |
+| `PORT` | no | Custom port for the server. | `8000` |
 
 ### Variable descriptions
 
@@ -38,14 +35,10 @@ Each environment variable controls a specific aspect of the bot:
 
 - `TELEGRAM_BOT_TOKEN` – authenticates your Telegram bot.
 - `OPENAI_API_KEY` – allows requests to OpenAI.
-- `CHAT_ID` – chat ID for personal messages when not in group mode.
 - `XAI_API_KEY` – key for the XAI mirror endpoints (optional).
 - `IS_GROUP` – toggles group mode.
 - `AGENT_GROUP` – group chat ID used when `IS_GROUP` is `True`.
-- `PINECONE_API_KEY` – enables the optional Pinecone vector store.
-- `PINECONE_INDEX` – name of the Pinecone index to use.
-- `PORT` – port for the FastAPI server.
-- `NEWS_API_KEY` – key used for news retrieval (optional and currently unused).
+- `PORT` – port for the server.
 
 Unused optional variables are ignored when their features are disabled.
 
@@ -57,14 +50,8 @@ After setting the environment variables, start the bot with:
 python server.py
 ```
 
-The FastAPI application will listen on `0.0.0.0:8000` by default. You can change the port by setting the `PORT` variable.
-
-You may also run the server with `uvicorn` directly if preferred:
-
-```bash
-uvicorn server:app --host 0.0.0.0 --port 8000
-```
+The server listens on `0.0.0.0:8000` by default. Change the port with the `PORT` variable if needed.
 
 ## Webhook troubleshooting
 
-If the bot is not receiving updates, verify the Telegram webhook configuration. The webhook URL **must** point to `/webhook` on your domain without the bot token appended. Running `python fix_webhook.py` sets this path automatically. See [WEBHOOK_FIX_INSTRUCTIONS.md](WEBHOOK_FIX_INSTRUCTIONS.md) for step-by-step instructions.
+If the bot is not receiving updates, ensure the Telegram webhook URL is set to `https://<your-domain>/webhook` (without appending the bot token). You can set it via [BotFather](https://t.me/BotFather) or the Telegram API.
