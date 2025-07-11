@@ -52,11 +52,12 @@ Unused optional variables are ignored when their features are disabled.
 ## Running the server
 
 After setting the environment variables, start the bot with:
-The server automatically loads the `.env` file during startup.
 
 ```bash
 python server.py
 ```
+
+The server automatically loads the `.env` file and verifies the Telegram webhook, attempting to fix it if necessary.
 
 The FastAPI application will listen on `0.0.0.0:8000` by default. You can change the port by setting the `PORT` variable.
 
