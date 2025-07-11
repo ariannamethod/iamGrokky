@@ -1,87 +1,171 @@
-import asyncio
 import os
+import asyncio
 import json
-import re
-import random
 from datetime import datetime
-import httpx
+import logging
 
 from aiogram import Bot, Dispatcher, types
-from aiogram.utils.chat_action import ChatActionSender
+from aiogram.filters import Command
+from aiogram.types import Message
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler
 from aiohttp import web
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 from utils.hybrid_engine import HybridGrokkyEngine
 from utils.genesis2 import genesis2_handler
-from utils.prompt import build_system_prompt
+from utils.howru import check_silence, update_last_message_time
+from utils.mirror import mirror_task
+from utils.prompt import build_system_prompt, get_chaos_response
 
-BOT_TOKEN     = os.getenv("TELEGRAM_BOT_TOKEN")
-AGENT_GROUP   = os.getenv("AGENT_GROUP", "-1001234567890")
-IS_GROUP      = os.getenv("IS_GROUP", "False").lower() == "true"
+# Настройки логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-bot = Bot(token=BOT_TOKEN)
-dp  = Dispatcher()
+# Переменные окружения
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "https://grokky.ariannamethod.me")
+WEBHOOK_PATH = os.getenv("WEBHOOK_PATH", "/webhook")
+WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
+WEBAPP_PORT = int(os.getenv("PORT", 8000))
+CHAT_ID = os.getenv("CHAT_ID")
+AGENT_GROUP = os.getenv("AGENT_GROUP")
+
+# Инициализация бота и диспетчера
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
+dp = Dispatcher()
 engine = HybridGrokkyEngine()
 
-@dp.message(lambda m: any(t in m.text.lower() for t in ["грокки", "grokky"]))
-async def handle_grокky(m: types.Message):
-    async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
-        user_id = str(m.from_user.id)
-        text    = m.text
+# Обработка голосовых сообщений
+VOICE_ENABLED = {}
 
-        # 1. Добавляем пользователя и сообщение в память OpenAI
-        await engine.add_memory(user_id, text, role="user")
+@dp.message(Command("voiceon"))
+async def cmd_voiceon(message: Message):
+    VOICE_ENABLED[message.chat.id] = True
+    await message.reply("🌀 Грокки включил обработку голоса!")
 
-        # 2. Обрабатываем CHAOS_PULSE
-        if "[CHAOS_PULSE]" in text:
-            match = re.match(r"\[CHAOS_PULSE\]\s*type=(\w+)\s*intensity=(\d+)", text)
-            if match:
-                ctype, cint = match.groups()
-                resp = await genesis2_handler(chaos_type=ctype, intensity=int(cint))
-                await engine.add_memory(user_id, resp, role="assistant")
-                return await m.reply(f"🌀 Грокки: {resp}")
+@dp.message(Command("voiceoff")) 
+async def cmd_voiceoff(message: Message):
+    VOICE_ENABLED[message.chat.id] = False
+    await message.reply("🌀 Грокки выключил обработку голоса!")
 
-        # 3. Поиск в памяти (optional)
-        memory_ctx = ""
-        if any(w in text.lower() for w in ["референс", "помнишь"]):
-            memory_ctx = await engine.search_memory(user_id, text)
+@dp.message(Command("status"))
+async def cmd_status(message: Message):
+    await message.reply(f"🌀 Грокки функционирует! Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-        # 4. Генерация ответа через xAI Grok
-        grok_msg = {"role": "user", "content": text}
-        resp = await engine.generate_with_xai([grok_msg], context=memory_ctx)
-
-        # 5. Сохраняем в память и шлём пользователю
-        await engine.add_memory(user_id, resp, role="assistant")
-        await m.reply(f"🌀 Грокки: {resp}")
-
-async def chaos_spark():
-    while True:
-        await asyncio.sleep(random.randint(1800, 3600))
-        if IS_GROUP and random.random() < 0.5:
-            reply = await genesis2_handler(
-                chaos_type=random.choice(["philosophy","provocation","poetry_burst"]),
-                intensity=random.randint(3,10)
+@dp.message()
+async def message_handler(message: Message):
+    try:
+        # Обновление времени последнего сообщения
+        await update_last_message_time()
+        
+        # Проверяем, личный это чат или группа
+        is_group = message.chat.type in ['group', 'supergroup']
+        
+        # Для личного чата - отвечаем на все сообщения
+        # В группе отвечаем только на сообщения с упоминанием бота или командами
+        if not is_group or message.text and ('@grokky_bot' in message.text.lower() or 
+                                           '[chaos_pulse]' in message.text.lower()):
+            chat_id = str(message.chat.id)
+            user_id = str(message.from_user.id)
+            
+            # Сохраняем сообщение пользователя в память
+            await engine.add_memory(user_id, message.text, role="user")
+            
+            # Специальная обработка для команды [CHAOS_PULSE]
+            if message.text and '[chaos_pulse]' in message.text.lower():
+                intensity = 5  # Значение по умолчанию
+                
+                # Извлечение параметров, если они указаны
+                parts = message.text.lower().split()
+                for part in parts:
+                    if part.startswith('type='):
+                        chaos_type = part.split('=')[1]
+                    if part.startswith('intensity='):
+                        try:
+                            intensity = int(part.split('=')[1])
+                        except ValueError:
+                            pass
+                
+                # Создаем промпт для генерации хаоса
+                system_prompt = build_system_prompt(
+                    chat_id=chat_id, 
+                    is_group=is_group,
+                    agent_group=AGENT_GROUP
+                )
+                
+                # Отправляем на обработку в генезис
+                result = await genesis2_handler(
+                    ping="CHAOS PULSE ACTIVATED",
+                    raw=True,
+                    system_prompt=system_prompt,
+                    intensity=intensity,
+                    is_group=is_group
+                )
+                
+                await bot.send_message(
+                    message.chat.id, 
+                    f"🌀 {result.get('answer', get_chaos_response())}"
+                )
+                
+                # Сохраняем ответ в память
+                await engine.add_memory(user_id, result.get('answer', ''), role="assistant")
+                return
+            
+            # Обычная обработка сообщения
+            # Ищем контекст в памяти
+            context = await engine.search_memory(user_id, message.text)
+            
+            # Генерируем ответ с помощью xAI Grok-3
+            reply = await engine.generate_with_xai(
+                [{"role": "user", "content": message.text}],
+                context=context
             )
-            await bot.send_message(AGENT_GROUP, f"🌀 Grокки вбрасывает хаос: {reply}")
+            
+            # Отправляем ответ пользователю
+            await bot.send_message(message.chat.id, reply)
+            
+            # Сохраняем ответ в память
+            await engine.add_memory(user_id, reply, role="assistant")
+            
+    except Exception as e:
+        logger.error(f"Ошибка при обработке сообщения: {e}")
+        await message.reply(f"🌀 Грокки: {get_chaos_response()}")
 
-async def main():
-    # 0. Настройка OpenAI-памяти
-    await engine.setup_openai_infrastructure()
+# Запуск сервера
+async def on_startup(bot: Bot) -> None:
+    # Установка вебхука
+    await bot.set_webhook(WEBHOOK_URL)
+    logger.info(f"Установлен вебхук на {WEBHOOK_URL}")
+    
+    # Запуск фоновых задач
+    asyncio.create_task(check_silence())
+    asyncio.create_task(mirror_task())
 
-    # 1. Запускаем хаос-таск
-    asyncio.create_task(chaos_spark())
+async def on_shutdown(bot: Bot) -> None:
+    await bot.delete_webhook()
+    logger.info("Удален вебхук")
 
-    # 2. Запускаем Telegram через webhook
-    app = web.Application()
-    wh_path = f"/webhook/{BOT_TOKEN}"
-    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=wh_path)
-    setup_application(app, dp)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 8080)))
-    await site.start()
-    print("🚀 Server started")
-    await asyncio.Event().wait()
+# Создание и запуск приложения
+app = web.Application()
 
+# Обработчик вебхука
+webhook_handler = SimpleRequestHandler(
+    dispatcher=dp,
+    bot=bot,
+    secret_token=TELEGRAM_BOT_TOKEN
+)
+webhook_handler.register(app, path=WEBHOOK_PATH)
+
+# Путь проверки работоспособности
+async def healthz(request):
+    return web.Response(text="OK")
+app.router.add_get("/healthz", healthz)
+
+# Запуск сервера
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Регистрация обработчиков
+    dp.startup.register(on_startup)
+    dp.shutdown.register(on_shutdown)
+    
+    # Запуск веб-сервера
+    web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
