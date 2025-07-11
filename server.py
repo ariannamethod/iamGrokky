@@ -5,6 +5,11 @@ import re
 import random
 from datetime import datetime
 
+from dotenv import load_dotenv
+from fix_webhook import check_webhook, fix_webhook
+
+load_dotenv()
+
 try:
     from aiogram import Bot, Dispatcher, types
     from aiogram.utils.chat_action import ChatActionSender
@@ -167,13 +172,18 @@ async def chaos_spark():
             await bot.send_message(AGENT_GROUP, f"🌀 Grокки вбрасывает хаос: {reply}")
 
 async def main():
-    # 0. Настройка OpenAI-памяти
+    # 0. Проверяем и при необходимости исправляем webhook
+    if not check_webhook():
+        print("Attempting automatic webhook fix...")
+        fix_webhook()
+
+    # 1. Настройка OpenAI-памяти
     await engine.setup_openai_infrastructure()
 
-    # 1. Запускаем хаос-таск
+    # 2. Запускаем хаос-таск
     asyncio.create_task(chaos_spark())
 
-    # 2. Запускаем Telegram через webhook
+    # 3. Запускаем Telegram через webhook
     app = web.Application()
     # Telegram should send updates to `/webhook` without the token
     wh_path = "/webhook"
