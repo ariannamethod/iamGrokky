@@ -68,3 +68,14 @@ uvicorn server:app --host 0.0.0.0 --port 8000
 ## Webhook troubleshooting
 
 If the bot is not receiving updates, verify the Telegram webhook configuration. The webhook URL **must** point to `/webhook` on your domain without the bot token appended. `server.py` will try to fix the webhook on startup, and you can also run `python fix_webhook.py` manually. See [WEBHOOK_FIX_INSTRUCTIONS.md](WEBHOOK_FIX_INSTRUCTIONS.md) for step-by-step instructions.
+
+## Project files
+
+Several files in the repository root exist to support different deployment setups:
+
+- **Dockerfile** – used for containerized deployments such as Railway. You can ignore it if you deploy using another method.
+- **Procfile** and **runtime.txt** – Heroku-style process and runtime declarations.
+- **railway.toml** and **nixpacks.toml** – configuration for Railway and Nixpacks builds.
+- **fix_webhook.py** and **WEBHOOK_FIX_INSTRUCTIONS.md** – helper script and documentation for correcting the Telegram webhook.
+
+These files are optional for local development; the bot itself runs via `server.py`.
