@@ -5,7 +5,7 @@ Grokky AI Assistant is a Telegram bot powered by FastAPI. This project contains 
 ## Installation
 
 1. Clone this repository.
-2. Ensure Python 3.12 is available (see `runtime.txt`).
+2. Ensure Python 3.12 is available.
 3. Create and activate a virtual environment:
    ```bash
    python3 -m venv venv
@@ -73,11 +73,9 @@ If the bot is not receiving updates, verify the Telegram webhook configuration. 
 
 ## Project files
 
-Several files in the repository root exist to support different deployment setups:
+Only a few helper files reside in the repository root:
 
-- **Dockerfile** – used for containerized deployments such as Railway. You can ignore it if you deploy using another method.
-- **Procfile** and **runtime.txt** – Heroku-style process and runtime declarations.
-- **railway.toml** and **nixpacks.toml** – configuration for Railway and Nixpacks builds.
+- **Procfile** – process declaration for simple platforms.
 - **fix_webhook.py** and **WEBHOOK_FIX_INSTRUCTIONS.md** – helper script and documentation for correcting the Telegram webhook.
 
 These files are optional for local development; the bot itself runs via `server.py`.
