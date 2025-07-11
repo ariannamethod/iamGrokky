@@ -122,12 +122,50 @@ class HybridGrokkyEngine:
         system = build_system_prompt()
         if context:
             system += f"\n\nКОНТЕКСТ ИЗ ПАМЯТИ:\n{context}"
-        payload = {"model":"grok-3","messages":[{"role":"system","content":system},*messages],"temperature":0.9}
+        payload = {
+            "model": "grok-3",
+            "messages": [{"role": "system", "content": system}, *messages],
+            "temperature": 0.9,
+        }
         async with httpx.AsyncClient() as client:
             res = await client.post(
                 "https://api.x.ai/v1/chat/completions",
                 headers=self.xai_h,
-                json=payload
+                json=payload,
             )
             res.raise_for_status()
             return res.json()["choices"][0]["message"]["content"]
+
+    async def generate_with_openai(self, user_id: str, messages: list) -> str:
+        """Генерация ответа через OpenAI Assistants API"""
+        if not self.ASSISTANT_ID:
+            return ""
+        tid = await self.get_or_create_thread(user_id)
+        async with httpx.AsyncClient() as client:
+            for msg in messages:
+                await client.post(
+                    f"https://api.openai.com/v1/threads/{tid}/messages",
+                    headers=self.openai_h,
+                    json={"role": msg.get("role", "user"), "content": msg.get("content", "")}
+                )
+            run = await client.post(
+                f"https://api.openai.com/v1/threads/{tid}/runs",
+                headers=self.openai_h,
+                json={"assistant_id": self.ASSISTANT_ID}
+            )
+            run_id = run.json()["id"]
+            while True:
+                await asyncio.sleep(1)
+                st = await client.get(
+                    f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}",
+                    headers=self.openai_h
+                )
+                if st.json()["status"] == "completed":
+                    break
+            msgs = await client.get(
+                f"https://api.openai.com/v1/threads/{tid}/messages",
+                headers=self.openai_h
+            )
+            data = msgs.json()["data"]
+            return data[0]["content"][0]["text"]["value"] if data else ""
+
