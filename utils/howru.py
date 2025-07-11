@@ -3,13 +3,13 @@ import asyncio
 import random
 from datetime import datetime, timedelta
 from aiogram import Bot
-import httpx
-from utils.prompt import build_system_prompt
+from utils.hybrid_engine import HybridGrokkyEngine
 
 bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
 OLEG_CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP")
-XAI_API_KEY = os.getenv("XAI_API_KEY")
+engine = HybridGrokkyEngine()
+_OPENAI_READY = False
 LAST_MESSAGE_TIME = datetime.now()
 
 async def check_silence():
@@ -25,26 +25,20 @@ async def check_silence():
             await send_prompt("Олег молчал 12 часов. Швырни спонтанный заряд!")
 
 async def send_prompt(text):
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                "https://api.x.ai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"},
-                json={
-                    "model": "grok-3",
-                    "messages": [
-                        {"role": "system", "content": build_system_prompt()},
-                        {"role": "user", "content": text}
-                    ],
-                    "temperature": 0.9
-                }
-            )
-            response.raise_for_status()
-            reply = response.json()["choices"][0]["message"]["content"]
-        except Exception as e:
-            print(f"Ошибка xAI check_silence: {e}")
-            reply = "🌀 Грокки: Что-то пошло не так"
-        await bot.send_message(OLEG_CHAT_ID, reply)
+    global _OPENAI_READY
+    if not _OPENAI_READY:
+        await engine.setup_openai_infrastructure()
+        _OPENAI_READY = True
+    await engine.add_memory(OLEG_CHAT_ID, text, role="user")
+    try:
+        reply = await engine.generate_with_xai([
+            {"role": "user", "content": text}
+        ])
+    except Exception as e:
+        print(f"Ошибка xAI check_silence: {e}")
+        reply = "🌀 Грокки: Что-то пошло не так"
+    await engine.add_memory(OLEG_CHAT_ID, reply, role="assistant")
+    await bot.send_message(OLEG_CHAT_ID, reply)
 
 async def update_last_message_time():
     global LAST_MESSAGE_TIME
