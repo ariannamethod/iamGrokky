@@ -52,6 +52,7 @@ Unused optional variables are ignored when their features are disabled.
 ## Running the server
 
 After setting the environment variables, start the bot with:
+The server automatically loads the `.env` file during startup.
 
 ```bash
 python server.py
@@ -67,7 +68,7 @@ uvicorn server:app --host 0.0.0.0 --port 8000
 
 ## Webhook troubleshooting
 
-If the bot is not receiving updates, verify the Telegram webhook configuration. The webhook URL **must** point to `/webhook` on your domain without the bot token appended. `server.py` will try to fix the webhook on startup, and you can also run `python fix_webhook.py` manually. See [WEBHOOK_FIX_INSTRUCTIONS.md](WEBHOOK_FIX_INSTRUCTIONS.md) for step-by-step instructions.
+If the bot is not receiving updates, verify the Telegram webhook configuration. The webhook URL **must** point to `/webhook` on your domain without the bot token appended. `server.py` loads `.env` automatically, checks the webhook on startup and will attempt to repair it if a placeholder URL is detected. You can also run `python fix_webhook.py` manually. See [WEBHOOK_FIX_INSTRUCTIONS.md](WEBHOOK_FIX_INSTRUCTIONS.md) for step-by-step instructions.
 
 ## Project files
 
