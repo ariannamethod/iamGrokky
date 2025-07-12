@@ -8,7 +8,6 @@ import sys
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 
 from utils.hybrid_engine import HybridGrokkyEngine
@@ -152,8 +151,23 @@ async def message_handler(message: Message):
         except Exception as send_error:
             logger.error(f"Не удалось отправить ответ об ошибке: {send_error}")
 
+# Обработчик вебхука напрямую
+async def handle_webhook(request):
+    try:
+        # Получаем данные запроса
+        data = await request.json()
+        logger.info(f"Получено обновление от Telegram: {data.get('update_id')}")
+        
+        # Обновления для диспетчера
+        await dp.feed_update(bot, types.Update(**data))
+        
+        return web.Response(text='OK')
+    except Exception as e:
+        logger.error(f"Ошибка обработки вебхука: {e}", exc_info=True)
+        return web.Response(status=500)
+
 # Запуск сервера
-async def on_startup(bot: Bot) -> None:
+async def on_startup(app):
     # Установка вебхука
     try:
         await bot.delete_webhook(drop_pending_updates=True)  # Сначала удалим старый вебхук
@@ -171,34 +185,23 @@ async def on_startup(bot: Bot) -> None:
     except Exception as e:
         logger.error(f"Ошибка при запуске фоновых задач: {e}", exc_info=True)
 
-async def on_shutdown(bot: Bot) -> None:
+async def on_shutdown(app):
     await bot.delete_webhook()
     logger.info("Удален вебхук")
 
 # Создание и запуск приложения
 app = web.Application()
 
-# Обработчик вебхука БЕЗ УКАЗАНИЯ ТОКЕНА в пути
-webhook_handler = SimpleRequestHandler(
-    dispatcher=dp,
-    bot=bot,
-    secret_token=TELEGRAM_BOT_TOKEN,  # Используем токен для проверки запросов
-)
-webhook_handler.register(app, path=WEBHOOK_PATH)
-
-# Путь проверки работоспособности
-async def healthz(request):
-    return web.Response(text="OK")
-
-app.router.add_get("/healthz", healthz)
+# Регистрация маршрутов
+app.router.add_post(WEBHOOK_PATH, handle_webhook)
+app.router.add_get("/healthz", lambda request: web.Response(text="OK"))
 app.router.add_get("/", lambda request: web.Response(text="Грокки жив и работает!"))
+
+# Хуки запуска и остановки
+app.on_startup.append(on_startup)
+app.on_shutdown.append(on_shutdown)
 
 # Запуск сервера
 if __name__ == "__main__":
-    # Регистрация обработчиков
-    dp.startup.register(on_startup)
-    dp.shutdown.register(on_shutdown)
-    
-    # Запуск веб-сервера
     logger.info(f"Запуск сервера на {WEBAPP_HOST}:{WEBAPP_PORT}")
     web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
