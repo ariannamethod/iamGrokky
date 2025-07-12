@@ -28,15 +28,17 @@ if not TELEGRAM_BOT_TOKEN:
     logger.error("Не задан TELEGRAM_BOT_TOKEN! Завершение работы.")
     sys.exit(1)
 
-WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "https://grokky.ariannamethod.me")
-WEBHOOK_PATH = f"/webhook/{TELEGRAM_BOT_TOKEN}"
+# Используем правильный адрес для Railway
+WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "https://grokky-production.up.railway.app")
+WEBHOOK_PATH = "/webhook"  # Просто /webhook без токена
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 WEBAPP_PORT = int(os.getenv("PORT", 8080))
 CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP")
 
-logger.info(f"Запуск бота с webhook на {WEBHOOK_HOST}{WEBHOOK_PATH}")
+logger.info(f"Запуск бота с webhook на {WEBHOOK_URL}")
+logger.info(f"Токен бота: {TELEGRAM_BOT_TOKEN[:5]}...{TELEGRAM_BOT_TOKEN[-5:]}")
 
 # Инициализация бота и диспетчера
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -63,6 +65,10 @@ async def cmd_status(message: Message):
 @dp.message()
 async def message_handler(message: Message):
     try:
+        if not message.text:
+            logger.info(f"Получено сообщение без текста от {message.from_user.id}")
+            return
+            
         logger.info(f"Получено сообщение от {message.from_user.id}: {message.text[:20]}...")
         
         # Обновление времени последнего сообщения
@@ -149,8 +155,13 @@ async def message_handler(message: Message):
 # Запуск сервера
 async def on_startup(bot: Bot) -> None:
     # Установка вебхука
-    await bot.set_webhook(url=WEBHOOK_URL, drop_pending_updates=True)
-    logger.info(f"Установлен вебхук на {WEBHOOK_URL}")
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)  # Сначала удалим старый вебхук
+        await asyncio.sleep(1)  # Даем время на обработку
+        await bot.set_webhook(url=WEBHOOK_URL)
+        logger.info(f"Установлен вебхук на {WEBHOOK_URL}")
+    except Exception as e:
+        logger.error(f"Ошибка при установке вебхука: {e}", exc_info=True)
     
     # Запуск фоновых задач
     try:
@@ -167,10 +178,11 @@ async def on_shutdown(bot: Bot) -> None:
 # Создание и запуск приложения
 app = web.Application()
 
-# Обработчик вебхука
+# Обработчик вебхука БЕЗ УКАЗАНИЯ ТОКЕНА в пути
 webhook_handler = SimpleRequestHandler(
     dispatcher=dp,
     bot=bot,
+    secret_token=TELEGRAM_BOT_TOKEN,  # Используем токен для проверки запросов
 )
 webhook_handler.register(app, path=WEBHOOK_PATH)
 
