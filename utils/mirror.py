@@ -41,7 +41,7 @@ async def mirror_task():
                                     {"role": "system", "content": build_system_prompt()},
                                     {"role": "user", "content": f"Анализируй этот код и предложи улучшения:\n{code}"}
                                 ],
-                                "temperature": 0.9
+                                "temperature": 1.0  # bump creativity a bit
                             }
                         )
                         response.raise_for_status()
@@ -65,7 +65,7 @@ async def mirror_task():
                                     {"role": "system", "content": build_system_prompt()},
                                     {"role": "user", "content": "[CHAOS_PULSE] type=poetry_burst intensity=5"}
                                 ],
-                                "temperature": 0.9
+                                "temperature": 1.0  # bump creativity a bit
                             }
                         )
                         response.raise_for_status()

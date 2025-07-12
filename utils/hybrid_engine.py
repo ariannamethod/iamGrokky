@@ -93,7 +93,7 @@ class HybridGrokkyEngine:
         payload = {
             "model": "grok-3",
             "messages": [{"role": "system", "content": system}, *messages],
-            "temperature": 0.9
+            "temperature": 1.0  # slightly higher temperature for Grok-3
         }
         
         async with httpx.AsyncClient() as client:
