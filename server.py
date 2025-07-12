@@ -4,17 +4,59 @@ import json
 from datetime import datetime
 import logging
 import sys
+import traceback
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message
 from aiohttp import web
 
-from utils.hybrid_engine import HybridGrokkyEngine
 from utils.genesis2 import genesis2_handler
 from utils.howru import check_silence, update_last_message_time
 from utils.mirror import mirror_task
 from utils.prompt import build_system_prompt, get_chaos_response
+
+# Модифицируем HybridGrokkyEngine
+class SimpleGrokkyEngine:
+    def __init__(self):
+        self.xai_key = os.getenv("XAI_API_KEY")
+        self.xai_h = {
+            "Authorization": f"Bearer {self.xai_key}",
+            "Content-Type": "application/json"
+        }
+        
+    async def add_memory(self, user_id, content, role="user"):
+        """Заглушка для добавления в память"""
+        return True
+        
+    async def search_memory(self, user_id, query):
+        """Заглушка для поиска в памяти"""
+        return ""
+        
+    async def generate_with_xai(self, messages, context=""):
+        """Генерирует ответ с помощью xAI Grok-3"""
+        import httpx
+        from utils.prompt import build_system_prompt
+        
+        system = build_system_prompt()
+        if context:
+            system += f"\n\nКОНТЕКСТ ИЗ ПАМЯТИ:\n{context}"
+            
+        payload = {
+            "model": "grok-3",
+            "messages": [{"role": "system", "content": system}, *messages],
+            "temperature": 0.9
+        }
+        
+        async with httpx.AsyncClient() as client:
+            res = await client.post(
+                "https://api.x.ai/v1/chat/completions",
+                headers=self.xai_h,
+                json=payload,
+                timeout=30.0
+            )
+            res.raise_for_status()
+            return res.json()["choices"][0]["message"]["content"]
 
 # Настройки логирования
 logging.basicConfig(level=logging.INFO,
@@ -36,13 +78,24 @@ WEBAPP_PORT = int(os.getenv("PORT", 8080))
 CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP")
 
+# Проверка ключей API
+XAI_API_KEY = os.getenv("XAI_API_KEY")
+
 logger.info(f"Запуск бота с webhook на {WEBHOOK_URL}")
 logger.info(f"Токен бота: {TELEGRAM_BOT_TOKEN[:5]}...{TELEGRAM_BOT_TOKEN[-5:]}")
+logger.info(f"XAI API ключ: {'Установлен' if XAI_API_KEY else 'НЕ УСТАНОВЛЕН'}")
 
 # Инициализация бота и диспетчера
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
-engine = HybridGrokkyEngine()
+
+# Инициализация движка
+try:
+    engine = SimpleGrokkyEngine()
+    logger.info("SimpleGrokkyEngine инициализирован успешно")
+except Exception as e:
+    logger.error(f"Ошибка при инициализации SimpleGrokkyEngine: {e}")
+    engine = None
 
 # Обработка голосовых сообщений
 VOICE_ENABLED = {}
@@ -59,7 +112,10 @@ async def cmd_voiceoff(message: Message):
 
 @dp.message(Command("status"))
 async def cmd_status(message: Message):
-    await message.reply(f"🌀 Грокки функционирует! Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    status_text = f"🌀 Грокки функционирует! Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    status_text += f"XAI API: {'✅ OK' if XAI_API_KEY else '❌ Отсутствует'}\n"
+    status_text += f"Engine: {'✅ OK' if engine else '❌ Ошибка'}"
+    await message.reply(status_text)
 
 @dp.message()
 async def message_handler(message: Message):
@@ -70,11 +126,22 @@ async def message_handler(message: Message):
             
         logger.info(f"Получено сообщение от {message.from_user.id}: {message.text[:20]}...")
         
+        # Проверка наличия движка
+        if not engine:
+            logger.error("SimpleGrokkyEngine не инициализирован")
+            await message.reply("🌀 Грокки: Мой движок неисправен! Свяжитесь с моим создателем.")
+            return
+            
         # Обновление времени последнего сообщения
-        await update_last_message_time()
+        try:
+            logger.info("Обновление времени последнего сообщения...")
+            await update_last_message_time()
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении времени последнего сообщения: {e}")
         
         # Проверяем, личный это чат или группа
         is_group = message.chat.type in ['group', 'supergroup']
+        logger.info(f"Тип чата: {'Группа' if is_group else 'Личный'}")
         
         # Для личного чата - отвечаем на все сообщения
         # В группе отвечаем только на сообщения с упоминанием бота или командами
@@ -83,11 +150,9 @@ async def message_handler(message: Message):
             chat_id = str(message.chat.id)
             user_id = str(message.from_user.id)
             
-            # Сохраняем сообщение пользователя в память
-            await engine.add_memory(user_id, message.text, role="user")
-            
             # Специальная обработка для команды [CHAOS_PULSE]
             if message.text and '[chaos_pulse]' in message.text.lower():
+                logger.info("Обработка команды CHAOS_PULSE")
                 intensity = 5  # Значение по умолчанию
                 chaos_type = None
                 
@@ -103,49 +168,59 @@ async def message_handler(message: Message):
                             pass
                 
                 # Создаем промпт для генерации хаоса
-                system_prompt = build_system_prompt(
-                    chat_id=chat_id, 
-                    is_group=is_group,
-                    agent_group=AGENT_GROUP
-                )
-                
-                # Отправляем на обработку в генезис
-                result = await genesis2_handler(
-                    ping="CHAOS PULSE ACTIVATED",
-                    raw=True,
-                    system_prompt=system_prompt,
-                    intensity=intensity,
-                    is_group=is_group,
-                    chaos_type=chaos_type
-                )
-                
-                await bot.send_message(
-                    message.chat.id, 
-                    f"🌀 {result.get('answer', get_chaos_response())}"
-                )
-                
-                # Сохраняем ответ в память
-                await engine.add_memory(user_id, result.get('answer', ''), role="assistant")
+                try:
+                    logger.info("Создание промпта для хаоса...")
+                    system_prompt = build_system_prompt(
+                        chat_id=chat_id, 
+                        is_group=is_group,
+                        agent_group=AGENT_GROUP
+                    )
+                    
+                    # Отправляем на обработку в генезис
+                    logger.info("Вызов genesis2_handler...")
+                    result = await genesis2_handler(
+                        ping="CHAOS PULSE ACTIVATED",
+                        raw=True,
+                        system_prompt=system_prompt,
+                        intensity=intensity,
+                        is_group=is_group,
+                        chaos_type=chaos_type
+                    )
+                    
+                    await bot.send_message(
+                        message.chat.id, 
+                        f"🌀 {result.get('answer', get_chaos_response())}"
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка при обработке CHAOS_PULSE: {e}")
+                    logger.error(traceback.format_exc())
+                    await message.reply("🌀 Грокки: Даже хаос требует порядка. Ошибка при обработке команды.")
                 return
             
             # Обычная обработка сообщения
-            # Ищем контекст в памяти
-            context = await engine.search_memory(user_id, message.text)
-            
-            # Генерируем ответ с помощью xAI Grok-3
-            reply = await engine.generate_with_xai(
-                [{"role": "user", "content": message.text}],
-                context=context
-            )
-            
-            # Отправляем ответ пользователю
-            await bot.send_message(message.chat.id, reply)
-            
-            # Сохраняем ответ в память
-            await engine.add_memory(user_id, reply, role="assistant")
+            try:
+                # Генерируем ответ с помощью xAI Grok-3
+                logger.info("Генерация ответа с помощью xAI...")
+                reply = await engine.generate_with_xai(
+                    [{"role": "user", "content": message.text}],
+                    context=""  # Без контекста, т.к. функция памяти недоступна
+                )
+                logger.info("Ответ xAI получен успешно")
+                
+                # Отправляем ответ пользователю
+                logger.info("Отправка ответа пользователю...")
+                await bot.send_message(message.chat.id, reply)
+                logger.info("Обработка сообщения успешно завершена")
+            except Exception as e:
+                logger.error(f"Ошибка при обработке сообщения: {e}")
+                logger.error(traceback.format_exc())
+                await message.reply(f"🌀 Грокки: Произошла ошибка при генерации ответа: {str(e)[:100]}...")
+        else:
+            logger.info("Сообщение проигнорировано (группа без упоминания)")
             
     except Exception as e:
-        logger.error(f"Ошибка при обработке сообщения: {e}", exc_info=True)
+        logger.error(f"Глобальная ошибка при обработке сообщения: {e}")
+        logger.error(traceback.format_exc())
         try:
             await message.reply(f"🌀 Грокки: {get_chaos_response()}")
         except Exception as send_error:
@@ -155,7 +230,10 @@ async def message_handler(message: Message):
 async def handle_webhook(request):
     try:
         # Получаем данные запроса
-        data = await request.json()
+        request_body = await request.text()
+        logger.info(f"Получены данные вебхука длиной {len(request_body)} байт")
+        
+        data = json.loads(request_body)
         logger.info(f"Получено обновление от Telegram: {data.get('update_id')}")
         
         # Обновления для диспетчера
@@ -163,7 +241,8 @@ async def handle_webhook(request):
         
         return web.Response(text='OK')
     except Exception as e:
-        logger.error(f"Ошибка обработки вебхука: {e}", exc_info=True)
+        logger.error(f"Ошибка обработки вебхука: {e}")
+        logger.error(traceback.format_exc())
         return web.Response(status=500)
 
 # Запуск сервера
@@ -175,7 +254,8 @@ async def on_startup(app):
         await bot.set_webhook(url=WEBHOOK_URL)
         logger.info(f"Установлен вебхук на {WEBHOOK_URL}")
     except Exception as e:
-        logger.error(f"Ошибка при установке вебхука: {e}", exc_info=True)
+        logger.error(f"Ошибка при установке вебхука: {e}")
+        logger.error(traceback.format_exc())
     
     # Запуск фоновых задач
     try:
@@ -183,7 +263,8 @@ async def on_startup(app):
         asyncio.create_task(mirror_task(bot=bot))
         logger.info("Фоновые задачи запущены")
     except Exception as e:
-        logger.error(f"Ошибка при запуске фоновых задач: {e}", exc_info=True)
+        logger.error(f"Ошибка при запуске фоновых задач: {e}")
+        logger.error(traceback.format_exc())
 
 async def on_shutdown(app):
     await bot.delete_webhook()
