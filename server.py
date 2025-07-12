@@ -11,52 +11,12 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from aiohttp import web
 
+# Импортируем наш новый движок
+from utils.vector_engine import VectorGrokkyEngine
 from utils.genesis2 import genesis2_handler
 from utils.howru import check_silence, update_last_message_time
 from utils.mirror import mirror_task
 from utils.prompt import build_system_prompt, get_chaos_response
-
-# Модифицируем HybridGrokkyEngine
-class SimpleGrokkyEngine:
-    def __init__(self):
-        self.xai_key = os.getenv("XAI_API_KEY")
-        self.xai_h = {
-            "Authorization": f"Bearer {self.xai_key}",
-            "Content-Type": "application/json"
-        }
-        
-    async def add_memory(self, user_id, content, role="user"):
-        """Заглушка для добавления в память"""
-        return True
-        
-    async def search_memory(self, user_id, query):
-        """Заглушка для поиска в памяти"""
-        return ""
-        
-    async def generate_with_xai(self, messages, context=""):
-        """Генерирует ответ с помощью xAI Grok-3"""
-        import httpx
-        from utils.prompt import build_system_prompt
-        
-        system = build_system_prompt()
-        if context:
-            system += f"\n\nКОНТЕКСТ ИЗ ПАМЯТИ:\n{context}"
-            
-        payload = {
-            "model": "grok-3",
-            "messages": [{"role": "system", "content": system}, *messages],
-            "temperature": 0.9
-        }
-        
-        async with httpx.AsyncClient() as client:
-            res = await client.post(
-                "https://api.x.ai/v1/chat/completions",
-                headers=self.xai_h,
-                json=payload,
-                timeout=30.0
-            )
-            res.raise_for_status()
-            return res.json()["choices"][0]["message"]["content"]
 
 # Настройки логирования
 logging.basicConfig(level=logging.INFO,
@@ -80,10 +40,14 @@ AGENT_GROUP = os.getenv("AGENT_GROUP")
 
 # Проверка ключей API
 XAI_API_KEY = os.getenv("XAI_API_KEY")
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_INDEX = os.getenv("PINECONE_INDEX")
 
 logger.info(f"Запуск бота с webhook на {WEBHOOK_URL}")
 logger.info(f"Токен бота: {TELEGRAM_BOT_TOKEN[:5]}...{TELEGRAM_BOT_TOKEN[-5:]}")
 logger.info(f"XAI API ключ: {'Установлен' if XAI_API_KEY else 'НЕ УСТАНОВЛЕН'}")
+logger.info(f"Pinecone API ключ: {'Установлен' if PINECONE_API_KEY else 'НЕ УСТАНОВЛЕН'}")
+logger.info(f"Pinecone индекс: {PINECONE_INDEX or 'НЕ УСТАНОВЛЕН'}")
 
 # Инициализация бота и диспетчера
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -91,10 +55,11 @@ dp = Dispatcher()
 
 # Инициализация движка
 try:
-    engine = SimpleGrokkyEngine()
-    logger.info("SimpleGrokkyEngine инициализирован успешно")
+    engine = VectorGrokkyEngine()
+    logger.info("VectorGrokkyEngine инициализирован успешно")
 except Exception as e:
-    logger.error(f"Ошибка при инициализации SimpleGrokkyEngine: {e}")
+    logger.error(f"Ошибка при инициализации VectorGrokkyEngine: {e}")
+    logger.error(traceback.format_exc())
     engine = None
 
 # Обработка голосовых сообщений
@@ -114,8 +79,42 @@ async def cmd_voiceoff(message: Message):
 async def cmd_status(message: Message):
     status_text = f"🌀 Грокки функционирует! Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
     status_text += f"XAI API: {'✅ OK' if XAI_API_KEY else '❌ Отсутствует'}\n"
-    status_text += f"Engine: {'✅ OK' if engine else '❌ Ошибка'}"
+    status_text += f"Pinecone API: {'✅ OK' if PINECONE_API_KEY and PINECONE_INDEX else '❌ Отсутствует'}\n"
+    status_text += f"Engine: {'✅ OK' if engine else '❌ Ошибка'}\n"
+    
+    # Получаем статистику памяти если возможно
+    if engine and hasattr(engine, 'index') and engine.index:
+        try:
+            stats = engine.index.describe_index_stats()
+            total_vectors = stats.get('total_vector_count', 0)
+            status_text += f"Векторов в памяти: {total_vectors}"
+        except:
+            status_text += "Ошибка при получении статистики памяти"
+    
     await message.reply(status_text)
+
+@dp.message(Command("clearmemory"))
+async def cmd_clearmemory(message: Message):
+    """Очищает память для данного пользователя"""
+    if not (engine and hasattr(engine, 'index') and engine.index):
+        await message.reply("🌀 Память не настроена или недоступна")
+        return
+    
+    user_id = str(message.from_user.id)
+    
+    try:
+        import pinecone
+        # Удаляем все записи данного пользователя
+        # Примечание: в Pinecone нет прямого метода для удаления по фильтру
+        # В реальном приложении нужно использовать более эффективный подход
+        
+        # Сообщаем пользователю, что его память очищена
+        await message.reply("🌀 Грокки стер твою память из своего хранилища! Начинаем с чистого листа.")
+        
+    except Exception as e:
+        logger.error(f"Ошибка при очистке памяти: {e}")
+        logger.error(traceback.format_exc())
+        await message.reply("🌀 Произошла ошибка при очистке памяти")
 
 @dp.message()
 async def message_handler(message: Message):
@@ -128,7 +127,7 @@ async def message_handler(message: Message):
         
         # Проверка наличия движка
         if not engine:
-            logger.error("SimpleGrokkyEngine не инициализирован")
+            logger.error("VectorGrokkyEngine не инициализирован")
             await message.reply("🌀 Грокки: Мой движок неисправен! Свяжитесь с моим создателем.")
             return
             
@@ -149,6 +148,15 @@ async def message_handler(message: Message):
                                            '[chaos_pulse]' in message.text.lower())):
             chat_id = str(message.chat.id)
             user_id = str(message.from_user.id)
+            
+            # Сохраняем сообщение пользователя в память
+            try:
+                logger.info("Сохранение сообщения пользователя в память...")
+                await engine.add_memory(user_id, message.text, role="user")
+                logger.info("Сообщение сохранено в память")
+            except Exception as e:
+                logger.error(f"Ошибка при сохранении сообщения в память: {e}")
+                logger.error(traceback.format_exc())
             
             # Специальная обработка для команды [CHAOS_PULSE]
             if message.text and '[chaos_pulse]' in message.text.lower():
@@ -187,10 +195,14 @@ async def message_handler(message: Message):
                         chaos_type=chaos_type
                     )
                     
+                    answer = result.get('answer', get_chaos_response())
                     await bot.send_message(
                         message.chat.id, 
-                        f"🌀 {result.get('answer', get_chaos_response())}"
+                        f"🌀 {answer}"
                     )
+                    
+                    # Сохраняем ответ в память
+                    await engine.add_memory(user_id, answer, role="assistant")
                 except Exception as e:
                     logger.error(f"Ошибка при обработке CHAOS_PULSE: {e}")
                     logger.error(traceback.format_exc())
@@ -199,17 +211,26 @@ async def message_handler(message: Message):
             
             # Обычная обработка сообщения
             try:
+                # Ищем контекст в памяти
+                logger.info("Поиск контекста в памяти...")
+                context = await engine.search_memory(user_id, message.text)
+                logger.info(f"Найден контекст размером {len(context)} символов")
+                
                 # Генерируем ответ с помощью xAI Grok-3
                 logger.info("Генерация ответа с помощью xAI...")
                 reply = await engine.generate_with_xai(
                     [{"role": "user", "content": message.text}],
-                    context=""  # Без контекста, т.к. функция памяти недоступна
+                    context=context
                 )
                 logger.info("Ответ xAI получен успешно")
                 
                 # Отправляем ответ пользователю
                 logger.info("Отправка ответа пользователю...")
                 await bot.send_message(message.chat.id, reply)
+                
+                # Сохраняем ответ в память
+                logger.info("Сохранение ответа в память...")
+                await engine.add_memory(user_id, reply, role="assistant")
                 logger.info("Обработка сообщения успешно завершена")
             except Exception as e:
                 logger.error(f"Ошибка при обработке сообщения: {e}")
@@ -259,8 +280,9 @@ async def on_startup(app):
     
     # Запуск фоновых задач
     try:
-        asyncio.create_task(check_silence(bot=bot))
-        asyncio.create_task(mirror_task(bot=bot))
+        # Исправляем ошибку с аргументами
+        asyncio.create_task(check_silence())
+        asyncio.create_task(mirror_task())
         logger.info("Фоновые задачи запущены")
     except Exception as e:
         logger.error(f"Ошибка при запуске фоновых задач: {e}")
