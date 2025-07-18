@@ -10,8 +10,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.enums import ChatAction
 from aiogram.filters import Command
 from aiogram.types import Message
-from gtts import gTTS
-from io import BytesIO
+import tempfile
 import httpx
 from aiohttp import web
 
@@ -85,11 +84,47 @@ VOICE_ENABLED = {}
 
 
 async def synth_voice(text: str, lang: str = "ru") -> bytes:
-    tts = gTTS(text=text, lang=lang)
-    fp = BytesIO()
-    tts.write_to_fp(fp)
-    fp.seek(0)
-    return fp.read()
+    """Synthesize speech using eSpeak with a male voice."""
+    voice = f"{lang}+m3" if lang.startswith("ru") else f"{lang}+m3"
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as wav_file:
+        wav_path = wav_file.name
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as mp3_file:
+        mp3_path = mp3_file.name
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "espeak",
+            "-v",
+            voice,
+            text,
+            "-w",
+            wav_path,
+        )
+        await proc.communicate()
+
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg",
+            "-i",
+            wav_path,
+            "-f",
+            "mp3",
+            mp3_path,
+            "-y",
+            "-loglevel",
+            "error",
+        )
+        await proc.communicate()
+
+        with open(mp3_path, "rb") as f:
+            audio = f.read()
+    finally:
+        for p in (wav_path, mp3_path):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+    return audio
 
 
 async def transcribe_voice(file_id: str) -> str:
