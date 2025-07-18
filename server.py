@@ -1,25 +1,26 @@
-import os
 import asyncio
 import json
-from datetime import datetime
 import logging
+import os
 import sys
 import traceback
+from datetime import datetime
 
+import httpx
 from aiogram import Bot, Dispatcher, types
 from aiogram.enums import ChatAction
 from aiogram.filters import Command
 from aiogram.types import Message
-import httpx
 from aiohttp import web
 
-# Импортируем наш новый движок
-from utils.vector_engine import VectorGrokkyEngine
+from utils.dayandnight import day_and_night_task
 from utils.genesis2 import genesis2_handler
 from utils.howru import check_silence, update_last_message_time
 from utils.mirror import mirror_task
 from utils.prompt import build_system_prompt, get_chaos_response
-from utils.dayandnight import day_and_night_task
+
+# Импортируем наш новый движок
+from utils.vector_engine import VectorGrokkyEngine
 
 # Настройки логирования
 logging.basicConfig(
@@ -153,12 +154,8 @@ async def cmd_voiceoff(message: Message):
 
 @dp.message(Command("voice"))
 async def cmd_voice(message: Message):
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.row(
-        types.KeyboardButton(text="/voiceon"),
-        types.KeyboardButton(text="/voiceoff"),
-    )
-    await message.reply("/voiceon\n/voiceoff", reply_markup=kb)
+    """Show simple voice control commands without duplication."""
+    await message.reply("/voiceon\n/voiceoff")
 
 
 @dp.message(Command("status"))
