@@ -12,6 +12,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from gtts import gTTS
 from io import BytesIO
+from pydub import AudioSegment
 import httpx
 from aiohttp import web
 
@@ -84,12 +85,28 @@ except Exception as e:
 VOICE_ENABLED = {}
 
 
+def lower_voice_pitch(audio_bytes: bytes, semitone: float = -4) -> bytes:
+    """Lower the pitch of a voice sample to sound more masculine."""
+    audio = AudioSegment.from_file(BytesIO(audio_bytes), format="mp3")
+    new_rate = int(audio.frame_rate * (2.0 ** (semitone / 12.0)))
+    lowered = audio._spawn(audio.raw_data, overrides={"frame_rate": new_rate})
+    lowered = lowered.set_frame_rate(audio.frame_rate)
+    out_fp = BytesIO()
+    lowered.export(out_fp, format="mp3")
+    return out_fp.getvalue()
+
+
 async def synth_voice(text: str, lang: str = "ru") -> bytes:
     tts = gTTS(text=text, lang=lang)
     fp = BytesIO()
     tts.write_to_fp(fp)
     fp.seek(0)
-    return fp.read()
+    audio_bytes = fp.read()
+    try:
+        audio_bytes = lower_voice_pitch(audio_bytes)
+    except Exception as e:
+        logger.error("Ошибка при изменении тона голоса: %s", e)
+    return audio_bytes
 
 
 async def transcribe_voice(file_id: str) -> str:
