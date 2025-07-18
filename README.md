@@ -65,6 +65,11 @@ You may also run the server with `uvicorn` directly if preferred:
 uvicorn server:app --host 0.0.0.0 --port 8000
 ```
 
+## Voice support
+
+Grokky can reply with voice messages when `/voiceon` is enabled. Speech
+is synthesized using OpenAI's text-to-speech API with the male `onyx` voice.
+
 ## Webhook troubleshooting
 
 If the bot is not receiving updates, verify the Telegram webhook configuration. The webhook URL **must** point to `/webhook` on your domain without the bot token appended. `server.py` will try to fix the webhook on startup, and you can also run `python fix_webhook.py` manually. See [WEBHOOK_FIX_INSTRUCTIONS.md](WEBHOOK_FIX_INSTRUCTIONS.md) for step-by-step instructions.

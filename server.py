@@ -10,7 +10,6 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.enums import ChatAction
 from aiogram.filters import Command
 from aiogram.types import Message
-import tempfile
 import httpx
 from aiohttp import web
 
@@ -70,6 +69,10 @@ logger.info("Pinecone индекс: %s", PINECONE_INDEX or "НЕ УСТАНОВ�
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 
+# Переменные с информацией о боте, заполняются при старте
+BOT_ID = None
+BOT_USERNAME = ""
+
 # Инициализация движка
 try:
     engine = VectorGrokkyEngine()
@@ -84,47 +87,30 @@ VOICE_ENABLED = {}
 
 
 async def synth_voice(text: str, lang: str = "ru") -> bytes:
-    """Synthesize speech using eSpeak with a male voice."""
-    voice = f"{lang}+m3" if lang.startswith("ru") else f"{lang}+m3"
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as wav_file:
-        wav_path = wav_file.name
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as mp3_file:
-        mp3_path = mp3_file.name
+    """Synthesize speech using OpenAI's TTS with a male voice."""
+    if not OPENAI_API_KEY:
+        return b""
 
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "espeak",
-            "-v",
-            voice,
-            text,
-            "-w",
-            wav_path,
-        )
-        await proc.communicate()
+    payload = {
+        "model": "tts-1",
+        "input": text,
+        "voice": "onyx",
+    }
+    headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
 
-        proc = await asyncio.create_subprocess_exec(
-            "ffmpeg",
-            "-i",
-            wav_path,
-            "-f",
-            "mp3",
-            mp3_path,
-            "-y",
-            "-loglevel",
-            "error",
-        )
-        await proc.communicate()
-
-        with open(mp3_path, "rb") as f:
-            audio = f.read()
-    finally:
-        for p in (wav_path, mp3_path):
-            try:
-                os.remove(p)
-            except OSError:
-                pass
-
-    return audio
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                "https://api.openai.com/v1/audio/speech",
+                headers=headers,
+                json=payload,
+                timeout=30.0,
+            )
+            r.raise_for_status()
+            return r.content
+        except Exception as e:
+            logger.error("Ошибка синтеза речи: %s", e)
+            return b""
 
 
 async def transcribe_voice(file_id: str) -> str:
@@ -200,10 +186,10 @@ async def cmd_clearmemory(message: Message):
         await message.reply("🌀 Память не настроена или недоступна")
         return
 
-    user_id = str(message.from_user.id)
+    memory_id = str(message.chat.id)
 
     try:
-        await engine.index.delete(filter={"user_id": user_id})
+        await engine.index.delete(filter={"user_id": memory_id})
         await message.reply(
             "🌀 Грокки стер твою память из своего хранилища! Начинаем с чистого листа."
         )
@@ -227,17 +213,24 @@ async def handle_text(message: Message, text: str) -> None:
         logger.error("Ошибка при обновлении времени последнего сообщения: %s", e)
 
     is_group = message.chat.type in ["group", "supergroup"]
-    if is_group and not (
-        "@grokky_bot" in text.lower() or "[chaos_pulse]" in text.lower()
-    ):
+    mention = "grokky" in text.lower() or (
+        BOT_USERNAME and f"@{BOT_USERNAME}" in text.lower()
+    )
+    is_reply_to_bot = (
+        message.reply_to_message
+        and message.reply_to_message.from_user
+        and BOT_ID
+        and message.reply_to_message.from_user.id == BOT_ID
+    )
+    if is_group and not (mention or is_reply_to_bot or "[chaos_pulse]" in text.lower()):
         logger.info("Сообщение проигнорировано (группа без упоминания)")
         return
 
     chat_id = str(message.chat.id)
-    user_id = str(message.from_user.id)
+    memory_id = chat_id
 
     try:
-        await engine.add_memory(user_id, text, role="user")
+        await engine.add_memory(memory_id, text, role="user")
     except Exception as e:
         logger.error("Ошибка при сохранении сообщения: %s", e)
 
@@ -266,7 +259,7 @@ async def handle_text(message: Message, text: str) -> None:
             )
             answer = result.get("answer", get_chaos_response())
             await message.reply(f"🌀 {answer}")
-            await engine.add_memory(user_id, answer, role="assistant")
+            await engine.add_memory(memory_id, answer, role="assistant")
         except Exception as e:
             logger.error("Ошибка CHAOS_PULSE: %s", e)
             await message.reply(
@@ -277,11 +270,11 @@ async def handle_text(message: Message, text: str) -> None:
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
     try:
-        context = await engine.search_memory(user_id, text)
+        context = await engine.search_memory(memory_id, text)
         reply = await engine.generate_with_xai(
             [{"role": "user", "content": text}], context=context
         )
-        await engine.add_memory(user_id, reply, role="assistant")
+        await engine.add_memory(memory_id, reply, role="assistant")
         if VOICE_ENABLED.get(message.chat.id):
             lang = "ru" if any(ch.isalpha() and ord(ch) > 127 for ch in reply) else "en"
             audio_bytes = await synth_voice(reply, lang=lang)
@@ -343,6 +336,15 @@ async def handle_webhook(request):
 
 # Запуск сервера
 async def on_startup(app):
+    global BOT_ID, BOT_USERNAME
+    try:
+        me = await bot.get_me()
+        BOT_ID = me.id
+        BOT_USERNAME = (me.username or "").lower()
+        logger.info(f"Бот: {BOT_USERNAME} ({BOT_ID})")
+    except Exception as e:
+        logger.error(f"Не удалось получить информацию о боте: {e}")
+
     # Установка вебхука
     try:
         await bot.delete_webhook(
