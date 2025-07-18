@@ -2,6 +2,7 @@ import os
 import asyncio
 import httpx
 
+
 class HybridGrokkyEngine:
     def __init__(self):
         self.openai_key = os.getenv("OPENAI_API_KEY")
@@ -16,8 +17,16 @@ class HybridGrokkyEngine:
             "Content-Type": "application/json"
         }
         self.threads = {}  # user_id -> thread_id
-        self.ASSISTANT_ID = os.getenv("OPENAI_ASSISTANT_ID")  # Предустановленный ID ассистента
-        
+        # ID предварительно созданного ассистента OpenAI
+        self.ASSISTANT_ID = os.getenv("OPENAI_ASSISTANT_ID")
+
+    async def setup_openai_infrastructure(self):
+        """Dummy check to ensure OpenAI credentials are configured."""
+        if not self.openai_key:
+            raise RuntimeError("OPENAI_API_KEY is not configured")
+        # Nothing else to set up for now
+        return True
+
     async def get_or_create_thread(self, user_id: str):
         """Получает или создает Thread для пользователя"""
         if user_id not in self.threads:
@@ -45,7 +54,7 @@ class HybridGrokkyEngine:
         """Выполняет поиск в памяти через GPT-4o mini Assistant"""
         if not self.ASSISTANT_ID:
             return ""
-            
+
         tid = await self.get_or_create_thread(user_id)
         async with httpx.AsyncClient() as client:
             # добавляем поисковый запрос
@@ -54,7 +63,7 @@ class HybridGrokkyEngine:
                 headers=self.openai_h,
                 json={"role": "user", "content": f"ПОИСК: {query}"}
             )
-            
+
             # запускаем Assistant
             run = await client.post(
                 f"https://api.openai.com/v1/threads/{tid}/runs",
@@ -62,7 +71,7 @@ class HybridGrokkyEngine:
                 json={"assistant_id": self.ASSISTANT_ID}
             )
             run_id = run.json()["id"]
-            
+
             # ждём завершения
             while True:
                 await asyncio.sleep(1)
@@ -72,7 +81,7 @@ class HybridGrokkyEngine:
                 )
                 if st.json()["status"] == "completed":
                     break
-                    
+
             # берём ответ
             msgs = await client.get(
                 f"https://api.openai.com/v1/threads/{tid}/messages",
@@ -80,22 +89,26 @@ class HybridGrokkyEngine:
                 params={"limit": 1}
             )
             data = msgs.json()["data"]
-            return data[0]["content"][0]["text"]["value"] if data else ""
+            if data:
+                return data[0]["content"][0]["text"]["value"]
+            return ""
 
-    async def generate_with_xai(self, messages: list, context: str = "") -> str:
+    async def generate_with_xai(
+        self, messages: list, context: str = ""
+    ) -> str:
         """Генерирует ответ с помощью xAI Grok-3"""
         from utils.prompt import build_system_prompt
-        
+
         system = build_system_prompt()
         if context:
             system += f"\n\nКОНТЕКСТ ИЗ ПАМЯТИ:\n{context}"
-            
+
         payload = {
             "model": "grok-3",
             "messages": [{"role": "system", "content": system}, *messages],
             "temperature": 1.0  # slightly higher temperature for Grok-3
         }
-        
+
         async with httpx.AsyncClient() as client:
             res = await client.post(
                 "https://api.x.ai/v1/chat/completions",
