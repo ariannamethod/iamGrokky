@@ -83,12 +83,14 @@ except Exception as e:
 # Обработка голосовых сообщений
 VOICE_ENABLED = {}
 
+
 async def synth_voice(text: str, lang: str = "ru") -> bytes:
     tts = gTTS(text=text, lang=lang)
     fp = BytesIO()
     tts.write_to_fp(fp)
     fp.seek(0)
     return fp.read()
+
 
 async def transcribe_voice(file_id: str) -> str:
     if not OPENAI_API_KEY:
@@ -115,21 +117,27 @@ async def transcribe_voice(file_id: str) -> str:
             logger.error("Ошибка расшифровки голоса: %s", e)
             return ""
 
+
 @dp.message(Command("voiceon"))
 async def cmd_voiceon(message: Message):
     VOICE_ENABLED[message.chat.id] = True
     await message.reply("🌀 Грокки включил обработку голоса!")
+
 
 @dp.message(Command("voiceoff"))
 async def cmd_voiceoff(message: Message):
     VOICE_ENABLED[message.chat.id] = False
     await message.reply("🌀 Грокки выключил обработку голоса!")
 
+
 @dp.message(Command("voice"))
 async def cmd_voice(message: Message):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(types.KeyboardButton(text="/voiceon"), types.KeyboardButton(text="/voiceoff"))
+    kb.add(
+        types.KeyboardButton(text="/voiceon"), types.KeyboardButton(text="/voiceoff")
+    )
     await message.reply("Выберите режим голоса", reply_markup=kb)
+
 
 @dp.message(Command("status"))
 async def cmd_status(message: Message):
@@ -139,42 +147,43 @@ async def cmd_status(message: Message):
     status_text += f"Engine: {'✅ OK' if engine else '❌ Ошибка'}\n"
 
     # Получаем статистику памяти если возможно
-    if engine and hasattr(engine, 'index') and engine.index:
+    if engine and hasattr(engine, "index") and engine.index:
         try:
             stats = engine.index.describe_index_stats()
-            total_vectors = stats.get('total_vector_count', 0)
+            total_vectors = stats.get("total_vector_count", 0)
             status_text += f"Векторов в памяти: {total_vectors}"
         except:
             status_text += "Ошибка при получении статистики памяти"
 
     await message.reply(status_text)
 
+
 @dp.message(Command("clearmemory"))
 async def cmd_clearmemory(message: Message):
     """Очищает память для данного пользователя"""
-    if not (engine and hasattr(engine, 'index') and engine.index):
+    if not (engine and hasattr(engine, "index") and engine.index):
         await message.reply("🌀 Память не настроена или недоступна")
         return
 
     user_id = str(message.from_user.id)
 
     try:
-        import pinecone
-        # Удаляем все записи данного пользователя
-        # Примечание: в Pinecone нет прямого метода для удаления по фильтру
-        # В реальном приложении нужно использовать более эффективный подход
-
-        # Сообщаем пользователю, что его память очищена
-        await message.reply("🌀 Грокки стер твою память из своего хранилища! Начинаем с чистого листа.")
+        await engine.index.delete(filter={"user_id": user_id})
+        await message.reply(
+            "🌀 Грокки стер твою память из своего хранилища! Начинаем с чистого листа."
+        )
 
     except Exception as e:
         logger.error(f"Ошибка при очистке памяти: {e}")
         logger.error(traceback.format_exc())
         await message.reply("🌀 Произошла ошибка при очистке памяти")
 
+
 async def handle_text(message: Message, text: str) -> None:
     if not engine:
-        await message.reply("🌀 Грокки: Мой движок неисправен! Свяжитесь с моим создателем.")
+        await message.reply(
+            "🌀 Грокки: Мой движок неисправен! Свяжитесь с моим создателем."
+        )
         return
 
     try:
@@ -183,7 +192,9 @@ async def handle_text(message: Message, text: str) -> None:
         logger.error("Ошибка при обновлении времени последнего сообщения: %s", e)
 
     is_group = message.chat.type in ["group", "supergroup"]
-    if is_group and not ("@grokky_bot" in text.lower() or "[chaos_pulse]" in text.lower()):
+    if is_group and not (
+        "@grokky_bot" in text.lower() or "[chaos_pulse]" in text.lower()
+    ):
         logger.info("Сообщение проигнорировано (группа без упоминания)")
         return
 
@@ -207,7 +218,9 @@ async def handle_text(message: Message, text: str) -> None:
                 except ValueError:
                     pass
         try:
-            system_prompt = build_system_prompt(chat_id=chat_id, is_group=is_group, agent_group=AGENT_GROUP)
+            system_prompt = build_system_prompt(
+                chat_id=chat_id, is_group=is_group, agent_group=AGENT_GROUP
+            )
             result = await genesis2_handler(
                 ping="CHAOS PULSE ACTIVATED",
                 raw=True,
@@ -221,25 +234,37 @@ async def handle_text(message: Message, text: str) -> None:
             await engine.add_memory(user_id, answer, role="assistant")
         except Exception as e:
             logger.error("Ошибка CHAOS_PULSE: %s", e)
-            await message.reply("🌀 Грокки: Даже хаос требует порядка. Ошибка при обработке команды.")
+            await message.reply(
+                "🌀 Грокки: Даже хаос требует порядка. Ошибка при обработке команды."
+            )
         return
 
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
     try:
         context = await engine.search_memory(user_id, text)
-        reply = await engine.generate_with_xai([{"role": "user", "content": text}], context=context)
+        reply = await engine.generate_with_xai(
+            [{"role": "user", "content": text}], context=context
+        )
         await engine.add_memory(user_id, reply, role="assistant")
         if VOICE_ENABLED.get(message.chat.id):
             lang = "ru" if any(ch.isalpha() and ord(ch) > 127 for ch in reply) else "en"
             audio_bytes = await synth_voice(reply, lang=lang)
             voice_file = types.BufferedInputFile(audio_bytes, filename="voice.mp3")
-            await bot.send_audio(message.chat.id, voice_file, caption=reply, reply_to_message_id=message.message_id)
+            await bot.send_audio(
+                message.chat.id,
+                voice_file,
+                caption=reply,
+                reply_to_message_id=message.message_id,
+            )
         else:
             await message.reply(reply)
     except Exception as e:
         logger.error("Ошибка при обработке сообщения: %s", e)
-        await message.reply(f"🌀 Грокки: Произошла ошибка при генерации ответа: {str(e)[:100]}...")
+        await message.reply(
+            f"🌀 Грокки: Произошла ошибка при генерации ответа: {str(e)[:100]}..."
+        )
+
 
 @dp.message()
 async def message_handler(message: Message):
@@ -260,6 +285,7 @@ async def message_handler(message: Message):
         except Exception as send_error:
             logger.error(f"Не удалось отправить ответ об ошибке: {send_error}")
 
+
 # Обработчик вебхука напрямую
 async def handle_webhook(request):
     try:
@@ -273,17 +299,20 @@ async def handle_webhook(request):
         # Обновления для диспетчера
         await dp.feed_update(bot, types.Update(**data))
 
-        return web.Response(text='OK')
+        return web.Response(text="OK")
     except Exception as e:
         logger.error(f"Ошибка обработки вебхука: {e}")
         logger.error(traceback.format_exc())
         return web.Response(status=500)
 
+
 # Запуск сервера
 async def on_startup(app):
     # Установка вебхука
     try:
-        await bot.delete_webhook(drop_pending_updates=True)  # Сначала удалим старый вебхук
+        await bot.delete_webhook(
+            drop_pending_updates=True
+        )  # Сначала удалим старый вебхук
         await asyncio.sleep(1)  # Даем время на обработку
         await bot.set_webhook(url=WEBHOOK_URL)
         logger.info(f"Установлен вебхук на {WEBHOOK_URL}")
@@ -292,10 +321,12 @@ async def on_startup(app):
         logger.error(traceback.format_exc())
 
     try:
-        await bot.set_my_commands([
-            types.BotCommand(command="voiceon", description="Включить голос"),
-            types.BotCommand(command="voiceoff", description="Выключить голос"),
-        ])
+        await bot.set_my_commands(
+            [
+                types.BotCommand(command="voiceon", description="Включить голос"),
+                types.BotCommand(command="voiceoff", description="Выключить голос"),
+            ]
+        )
     except Exception as e:
         logger.error("Не удалось установить команды бота: %s", e)
 
@@ -306,15 +337,18 @@ async def on_startup(app):
         asyncio.create_task(mirror_task())
         asyncio.create_task(day_and_night_task(engine))
         from utils.knowtheworld import know_the_world_task
+
         asyncio.create_task(know_the_world_task(engine))
         logger.info("Фоновые задачи запущены")
     except Exception as e:
         logger.error(f"Ошибка при запуске фоновых задач: {e}")
         logger.error(traceback.format_exc())
 
+
 async def on_shutdown(app):
     await bot.delete_webhook()
     logger.info("Удален вебхук")
+
 
 # Создание и запуск приложения
 app = web.Application()
