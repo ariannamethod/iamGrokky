@@ -4,3 +4,4 @@ python-dotenv>=1.0.0
 httpx>=0.23.0
 pinecone>=2.2.4
 numpy>=1.24.0
+gTTS>=2.5.1

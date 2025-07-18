@@ -232,3 +232,30 @@ class VectorGrokkyEngine:
                 logger.error(traceback.format_exc())
                 # Возвращаем резервный ответ при ошибке
                 return "🌀 Грокки в замешательстве! Электрические импульсы перегружены. Попробуй еще раз!"
+
+    async def get_recent_memory(self, user_id: str, limit: int = 10) -> str:
+        """Возвращает последние записи пользователя."""
+        if not self.index:
+            return ""
+
+        try:
+            zero_vec = [0.0] * self.vector_dimension
+            results = self.index.query(
+                vector=zero_vec,
+                filter={"user_id": user_id},
+                top_k=limit,
+                include_metadata=True,
+            )
+
+            records = sorted(
+                results.get("matches", []),
+                key=lambda x: x.get("metadata", {}).get("timestamp", ""),
+                reverse=True,
+            )
+            texts = [r.get("metadata", {}).get("text", "") for r in records]
+            return "\n".join(texts)
+
+        except Exception as e:
+            logger.error("Ошибка при получении последних записей: %s", e)
+            logger.error(traceback.format_exc())
+            return ""
