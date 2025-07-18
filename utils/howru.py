@@ -12,8 +12,9 @@ engine = HybridGrokkyEngine()
 _OPENAI_READY = False
 LAST_MESSAGE_TIME = datetime.now()
 
+
 async def check_silence():
-    global LAST_MESSAGE_TIME
+    """Проверяет период молчания и инициирует сообщение."""
     while True:
         await asyncio.sleep(3600)
         silence = datetime.now() - LAST_MESSAGE_TIME
@@ -24,7 +25,9 @@ async def check_silence():
         elif silence > timedelta(hours=12) and random.random() < 0.5:
             await send_prompt("Олег молчал 12 часов. Швырни спонтанный заряд!")
 
+
 async def send_prompt(text):
+    """Отправляет текст в движок и в чат."""
     global _OPENAI_READY
     if not _OPENAI_READY:
         await engine.setup_openai_infrastructure()
@@ -39,6 +42,7 @@ async def send_prompt(text):
         reply = "🌀 Грокки: Что-то пошло не так"
     await engine.add_memory(OLEG_CHAT_ID, reply, role="assistant")
     await bot.send_message(OLEG_CHAT_ID, reply)
+
 
 async def update_last_message_time():
     global LAST_MESSAGE_TIME

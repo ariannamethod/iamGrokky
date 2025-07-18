@@ -17,10 +17,13 @@ from utils.genesis2 import genesis2_handler
 from utils.howru import check_silence, update_last_message_time
 from utils.mirror import mirror_task
 from utils.prompt import build_system_prompt, get_chaos_response
+from utils.dayandnight import day_and_night_task
 
 # Настройки логирования
-logging.basicConfig(level=logging.INFO,
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 # Переменные окружения
@@ -44,10 +47,17 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX = os.getenv("PINECONE_INDEX")
 
 logger.info(f"Запуск бота с webhook на {WEBHOOK_URL}")
-logger.info(f"Токен бота: {TELEGRAM_BOT_TOKEN[:5]}...{TELEGRAM_BOT_TOKEN[-5:]}")
-logger.info(f"XAI API ключ: {'Установлен' if XAI_API_KEY else 'НЕ УСТАНОВЛЕН'}")
-logger.info(f"Pinecone API ключ: {'Установлен' if PINECONE_API_KEY else 'НЕ УСТАНОВЛЕН'}")
-logger.info(f"Pinecone индекс: {PINECONE_INDEX or 'НЕ УСТАНОВЛЕН'}")
+logger.info(
+    "Токен бота: %s...%s",
+    TELEGRAM_BOT_TOKEN[:5],
+    TELEGRAM_BOT_TOKEN[-5:],
+)
+logger.info("XAI API ключ: %s", "Установлен" if XAI_API_KEY else "НЕ УСТАНОВЛЕН")
+logger.info(
+    "Pinecone API ключ: %s",
+    "Установлен" if PINECONE_API_KEY else "НЕ УСТАНОВЛЕН",
+)
+logger.info("Pinecone индекс: %s", PINECONE_INDEX or "НЕ УСТАНОВЛЕН")
 
 # Инициализация бота и диспетчера
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -70,7 +80,7 @@ async def cmd_voiceon(message: Message):
     VOICE_ENABLED[message.chat.id] = True
     await message.reply("🌀 Грокки включил обработку голоса!")
 
-@dp.message(Command("voiceoff")) 
+@dp.message(Command("voiceoff"))
 async def cmd_voiceoff(message: Message):
     VOICE_ENABLED[message.chat.id] = False
     await message.reply("🌀 Грокки выключил обработку голоса!")
@@ -81,7 +91,7 @@ async def cmd_status(message: Message):
     status_text += f"XAI API: {'✅ OK' if XAI_API_KEY else '❌ Отсутствует'}\n"
     status_text += f"Pinecone API: {'✅ OK' if PINECONE_API_KEY and PINECONE_INDEX else '❌ Отсутствует'}\n"
     status_text += f"Engine: {'✅ OK' if engine else '❌ Ошибка'}\n"
-    
+
     # Получаем статистику памяти если возможно
     if engine and hasattr(engine, 'index') and engine.index:
         try:
@@ -90,7 +100,7 @@ async def cmd_status(message: Message):
             status_text += f"Векторов в памяти: {total_vectors}"
         except:
             status_text += "Ошибка при получении статистики памяти"
-    
+
     await message.reply(status_text)
 
 @dp.message(Command("clearmemory"))
@@ -99,18 +109,18 @@ async def cmd_clearmemory(message: Message):
     if not (engine and hasattr(engine, 'index') and engine.index):
         await message.reply("🌀 Память не настроена или недоступна")
         return
-    
+
     user_id = str(message.from_user.id)
-    
+
     try:
         import pinecone
         # Удаляем все записи данного пользователя
         # Примечание: в Pinecone нет прямого метода для удаления по фильтру
         # В реальном приложении нужно использовать более эффективный подход
-        
+
         # Сообщаем пользователю, что его память очищена
         await message.reply("🌀 Грокки стер твою память из своего хранилища! Начинаем с чистого листа.")
-        
+
     except Exception as e:
         logger.error(f"Ошибка при очистке памяти: {e}")
         logger.error(traceback.format_exc())
@@ -122,33 +132,33 @@ async def message_handler(message: Message):
         if not message.text:
             logger.info(f"Получено сообщение без текста от {message.from_user.id}")
             return
-            
+
         logger.info(f"Получено сообщение от {message.from_user.id}: {message.text[:20]}...")
-        
+
         # Проверка наличия движка
         if not engine:
             logger.error("VectorGrokkyEngine не инициализирован")
             await message.reply("🌀 Грокки: Мой движок неисправен! Свяжитесь с моим создателем.")
             return
-            
+
         # Обновление времени последнего сообщения
         try:
             logger.info("Обновление времени последнего сообщения...")
             await update_last_message_time()
         except Exception as e:
             logger.error(f"Ошибка при обновлении времени последнего сообщения: {e}")
-        
+
         # Проверяем, личный это чат или группа
         is_group = message.chat.type in ['group', 'supergroup']
         logger.info(f"Тип чата: {'Группа' if is_group else 'Личный'}")
-        
+
         # Для личного чата - отвечаем на все сообщения
         # В группе отвечаем только на сообщения с упоминанием бота или командами
-        if not is_group or (message.text and ('@grokky_bot' in message.text.lower() or 
+        if not is_group or (message.text and ('@grokky_bot' in message.text.lower() or
                                            '[chaos_pulse]' in message.text.lower())):
             chat_id = str(message.chat.id)
             user_id = str(message.from_user.id)
-            
+
             # Сохраняем сообщение пользователя в память
             try:
                 logger.info("Сохранение сообщения пользователя в память...")
@@ -157,13 +167,13 @@ async def message_handler(message: Message):
             except Exception as e:
                 logger.error(f"Ошибка при сохранении сообщения в память: {e}")
                 logger.error(traceback.format_exc())
-            
+
             # Специальная обработка для команды [CHAOS_PULSE]
             if message.text and '[chaos_pulse]' in message.text.lower():
                 logger.info("Обработка команды CHAOS_PULSE")
                 intensity = 5  # Значение по умолчанию
                 chaos_type = None
-                
+
                 # Извлечение параметров, если они указаны
                 parts = message.text.lower().split()
                 for part in parts:
@@ -174,16 +184,16 @@ async def message_handler(message: Message):
                             intensity = int(part.split('=')[1])
                         except ValueError:
                             pass
-                
+
                 # Создаем промпт для генерации хаоса
                 try:
                     logger.info("Создание промпта для хаоса...")
                     system_prompt = build_system_prompt(
-                        chat_id=chat_id, 
+                        chat_id=chat_id,
                         is_group=is_group,
                         agent_group=AGENT_GROUP
                     )
-                    
+
                     # Отправляем на обработку в генезис
                     logger.info("Вызов genesis2_handler...")
                     result = await genesis2_handler(
@@ -194,13 +204,13 @@ async def message_handler(message: Message):
                         is_group=is_group,
                         chaos_type=chaos_type
                     )
-                    
+
                     answer = result.get('answer', get_chaos_response())
                     await bot.send_message(
-                        message.chat.id, 
+                        message.chat.id,
                         f"🌀 {answer}"
                     )
-                    
+
                     # Сохраняем ответ в память
                     await engine.add_memory(user_id, answer, role="assistant")
                 except Exception as e:
@@ -208,14 +218,14 @@ async def message_handler(message: Message):
                     logger.error(traceback.format_exc())
                     await message.reply("🌀 Грокки: Даже хаос требует порядка. Ошибка при обработке команды.")
                 return
-            
+
             # Обычная обработка сообщения
             try:
                 # Ищем контекст в памяти
                 logger.info("Поиск контекста в памяти...")
                 context = await engine.search_memory(user_id, message.text)
                 logger.info(f"Найден контекст размером {len(context)} символов")
-                
+
                 # Генерируем ответ с помощью xAI Grok-3
                 logger.info("Генерация ответа с помощью xAI...")
                 reply = await engine.generate_with_xai(
@@ -223,11 +233,11 @@ async def message_handler(message: Message):
                     context=context
                 )
                 logger.info("Ответ xAI получен успешно")
-                
+
                 # Отправляем ответ пользователю
                 logger.info("Отправка ответа пользователю...")
                 await bot.send_message(message.chat.id, reply)
-                
+
                 # Сохраняем ответ в память
                 logger.info("Сохранение ответа в память...")
                 await engine.add_memory(user_id, reply, role="assistant")
@@ -238,7 +248,7 @@ async def message_handler(message: Message):
                 await message.reply(f"🌀 Грокки: Произошла ошибка при генерации ответа: {str(e)[:100]}...")
         else:
             logger.info("Сообщение проигнорировано (группа без упоминания)")
-            
+
     except Exception as e:
         logger.error(f"Глобальная ошибка при обработке сообщения: {e}")
         logger.error(traceback.format_exc())
@@ -253,13 +263,13 @@ async def handle_webhook(request):
         # Получаем данные запроса
         request_body = await request.text()
         logger.info(f"Получены данные вебхука длиной {len(request_body)} байт")
-        
+
         data = json.loads(request_body)
         logger.info(f"Получено обновление от Telegram: {data.get('update_id')}")
-        
+
         # Обновления для диспетчера
         await dp.feed_update(bot, types.Update(**data))
-        
+
         return web.Response(text='OK')
     except Exception as e:
         logger.error(f"Ошибка обработки вебхука: {e}")
@@ -277,12 +287,13 @@ async def on_startup(app):
     except Exception as e:
         logger.error(f"Ошибка при установке вебхука: {e}")
         logger.error(traceback.format_exc())
-    
+
     # Запуск фоновых задач
     try:
         # Исправляем ошибку с аргументами
         asyncio.create_task(check_silence())
         asyncio.create_task(mirror_task())
+        asyncio.create_task(day_and_night_task(engine))
         logger.info("Фоновые задачи запущены")
     except Exception as e:
         logger.error(f"Ошибка при запуске фоновых задач: {e}")
