@@ -168,10 +168,11 @@ async def cmd_voiceoff(message: Message):
 @dp.message(Command("voice"))
 async def cmd_voice(message: Message):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(
-        types.KeyboardButton(text="/voiceon"), types.KeyboardButton(text="/voiceoff")
+    kb.row(
+        types.KeyboardButton(text="/voiceon"),
+        types.KeyboardButton(text="/voiceoff"),
     )
-    await message.reply("Выберите режим голоса", reply_markup=kb)
+    await message.reply("/voiceon\n/voiceoff", reply_markup=kb)
 
 
 @dp.message(Command("status"))
