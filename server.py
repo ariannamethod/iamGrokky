@@ -358,8 +358,8 @@ async def on_startup(app):
     try:
         await bot.set_my_commands(
             [
-                types.BotCommand(command="voiceon", description="Включить голос"),
-                types.BotCommand(command="voiceoff", description="Выключить голос"),
+                types.BotCommand(command="voiceon", description="/voiceon"),
+                types.BotCommand(command="voiceoff", description="/voiceoff"),
             ]
         )
     except Exception as e:
