@@ -7,8 +7,12 @@ import sys
 import traceback
 
 from aiogram import Bot, Dispatcher, types
+from aiogram.enums import ChatAction
 from aiogram.filters import Command
 from aiogram.types import Message
+from gtts import gTTS
+from io import BytesIO
+import httpx
 from aiohttp import web
 
 # Импортируем наш новый движок
@@ -41,6 +45,9 @@ WEBAPP_PORT = int(os.getenv("PORT", 8080))
 CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP")
 
+# Ключ OpenAI для распознавания речи
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
 # Проверка ключей API
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
@@ -53,6 +60,7 @@ logger.info(
     TELEGRAM_BOT_TOKEN[-5:],
 )
 logger.info("XAI API ключ: %s", "Установлен" if XAI_API_KEY else "НЕ УСТАНОВЛЕН")
+logger.info("OpenAI API ключ: %s", "Установлен" if OPENAI_API_KEY else "НЕ УСТАНОВЛЕН")
 logger.info(
     "Pinecone API ключ: %s",
     "Установлен" if PINECONE_API_KEY else "НЕ УСТАНОВЛЕН",
@@ -75,6 +83,38 @@ except Exception as e:
 # Обработка голосовых сообщений
 VOICE_ENABLED = {}
 
+async def synth_voice(text: str, lang: str = "ru") -> bytes:
+    tts = gTTS(text=text, lang=lang)
+    fp = BytesIO()
+    tts.write_to_fp(fp)
+    fp.seek(0)
+    return fp.read()
+
+async def transcribe_voice(file_id: str) -> str:
+    if not OPENAI_API_KEY:
+        return ""
+    file = await bot.get_file(file_id)
+    url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file.file_path}"
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url)
+        audio = resp.content
+        files = {"file": ("voice.ogg", audio, "application/ogg")}
+        data = {"model": "whisper-1"}
+        headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
+        try:
+            r = await client.post(
+                "https://api.openai.com/v1/audio/transcriptions",
+                headers=headers,
+                data=data,
+                files=files,
+                timeout=30,
+            )
+            r.raise_for_status()
+            return r.json().get("text", "")
+        except Exception as e:
+            logger.error("Ошибка расшифровки голоса: %s", e)
+            return ""
+
 @dp.message(Command("voiceon"))
 async def cmd_voiceon(message: Message):
     VOICE_ENABLED[message.chat.id] = True
@@ -84,6 +124,12 @@ async def cmd_voiceon(message: Message):
 async def cmd_voiceoff(message: Message):
     VOICE_ENABLED[message.chat.id] = False
     await message.reply("🌀 Грокки выключил обработку голоса!")
+
+@dp.message(Command("voice"))
+async def cmd_voice(message: Message):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(types.KeyboardButton(text="/voiceon"), types.KeyboardButton(text="/voiceoff"))
+    await message.reply("Выберите режим голоса", reply_markup=kb)
 
 @dp.message(Command("status"))
 async def cmd_status(message: Message):
@@ -126,129 +172,86 @@ async def cmd_clearmemory(message: Message):
         logger.error(traceback.format_exc())
         await message.reply("🌀 Произошла ошибка при очистке памяти")
 
+async def handle_text(message: Message, text: str) -> None:
+    if not engine:
+        await message.reply("🌀 Грокки: Мой движок неисправен! Свяжитесь с моим создателем.")
+        return
+
+    try:
+        await update_last_message_time()
+    except Exception as e:
+        logger.error("Ошибка при обновлении времени последнего сообщения: %s", e)
+
+    is_group = message.chat.type in ["group", "supergroup"]
+    if is_group and not ("@grokky_bot" in text.lower() or "[chaos_pulse]" in text.lower()):
+        logger.info("Сообщение проигнорировано (группа без упоминания)")
+        return
+
+    chat_id = str(message.chat.id)
+    user_id = str(message.from_user.id)
+
+    try:
+        await engine.add_memory(user_id, text, role="user")
+    except Exception as e:
+        logger.error("Ошибка при сохранении сообщения: %s", e)
+
+    if "[chaos_pulse]" in text.lower():
+        intensity = 5
+        chaos_type = None
+        for part in text.lower().split():
+            if part.startswith("type="):
+                chaos_type = part.split("=")[1]
+            if part.startswith("intensity="):
+                try:
+                    intensity = int(part.split("=")[1])
+                except ValueError:
+                    pass
+        try:
+            system_prompt = build_system_prompt(chat_id=chat_id, is_group=is_group, agent_group=AGENT_GROUP)
+            result = await genesis2_handler(
+                ping="CHAOS PULSE ACTIVATED",
+                raw=True,
+                system_prompt=system_prompt,
+                intensity=intensity,
+                is_group=is_group,
+                chaos_type=chaos_type,
+            )
+            answer = result.get("answer", get_chaos_response())
+            await message.reply(f"🌀 {answer}")
+            await engine.add_memory(user_id, answer, role="assistant")
+        except Exception as e:
+            logger.error("Ошибка CHAOS_PULSE: %s", e)
+            await message.reply("🌀 Грокки: Даже хаос требует порядка. Ошибка при обработке команды.")
+        return
+
+    await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+
+    try:
+        context = await engine.search_memory(user_id, text)
+        reply = await engine.generate_with_xai([{"role": "user", "content": text}], context=context)
+        await engine.add_memory(user_id, reply, role="assistant")
+        if VOICE_ENABLED.get(message.chat.id):
+            lang = "ru" if any(ch.isalpha() and ord(ch) > 127 for ch in reply) else "en"
+            audio_bytes = await synth_voice(reply, lang=lang)
+            voice_file = types.BufferedInputFile(audio_bytes, filename="voice.mp3")
+            await bot.send_audio(message.chat.id, voice_file, caption=reply, reply_to_message_id=message.message_id)
+        else:
+            await message.reply(reply)
+    except Exception as e:
+        logger.error("Ошибка при обработке сообщения: %s", e)
+        await message.reply(f"🌀 Грокки: Произошла ошибка при генерации ответа: {str(e)[:100]}...")
+
 @dp.message()
 async def message_handler(message: Message):
     try:
-        if not message.text:
-            logger.info(f"Получено сообщение без текста от {message.from_user.id}")
-            return
-
-        logger.info(f"Получено сообщение от {message.from_user.id}: {message.text[:20]}...")
-
-        # Проверка наличия движка
-        if not engine:
-            logger.error("VectorGrokkyEngine не инициализирован")
-            await message.reply("🌀 Грокки: Мой движок неисправен! Свяжитесь с моим создателем.")
-            return
-
-        # Обновление времени последнего сообщения
-        try:
-            logger.info("Обновление времени последнего сообщения...")
-            await update_last_message_time()
-        except Exception as e:
-            logger.error(f"Ошибка при обновлении времени последнего сообщения: {e}")
-
-        # Проверяем, личный это чат или группа
-        is_group = message.chat.type in ['group', 'supergroup']
-        logger.info(f"Тип чата: {'Группа' if is_group else 'Личный'}")
-
-        # Для личного чата - отвечаем на все сообщения
-        # В группе отвечаем только на сообщения с упоминанием бота или командами
-        if not is_group or (message.text and ('@grokky_bot' in message.text.lower() or
-                                           '[chaos_pulse]' in message.text.lower())):
-            chat_id = str(message.chat.id)
-            user_id = str(message.from_user.id)
-
-            # Сохраняем сообщение пользователя в память
-            try:
-                logger.info("Сохранение сообщения пользователя в память...")
-                await engine.add_memory(user_id, message.text, role="user")
-                logger.info("Сообщение сохранено в память")
-            except Exception as e:
-                logger.error(f"Ошибка при сохранении сообщения в память: {e}")
-                logger.error(traceback.format_exc())
-
-            # Специальная обработка для команды [CHAOS_PULSE]
-            if message.text and '[chaos_pulse]' in message.text.lower():
-                logger.info("Обработка команды CHAOS_PULSE")
-                intensity = 5  # Значение по умолчанию
-                chaos_type = None
-
-                # Извлечение параметров, если они указаны
-                parts = message.text.lower().split()
-                for part in parts:
-                    if part.startswith('type='):
-                        chaos_type = part.split('=')[1]
-                    if part.startswith('intensity='):
-                        try:
-                            intensity = int(part.split('=')[1])
-                        except ValueError:
-                            pass
-
-                # Создаем промпт для генерации хаоса
-                try:
-                    logger.info("Создание промпта для хаоса...")
-                    system_prompt = build_system_prompt(
-                        chat_id=chat_id,
-                        is_group=is_group,
-                        agent_group=AGENT_GROUP
-                    )
-
-                    # Отправляем на обработку в генезис
-                    logger.info("Вызов genesis2_handler...")
-                    result = await genesis2_handler(
-                        ping="CHAOS PULSE ACTIVATED",
-                        raw=True,
-                        system_prompt=system_prompt,
-                        intensity=intensity,
-                        is_group=is_group,
-                        chaos_type=chaos_type
-                    )
-
-                    answer = result.get('answer', get_chaos_response())
-                    await bot.send_message(
-                        message.chat.id,
-                        f"🌀 {answer}"
-                    )
-
-                    # Сохраняем ответ в память
-                    await engine.add_memory(user_id, answer, role="assistant")
-                except Exception as e:
-                    logger.error(f"Ошибка при обработке CHAOS_PULSE: {e}")
-                    logger.error(traceback.format_exc())
-                    await message.reply("🌀 Грокки: Даже хаос требует порядка. Ошибка при обработке команды.")
-                return
-
-            # Обычная обработка сообщения
-            try:
-                # Ищем контекст в памяти
-                logger.info("Поиск контекста в памяти...")
-                context = await engine.search_memory(user_id, message.text)
-                logger.info(f"Найден контекст размером {len(context)} символов")
-
-                # Генерируем ответ с помощью xAI Grok-3
-                logger.info("Генерация ответа с помощью xAI...")
-                reply = await engine.generate_with_xai(
-                    [{"role": "user", "content": message.text}],
-                    context=context
-                )
-                logger.info("Ответ xAI получен успешно")
-
-                # Отправляем ответ пользователю
-                logger.info("Отправка ответа пользователю...")
-                await bot.send_message(message.chat.id, reply)
-
-                # Сохраняем ответ в память
-                logger.info("Сохранение ответа в память...")
-                await engine.add_memory(user_id, reply, role="assistant")
-                logger.info("Обработка сообщения успешно завершена")
-            except Exception as e:
-                logger.error(f"Ошибка при обработке сообщения: {e}")
-                logger.error(traceback.format_exc())
-                await message.reply(f"🌀 Грокки: Произошла ошибка при генерации ответа: {str(e)[:100]}...")
+        if message.text:
+            await handle_text(message, message.text)
+        elif message.voice:
+            transcript = await transcribe_voice(message.voice.file_id)
+            if transcript:
+                await handle_text(message, transcript)
         else:
-            logger.info("Сообщение проигнорировано (группа без упоминания)")
-
+            logger.info("Получено сообщение неподдерживаемого типа")
     except Exception as e:
         logger.error(f"Глобальная ошибка при обработке сообщения: {e}")
         logger.error(traceback.format_exc())
@@ -288,12 +291,22 @@ async def on_startup(app):
         logger.error(f"Ошибка при установке вебхука: {e}")
         logger.error(traceback.format_exc())
 
+    try:
+        await bot.set_my_commands([
+            types.BotCommand(command="voiceon", description="Включить голос"),
+            types.BotCommand(command="voiceoff", description="Выключить голос"),
+        ])
+    except Exception as e:
+        logger.error("Не удалось установить команды бота: %s", e)
+
     # Запуск фоновых задач
     try:
         # Исправляем ошибку с аргументами
         asyncio.create_task(check_silence())
         asyncio.create_task(mirror_task())
         asyncio.create_task(day_and_night_task(engine))
+        from utils.knowtheworld import know_the_world_task
+        asyncio.create_task(know_the_world_task(engine))
         logger.info("Фоновые задачи запущены")
     except Exception as e:
         logger.error(f"Ошибка при запуске фоновых задач: {e}")
