@@ -7,6 +7,7 @@ import httpx
 from utils.prompt import get_random_author_name, get_chaos_response
 
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+GENESIS_MODEL = os.getenv("GENESIS_MODEL", "gpt-4")
 OPENAI_HEADERS = {
     "Authorization": f"Bearer {OPENAI_KEY}",
     "Content-Type": "application/json",
@@ -26,10 +27,17 @@ IMPRESSION_FRAGMENTS = [
 EMOJIS = ["⚡", "🔥", "🌪️", "🌩️", "✨", "🌊"]
 
 
-async def _call_openai(messages, intensity: int = 5):
+def poetic_chorus(lines: list[str], intensity: int = 5) -> str:
+    """Combine lines into a single impressionistic chorus."""
+    base = " / ".join(line.strip() for line in lines if line.strip())
+    return impressionistic_filter(base, intensity=intensity)
+
+
+async def _call_openai(messages, intensity: int = 5, model: str | None = None):
     coeff = max(1, min(intensity, 10)) / 10
+    model = model or GENESIS_MODEL
     payload = {
-        "model": "gpt-4",
+        "model": model,
         "messages": messages,
         "max_tokens": 200,
         "temperature": min(2.0, 0.8 + 1.2 * coeff),
@@ -81,6 +89,7 @@ async def genesis2_handler(
     system_prompt=None,
     chaos_type=None,
     intensity: int = 5,
+    model: str | None = None,
 ):
     """Основной обработчик генезиса с хаотичностью и задержками"""
     delay = random.randint(5, 15) + random.randint(0, max(0, intensity - 5))
@@ -120,7 +129,7 @@ async def genesis2_handler(
         if random.random() < 0.4:
             await asyncio.sleep(random.randint(3, 8))
 
-        reply = await _call_openai(messages, intensity=intensity)
+        reply = await _call_openai(messages, intensity=intensity, model=model)
         reply = impressionistic_filter(reply, intensity=intensity)
 
         if raw:

@@ -6,3 +6,4 @@ pinecone>=2.2.4
 numpy>=1.24.0
 pypdf>=3.10.0
 pillow>=10.0.0
+openai>=1.0.0
