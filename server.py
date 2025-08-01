@@ -19,6 +19,8 @@ from utils.howru import check_silence, update_last_message_time
 from utils.mirror import mirror_task
 from utils.prompt import build_system_prompt, get_chaos_response
 from utils.repo_monitor import monitor_repository
+from utils.imagine import imagine
+from utils.vision import analyze_image
 
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
@@ -141,6 +143,17 @@ async def transcribe_voice(file_id: str) -> str:
             return ""
 
 
+async def reply_split(message: Message, text: str) -> None:
+    """Reply with text split into Telegram-friendly chunks."""
+    limit = 4096
+    parts = [text[i : i + limit] for i in range(0, len(text), limit)] or [text]
+    for i, part in enumerate(parts):
+        if i == 0:
+            await message.reply(part)
+        else:
+            await bot.send_message(message.chat.id, part)
+
+
 @dp.message(Command("voiceon"))
 async def cmd_voiceon(message: Message):
     VOICE_ENABLED[message.chat.id] = True
@@ -175,14 +188,14 @@ async def cmd_status(message: Message):
         except:
             status_text += "Ошибка при получении статистики памяти"
 
-    await message.reply(status_text)
+    await reply_split(message, status_text)
 
 
 @dp.message(Command("clearmemory"))
 async def cmd_clearmemory(message: Message):
     """Очищает память для данного пользователя"""
     if not (engine and hasattr(engine, "index") and engine.index):
-        await message.reply("🌀 Память не настроена или недоступна")
+        await reply_split(message, "🌀 Память не настроена или недоступна")
         return
 
     is_group = message.chat.type in ["group", "supergroup"]
@@ -193,20 +206,22 @@ async def cmd_clearmemory(message: Message):
 
     try:
         await engine.index.delete(filter={"user_id": memory_id})
-        await message.reply(
-            "🌀 Грокки стер твою память из своего хранилища! Начинаем с чистого листа."
+        await reply_split(
+            message,
+            "🌀 Грокки стер твою память из своего хранилища! Начинаем с чистого листа.",
         )
 
     except Exception as e:
         logger.error(f"Ошибка при очистке памяти: {e}")
         logger.error(traceback.format_exc())
-        await message.reply("🌀 Произошла ошибка при очистке памяти")
+        await reply_split(message, "🌀 Произошла ошибка при очистке памяти")
 
 
 async def handle_text(message: Message, text: str) -> None:
     if not engine:
-        await message.reply(
-            "🌀 Грокки: Мой движок неисправен! Свяжитесь с моим создателем."
+        await reply_split(
+            message,
+            "🌀 Грокки: Мой движок неисправен! Свяжитесь с моим создателем.",
         )
         return
 
@@ -240,6 +255,20 @@ async def handle_text(message: Message, text: str) -> None:
     except Exception as e:
         logger.error("Ошибка при сохранении сообщения: %s", e)
 
+    lower_text = text.lower()
+    if lower_text.startswith("/imagine") or lower_text.startswith("нарисуй") or lower_text.startswith("draw"):
+        prompt = text.split(maxsplit=1)[1] if len(text.split()) > 1 else ""
+        if not prompt:
+            await reply_split(message, "🌀 Формат: /imagine <описание>")
+        else:
+            url = imagine(prompt)
+            await reply_split(message, url)
+            try:
+                await engine.add_memory(memory_id, f"IMAGE_PROMPT: {prompt}\nURL: {url}", role="journal")
+            except Exception:
+                pass
+        return
+
     if "[chaos_pulse]" in text.lower():
         intensity = 5
         chaos_type = None
@@ -264,11 +293,11 @@ async def handle_text(message: Message, text: str) -> None:
                 chaos_type=chaos_type,
             )
             answer = result.get("answer", get_chaos_response())
-            await message.reply(f"🌀 {answer}")
+            await reply_split(message, f"🌀 {answer}")
             await engine.add_memory(memory_id, answer, role="assistant")
         except Exception as e:
             logger.error("Ошибка CHAOS_PULSE: %s", e)
-            await message.reply(
+            await reply_split(
                 "🌀 Грокки: Даже хаос требует порядка. Ошибка при обработке команды."
             )
         return
@@ -304,12 +333,34 @@ async def handle_text(message: Message, text: str) -> None:
                 reply_to_message_id=message.message_id,
             )
         else:
-            await message.reply(reply)
+            await reply_split(message, reply)
     except Exception as e:
         logger.error("Ошибка при обработке сообщения: %s", e)
-        await message.reply(
-            f"🌀 Грокки: Произошла ошибка при генерации ответа: {str(e)[:100]}..."
+        await reply_split(
+            message,
+            f"🌀 Грокки: Произошла ошибка при генерации ответа: {str(e)[:100]}...",
         )
+
+
+async def handle_photo(message: Message) -> None:
+    """Analyze photo with OpenAI vision and comment via genesis handler."""
+    if not engine:
+        await reply_split(message, "🌀 Грокки: Мой движок неисправен!")
+        return
+
+    try:
+        file_id = message.photo[-1].file_id
+        file = await bot.get_file(file_id)
+        url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file.file_path}"
+        description = analyze_image(url)
+        await engine.add_memory(str(message.chat.id), f"VISION: {description}", role="journal")
+        response = await genesis2_handler(ping=description)
+        answer = response.get("answer") if isinstance(response, dict) else response
+        await reply_split(message, answer)
+        await engine.add_memory(str(message.chat.id), answer, role="assistant")
+    except Exception as e:
+        logger.error("Ошибка обработки фото: %s", e)
+        await reply_split(message, f"🌀 Грокки: {get_chaos_response()}")
 
 
 @dp.message()
@@ -317,6 +368,8 @@ async def message_handler(message: Message):
     try:
         if message.text:
             await handle_text(message, message.text)
+        elif message.photo:
+            await handle_photo(message)
         elif message.voice:
             transcript = await transcribe_voice(message.voice.file_id)
             if transcript:
@@ -386,8 +439,10 @@ async def on_startup(app):
             [
                 types.BotCommand(command="voiceon", description="/voiceon"),
                 types.BotCommand(command="voiceoff", description="/voiceoff"),
+                types.BotCommand(command="imagine", description="/imagine <prompt>"),
             ]
         )
+        await bot.set_chat_menu_button(menu_button=types.MenuButtonCommands())
     except Exception as e:
         logger.error("Не удалось установить команды бота: %s", e)
 
