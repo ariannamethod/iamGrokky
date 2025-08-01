@@ -21,6 +21,7 @@ from utils.prompt import build_system_prompt, get_chaos_response
 from utils.repo_monitor import monitor_repository
 from utils.imagine import imagine
 from utils.vision import analyze_image
+from utils.coder import interpret_code
 
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
@@ -88,6 +89,10 @@ except Exception as e:
 
 # Обработка голосовых сообщений
 VOICE_ENABLED = {}
+# Chats currently in coder mode
+CODER_MODE: dict[int, bool] = {}
+# Pending long coder outputs waiting for user choice
+CODER_OUTPUT: dict[tuple[int, int], str] = {}
 
 
 async def synth_voice(text: str, lang: str = "ru") -> bytes:
@@ -172,6 +177,19 @@ async def cmd_voice(message: Message):
     await message.reply("/voiceon\n/voiceoff")
 
 
+@dp.message(Command("coder"))
+async def cmd_coder(message: Message):
+    """Toggle coder mode or run a single prompt."""
+    args = message.text.split(maxsplit=1)
+    chat_id = message.chat.id
+    if len(args) == 1:
+        CODER_MODE[chat_id] = not CODER_MODE.get(chat_id, False)
+        state = "activated" if CODER_MODE[chat_id] else "deactivated"
+        await message.reply(f"Coder mode {state}. Send /coder again to toggle.")
+    else:
+        await handle_coder_prompt(message, args[1])
+
+
 @dp.message(Command("status"))
 async def cmd_status(message: Message):
     status_text = f"🌀 Грокки функционирует! Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
@@ -217,7 +235,68 @@ async def cmd_clearmemory(message: Message):
         await reply_split(message, "🌀 Произошла ошибка при очистке памяти")
 
 
+async def handle_coder_prompt(message: Message, text: str) -> None:
+    """Process a coder-mode prompt via OpenAI code interpreter."""
+    if not engine:
+        await reply_split(message, "🌀 Grokky engine is unavailable")
+        return
+
+    chat_id = str(message.chat.id)
+    memory_id = (
+        f"{chat_id}_{message.from_user.id}"
+        if message.chat.type in ["group", "supergroup"]
+        else str(message.from_user.id)
+    )
+
+    try:
+        await engine.add_memory(memory_id, text, role="user")
+    except Exception:
+        pass
+
+    result = await interpret_code(text)
+
+    try:
+        await engine.add_memory(memory_id, result, role="assistant")
+    except Exception:
+        pass
+
+    if len(result) > 3500:
+        CODER_OUTPUT[(message.chat.id, message.from_user.id)] = result
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+        kb = InlineKeyboardBuilder()
+        kb.button(text="Messages", callback_data="coder_msgs")
+        kb.button(text="File", callback_data="coder_file")
+        await message.reply(
+            "Output is large. Choose delivery method:",
+            reply_markup=kb.as_markup(),
+        )
+    else:
+        await reply_split(message, result)
+
+
+@dp.callback_query(lambda c: c.data in {"coder_msgs", "coder_file"})
+async def coder_choice(callback: types.CallbackQuery):
+    key = (callback.message.chat.id, callback.from_user.id)
+    text = CODER_OUTPUT.pop(key, None)
+    if not text:
+        await callback.answer("No output pending", show_alert=True)
+        return
+    await callback.message.edit_reply_markup()
+    if callback.data == "coder_msgs":
+        await reply_split(callback.message, text)
+    else:
+        file = types.BufferedInputFile(text.encode("utf-8"), filename="output.txt")
+        await bot.send_document(
+            callback.message.chat.id, file, caption="Here is the code output."
+        )
+
+
 async def handle_text(message: Message, text: str) -> None:
+    if CODER_MODE.get(message.chat.id):
+        await handle_coder_prompt(message, text)
+        return
+
     if not engine:
         await reply_split(
             message,
@@ -256,15 +335,29 @@ async def handle_text(message: Message, text: str) -> None:
         logger.error("Ошибка при сохранении сообщения: %s", e)
 
     lower_text = text.lower()
-    if lower_text.startswith("/imagine") or lower_text.startswith("нарисуй") or lower_text.startswith("draw"):
+    if (
+        lower_text.startswith("/imagine")
+        or lower_text.startswith("нарисуй")
+        or lower_text.startswith("draw")
+    ):
         prompt = text.split(maxsplit=1)[1] if len(text.split()) > 1 else ""
         if not prompt:
-            await reply_split(message, "🌀 Формат: /imagine <описание>")
+            await reply_split(message, "🌀 Format: /imagine <description>")
         else:
             url = imagine(prompt)
-            await reply_split(message, url)
+            comment_res = await genesis2_handler(ping=prompt)
+            comment = (
+                comment_res.get("answer")
+                if isinstance(comment_res, dict)
+                else comment_res
+            )
+            await reply_split(message, comment)
             try:
-                await engine.add_memory(memory_id, f"IMAGE_PROMPT: {prompt}\nURL: {url}", role="journal")
+                await engine.add_memory(
+                    memory_id,
+                    f"IMAGE_PROMPT: {prompt}\nURL: {url}\nCOMMENT: {comment}",
+                    role="journal",
+                )
             except Exception:
                 pass
         return
@@ -353,7 +446,9 @@ async def handle_photo(message: Message) -> None:
         file = await bot.get_file(file_id)
         url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file.file_path}"
         description = analyze_image(url)
-        await engine.add_memory(str(message.chat.id), f"VISION: {description}", role="journal")
+        await engine.add_memory(
+            str(message.chat.id), f"VISION: {description}", role="journal"
+        )
         response = await genesis2_handler(ping=description)
         answer = response.get("answer") if isinstance(response, dict) else response
         await reply_split(message, answer)
@@ -440,6 +535,7 @@ async def on_startup(app):
                 types.BotCommand(command="voiceon", description="/voiceon"),
                 types.BotCommand(command="voiceoff", description="/voiceoff"),
                 types.BotCommand(command="imagine", description="/imagine <prompt>"),
+                types.BotCommand(command="coder", description="toggle or use coder"),
             ]
         )
         await bot.set_chat_menu_button(menu_button=types.MenuButtonCommands())

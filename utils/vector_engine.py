@@ -114,9 +114,7 @@ class VectorGrokkyEngine:
                             f"Role: {metadata.get('role')}"
                         )
                         logger.info(info)
-                        logger.info(
-                            f"     Content: {metadata.get('text', '')[:50]}..."
-                        )
+                        logger.info(f"     Content: {metadata.get('text', '')[:50]}...")
                         lines.append(info + "\n")
                         lines.append(
                             f"     Content: {metadata.get('text', '')[:50]}...\n"
@@ -263,8 +261,10 @@ class VectorGrokkyEngine:
             except Exception as e:
                 logger.error(f"Ошибка при генерации с xAI: {e}")
                 logger.error(traceback.format_exc())
-                # Возвращаем резервный ответ при ошибке
-                return "🌀 Грокки в замешательстве! Электрические импульсы перегружены. Попробуй еще раз!"
+                from utils.prompt import get_chaos_response
+
+                # Return a dynamic fallback in English
+                return f"🌀 Grokky glitch! {get_chaos_response()}"
 
     async def get_recent_memory(self, user_id: str, limit: int = 10) -> str:
         """Возвращает последние записи пользователя."""
