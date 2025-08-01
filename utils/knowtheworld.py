@@ -11,10 +11,15 @@ from utils.vector_engine import VectorGrokkyEngine
 logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+NEWS_MODEL = os.getenv("NEWS_MODEL", "gpt-4o")
 BOT_LOCATION = os.getenv("BOT_LOCATION", "Moscow")
 CHAT_ID = os.getenv("CHAT_ID")
 
-CITIES = ["Paris", "Tel Aviv", "Berlin", "New York", "Moscow", "Amsterdam"]
+_cities_env = os.getenv("CITIES")
+if _cities_env:
+    CITIES = [c.strip() for c in _cities_env.split(",") if c.strip()]
+else:
+    CITIES = ["Paris", "Tel Aviv", "Berlin", "New York", "Moscow", "Amsterdam"]
 
 async def fetch_news(topic: str) -> str:
     """Retrieve a short digest of recent news via OpenAI browsing."""
@@ -26,7 +31,7 @@ async def fetch_news(topic: str) -> str:
         "Content-Type": "application/json",
     }
     payload = {
-        "model": "gpt-4o",
+        "model": NEWS_MODEL,
         "messages": [
             {
                 "role": "user",
@@ -64,10 +69,18 @@ async def fetch_news(topic: str) -> str:
             logger.error("Не удалось получить новости: %s", e)
             return ""
 
-async def know_the_world_task(engine: VectorGrokkyEngine | None = None) -> None:
+async def know_the_world_task(
+    engine: VectorGrokkyEngine | None = None,
+    *,
+    interval: int | None = None,
+    iterations: int | None = None,
+) -> None:
     if engine is None:
         engine = VectorGrokkyEngine()
 
+    interval = interval or 86400
+
+    count = 0
     while True:
         await asyncio.sleep(random.randint(0, 3600))
         try:
@@ -91,4 +104,8 @@ async def know_the_world_task(engine: VectorGrokkyEngine | None = None) -> None:
             logger.info("know_the_world entry recorded")
         except Exception as e:
             logger.error("Ошибка know_the_world_task: %s", e)
-        await asyncio.sleep(86400 + random.randint(-3600, 3600))
+        count += 1
+        if iterations is not None and count >= iterations:
+            break
+
+        await asyncio.sleep(interval + random.randint(-3600, 3600))
