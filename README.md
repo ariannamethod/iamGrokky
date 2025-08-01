@@ -45,7 +45,6 @@ Each environment variable controls a specific aspect of the bot:
 - `PINECONE_API_KEY` – enables the optional Pinecone vector store.
 - `PINECONE_INDEX` – name of the Pinecone index to use.
 - `PORT` – port for the FastAPI server.
-- `NEWS_API_KEY` – key used for news retrieval (optional and currently unused).
 
 Unused optional variables are ignored when their features are disabled.
 

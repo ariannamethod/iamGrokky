@@ -184,7 +184,11 @@ async def cmd_clearmemory(message: Message):
         await message.reply("🌀 Память не настроена или недоступна")
         return
 
-    memory_id = str(message.chat.id)
+    is_group = message.chat.type in ["group", "supergroup"]
+    if is_group:
+        memory_id = f"{message.chat.id}_{message.from_user.id}"
+    else:
+        memory_id = str(message.from_user.id)
 
     try:
         await engine.index.delete(filter={"user_id": memory_id})
@@ -225,7 +229,10 @@ async def handle_text(message: Message, text: str) -> None:
         return
 
     chat_id = str(message.chat.id)
-    memory_id = chat_id
+    if is_group:
+        memory_id = f"{chat_id}_{message.from_user.id}"
+    else:
+        memory_id = str(message.from_user.id)
 
     try:
         await engine.add_memory(memory_id, text, role="user")
