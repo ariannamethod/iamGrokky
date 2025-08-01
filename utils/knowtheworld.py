@@ -3,7 +3,6 @@ import asyncio
 import random
 import logging
 import httpx
-import json
 from datetime import datetime
 
 from utils.vector_engine import VectorGrokkyEngine
@@ -22,7 +21,7 @@ else:
     CITIES = ["Paris", "Tel Aviv", "Berlin", "New York", "Moscow", "Amsterdam"]
 
 async def fetch_news(topic: str) -> str:
-    """Retrieve a short digest of recent news via OpenAI browsing."""
+    """Retrieve a short digest of recent news via OpenAI."""
     if not OPENAI_API_KEY:
         return f"Новости по {topic} недоступны"
 
@@ -41,16 +40,6 @@ async def fetch_news(topic: str) -> str:
                 ),
             }
         ],
-        "tools": [
-            {"type": "function", "function": {"name": "browser.search"}}
-        ],
-        "tool_choice": {
-            "type": "function",
-            "function": {
-                "name": "browser.search",
-                "arguments": json.dumps({"query": topic, "recency_days": 1}),
-            },
-        },
     }
 
     async with httpx.AsyncClient() as client:
