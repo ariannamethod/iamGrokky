@@ -35,8 +35,8 @@ async def know_the_world_task(engine: VectorGrokkyEngine | None = None) -> None:
     if engine is None:
         engine = VectorGrokkyEngine()
 
-    await asyncio.sleep(random.randint(0, 3600))
     while True:
+        await asyncio.sleep(random.randint(0, 3600))
         try:
             city_news = await fetch_news(BOT_LOCATION)
             world_parts = []

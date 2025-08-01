@@ -18,6 +18,7 @@ async def check_silence():
     while True:
         await asyncio.sleep(3600)
         silence = datetime.now() - LAST_MESSAGE_TIME
+        print(f"check_silence: {silence.total_seconds() / 3600:.1f}h since last message")
         if silence > timedelta(hours=48):
             await send_prompt("Олег молчал 48 часов. Напиши что-то острое!")
         elif silence > timedelta(hours=24):
@@ -32,6 +33,8 @@ async def send_prompt(text):
     if not _OPENAI_READY:
         await engine.setup_openai_infrastructure()
         _OPENAI_READY = True
+    if not OLEG_CHAT_ID:
+        return
     await engine.add_memory(OLEG_CHAT_ID, text, role="user")
     try:
         reply = await engine.generate_with_xai([
@@ -42,6 +45,7 @@ async def send_prompt(text):
         reply = "🌀 Грокки: Что-то пошло не так"
     await engine.add_memory(OLEG_CHAT_ID, reply, role="assistant")
     await bot.send_message(OLEG_CHAT_ID, reply)
+    await update_last_message_time()
 
 
 async def update_last_message_time():
