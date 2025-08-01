@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 
-from utils.SUPPERTIME_BIOORCHESTRA import BioOrchestra
+from utils.bioorchestra import BioOrchestra
 from utils.vector_engine import VectorGrokkyEngine
 
 logger = logging.getLogger(__name__)
