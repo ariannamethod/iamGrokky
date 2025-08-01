@@ -13,7 +13,6 @@ async def day_and_night_task(engine: VectorGrokkyEngine | None = None) -> None:
         engine = VectorGrokkyEngine()
 
     while True:
-        await asyncio.sleep(86400)
         try:
             reflection = await engine.generate_with_xai([
                 {
@@ -32,6 +31,7 @@ async def day_and_night_task(engine: VectorGrokkyEngine | None = None) -> None:
         entry = f"{datetime.now().date()}: {reflection}"
         await engine.add_memory("journal", entry, role="journal")
         logger.info("Daily reflection recorded")
+        await asyncio.sleep(86400)
 
 
 if __name__ == "__main__":

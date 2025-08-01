@@ -84,36 +84,53 @@ class VectorGrokkyEngine:
             logger.warning("Снепшот памяти не создан - Pinecone не доступен")
             return
 
+        snapshot_file = os.path.join("data", "memory_snapshot.log")
         try:
-            # Получаем статистику индекса
             stats = self.index.describe_index_stats()
             total_vectors = stats.get("total_vector_count", 0)
 
-            logger.info(f"====== СНЕПШОТ ПАМЯТИ ======")
-            logger.info(f"Время: {datetime.now().isoformat()}")
-            logger.info(f"Всего векторов в базе: {total_vectors}")
+            header = (
+                f"====== СНЕПШОТ ПАМЯТИ ======\n"
+                f"Время: {datetime.now().isoformat()}\n"
+                f"Всего векторов в базе: {total_vectors}\n"
+            )
+            logger.info(header.strip())
 
-            # Получаем образец данных для демонстрации (до 5 записей)
+            lines = [header]
+
             if total_vectors > 0:
                 try:
-                    # Fetching sample of vectors with their metadata
-                    # This is a simple approach - in production we'd use proper querying
-                    sample_records = []
-                    # This is pseudocode as Pinecone doesn't have a direct "list all" function
-                    # In a real implementation, you would use a proper query approach
-
+                    results = self.index.query(
+                        vector=[0.0] * self.vector_dimension,
+                        top_k=min(5, total_vectors),
+                        include_metadata=True,
+                    )
                     logger.info("Образец записей в памяти:")
-                    for i, record in enumerate(sample_records[:5]):
-                        metadata = record.get("metadata", {})
-                        logger.info(
-                            f"  {i+1}. User: {metadata.get('user_id')}, Role: {metadata.get('role')}"
+                    lines.append("Образец записей в памяти:\n")
+                    for i, match in enumerate(results.get("matches", [])):
+                        metadata = match.get("metadata", {})
+                        info = (
+                            f"  {i+1}. User: {metadata.get('user_id')}, "
+                            f"Role: {metadata.get('role')}"
                         )
-                        logger.info(f"     Content: {metadata.get('text', '')[:50]}...")
-
+                        logger.info(info)
+                        logger.info(
+                            f"     Content: {metadata.get('text', '')[:50]}..."
+                        )
+                        lines.append(info + "\n")
+                        lines.append(
+                            f"     Content: {metadata.get('text', '')[:50]}...\n"
+                        )
                 except Exception as e:
                     logger.error(f"Ошибка при получении образца данных: {e}")
+                    lines.append(f"Ошибка при получении образца данных: {e}\n")
 
-            logger.info(f"============================")
+            logger.info("============================")
+            lines.append("============================\n")
+
+            os.makedirs("data", exist_ok=True)
+            with open(snapshot_file, "a", encoding="utf-8") as f:
+                f.write("".join(lines))
 
         except Exception as e:
             logger.error(f"Ошибка при создании снепшота памяти: {e}")
