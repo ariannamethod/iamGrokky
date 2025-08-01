@@ -5,6 +5,7 @@ import os
 import sys
 import traceback
 from datetime import datetime
+import random
 
 import httpx
 from aiogram import Bot, Dispatcher, types
@@ -21,6 +22,7 @@ from utils.prompt import build_system_prompt, get_chaos_response
 from utils.repo_monitor import monitor_repository
 from utils.imagine import imagine
 from utils.vision import analyze_image
+from utils.coder import run_coder
 
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
@@ -217,6 +219,22 @@ async def cmd_clearmemory(message: Message):
         await reply_split(message, "🌀 Произошла ошибка при очистке памяти")
 
 
+@dp.message(Command("coder"))
+async def cmd_coder(message: Message):
+    query = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else ""
+    if not query:
+        await reply_split(message, "Usage: /coder <task>")
+        return
+    await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+    result = run_coder(query)
+    await reply_split(message, result)
+    if engine:
+        try:
+            await engine.add_memory(str(message.chat.id), f"CODER: {query}\n{result}", role="journal")
+        except Exception:
+            pass
+
+
 async def handle_text(message: Message, text: str) -> None:
     if not engine:
         await reply_split(
@@ -252,6 +270,13 @@ async def handle_text(message: Message, text: str) -> None:
 
     try:
         await engine.add_memory(memory_id, text, role="user")
+        sketch = await genesis2_handler(ping=text)
+        if isinstance(sketch, dict):
+            summary = sketch.get("answer", "")
+        else:
+            summary = str(sketch)
+        if summary:
+            await engine.add_memory(memory_id, f"SKETCH: {summary}", role="journal")
     except Exception as e:
         logger.error("Ошибка при сохранении сообщения: %s", e)
 
@@ -259,10 +284,31 @@ async def handle_text(message: Message, text: str) -> None:
     if lower_text.startswith("/imagine") or lower_text.startswith("нарисуй") or lower_text.startswith("draw"):
         prompt = text.split(maxsplit=1)[1] if len(text.split()) > 1 else ""
         if not prompt:
-            await reply_split(message, "🌀 Формат: /imagine <описание>")
+            await reply_split(message, "Usage: /imagine <prompt>")
         else:
             url = imagine(prompt)
-            await reply_split(message, url)
+            if url.startswith("http"):
+                try:
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(url)
+                        resp.raise_for_status()
+                        photo = types.BufferedInputFile(resp.content, filename="image.png")
+                    comment = random.choice([
+                        "Here is the vision your words sparked!",
+                        "I painted this based on your prompt.",
+                        "Your idea took shape like this."
+                    ])
+                    await bot.send_photo(
+                        message.chat.id,
+                        photo,
+                        caption=comment,
+                        reply_to_message_id=message.message_id,
+                    )
+                except Exception as e:
+                    logger.error(f"Image send failed: {e}")
+                    await reply_split(message, "Image generated but cannot be sent")
+            else:
+                await reply_split(message, url)
             try:
                 await engine.add_memory(memory_id, f"IMAGE_PROMPT: {prompt}\nURL: {url}", role="journal")
             except Exception:
@@ -440,6 +486,7 @@ async def on_startup(app):
                 types.BotCommand(command="voiceon", description="/voiceon"),
                 types.BotCommand(command="voiceoff", description="/voiceoff"),
                 types.BotCommand(command="imagine", description="/imagine <prompt>"),
+                types.BotCommand(command="coder", description="/coder <task>"),
             ]
         )
         await bot.set_chat_menu_button(menu_button=types.MenuButtonCommands())

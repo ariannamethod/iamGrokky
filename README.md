@@ -69,6 +69,11 @@ uvicorn server:app --host 0.0.0.0 --port 8000
 Grokky can reply with voice messages when `/voiceon` is enabled. Speech
 is synthesized using OpenAI's text-to-speech API with the male `onyx` voice.
 
+## Coder mode
+
+Use `/coder <task>` to ask Grokky for coding help powered by the OpenAI code interpreter.
+The response is also stored in vector memory for later recall.
+
 ## Webhook troubleshooting
 
 If the bot is not receiving updates, verify the Telegram webhook configuration. The webhook URL **must** point to `/webhook` on your domain without the bot token appended. `server.py` will try to fix the webhook on startup, and you can also run `python fix_webhook.py` manually. See [WEBHOOK_FIX_INSTRUCTIONS.md](WEBHOOK_FIX_INSTRUCTIONS.md) for step-by-step instructions.

@@ -5,6 +5,7 @@ import json
 import traceback
 import logging
 import time
+import random
 from datetime import datetime
 import hashlib
 import numpy as np
@@ -242,7 +243,13 @@ class VectorGrokkyEngine:
 
         system = build_system_prompt()
         if context:
+            if len(context) > 4000:
+                context = context[-4000:]
             system += f"\n\nКОНТЕКСТ ИЗ ПАМЯТИ:\n{context}"
+
+        for m in messages:
+            if isinstance(m, dict) and "content" in m and isinstance(m["content"], str) and len(m["content"]) > 4000:
+                m["content"] = m["content"][:4000]
 
         payload = {
             "model": "grok-3",
@@ -263,8 +270,12 @@ class VectorGrokkyEngine:
             except Exception as e:
                 logger.error(f"Ошибка при генерации с xAI: {e}")
                 logger.error(traceback.format_exc())
-                # Возвращаем резервный ответ при ошибке
-                return "🌀 Грокки в замешательстве! Электрические импульсы перегружены. Попробуй еще раз!"
+                fallback = random.choice([
+                    "🌀 Grokky short-circuited! Let's retry.",
+                    "🌀 Sparks flew, message was too heavy.",
+                    "🌀 Overload hit! Try a slimmer query."
+                ])
+                return fallback
 
     async def get_recent_memory(self, user_id: str, limit: int = 10) -> str:
         """Возвращает последние записи пользователя."""
