@@ -1,8 +1,3 @@
-"""
-Grokky AI Assistant - Genesis2 Handler
-Генератор хаоса и спонтанных ответов с увеличенными задержками
-"""
-
 import os
 import random
 import asyncio
