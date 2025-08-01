@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import traceback
 from datetime import datetime
@@ -50,6 +51,8 @@ AGENT_GROUP = os.getenv("AGENT_GROUP")
 
 # Ключ OpenAI для распознавания речи
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+NEWS_MODEL = os.getenv("NEWS_MODEL", "gpt-4o")
+URL_RE = re.compile(r"https?://\S+")
 
 # Проверка ключей API
 XAI_API_KEY = os.getenv("XAI_API_KEY")
@@ -148,15 +151,57 @@ async def transcribe_voice(file_id: str) -> str:
             return ""
 
 
+async def summarize_link(url: str, extra: int = 2) -> str:
+    """Read the link and a few extra articles from the site via OpenAI tools."""
+    if not OPENAI_API_KEY:
+        return ""
+
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    prompt = (
+        f"Прочитай {url} и ещё {extra} материалов на том же сайте. "
+        "Кратко опиши общую тему ресурса и главное из статьи. Ответь на русском."
+    )
+    payload = {
+        "model": NEWS_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "tools": [
+            {"type": "function", "function": {"name": "browser.search"}},
+            {"type": "function", "function": {"name": "browser.get"}},
+        ],
+        "tool_choice": "auto",
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            message = data.get("choices", [{}])[0].get("message", {})
+            return message.get("content", "").strip()
+        except Exception as e:
+            logger.error("Ошибка получения статьи: %s", e)
+            return ""
+
+
 async def reply_split(message: Message, text: str) -> None:
-    """Reply with text split into Telegram-friendly chunks."""
+    """Reply, splitting into at most two Telegram messages."""
     limit = 4096
-    parts = [text[i : i + limit] for i in range(0, len(text), limit)] or [text]
-    for i, part in enumerate(parts):
-        if i == 0:
-            await message.reply(part)
-        else:
-            await bot.send_message(message.chat.id, part)
+    if len(text) <= limit:
+        await message.reply(text)
+        return
+
+    part1 = text[:limit]
+    part2 = text[limit:]
+    await message.reply(f"🌀 Ответ в двух частях. Часть 1/2:\n{part1}")
+    await bot.send_message(message.chat.id, f"Часть 2/2:\n{part2}")
 
 
 @dp.message(Command("voiceon"))
@@ -360,6 +405,20 @@ async def handle_text(message: Message, text: str) -> None:
                 )
             except Exception:
                 pass
+        return
+
+    urls = URL_RE.findall(text)
+    if urls:
+        url = urls[0]
+        summary = await summarize_link(url)
+        memory_context = await engine.search_memory(memory_id, summary or url)
+        prompt = f"Ссылка: {url}\n{summary}"
+        reply = await engine.generate_with_xai(
+            [{"role": "user", "content": prompt}],
+            context=memory_context,
+        )
+        await engine.add_memory(memory_id, reply, role="assistant")
+        await reply_split(message, reply)
         return
 
     if "[chaos_pulse]" in text.lower():
