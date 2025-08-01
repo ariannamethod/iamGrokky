@@ -18,6 +18,7 @@ from utils.genesis2 import genesis2_handler
 from utils.howru import check_silence, update_last_message_time
 from utils.mirror import mirror_task
 from utils.prompt import build_system_prompt, get_chaos_response
+from utils.repo_monitor import monitor_repository
 
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
@@ -275,9 +276,21 @@ async def handle_text(message: Message, text: str) -> None:
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
     try:
-        context = await engine.search_memory(memory_id, text)
+        if message.reply_to_message and message.reply_to_message.text:
+            quote_context = await engine.search_memory(
+                memory_id,
+                message.reply_to_message.text,
+                limit=10,
+            )
+            log_context = await engine.get_recent_memory("journal", limit=10)
+            context_parts = [c for c in [quote_context, log_context] if c]
+            context = "\n\n".join(context_parts)
+        else:
+            context = await engine.search_memory(memory_id, text)
+
         reply = await engine.generate_with_xai(
-            [{"role": "user", "content": text}], context=context
+            [{"role": "user", "content": text}],
+            context=context,
         )
         await engine.add_memory(memory_id, reply, role="assistant")
         if VOICE_ENABLED.get(message.chat.id):
@@ -349,6 +362,12 @@ async def on_startup(app):
         logger.info(f"Бот: {BOT_USERNAME} ({BOT_ID})")
     except Exception as e:
         logger.error(f"Не удалось получить информацию о боте: {e}")
+
+    # Сканируем репозиторий и записываем результаты
+    try:
+        await monitor_repository(engine)
+    except Exception as e:
+        logger.error(f"Ошибка мониторинга репозитория: {e}")
 
     # Установка вебхука
     try:
