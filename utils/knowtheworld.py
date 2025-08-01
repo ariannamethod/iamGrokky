@@ -3,30 +3,63 @@ import asyncio
 import random
 import logging
 import httpx
+import json
 from datetime import datetime
 
 from utils.vector_engine import VectorGrokkyEngine
 
 logger = logging.getLogger(__name__)
 
-NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 BOT_LOCATION = os.getenv("BOT_LOCATION", "Moscow")
 CHAT_ID = os.getenv("CHAT_ID")
 
 CITIES = ["Paris", "Tel Aviv", "Berlin", "New York", "Moscow", "Amsterdam"]
 
 async def fetch_news(topic: str) -> str:
-    if not NEWS_API_KEY:
+    """Retrieve a short digest of recent news via OpenAI browsing."""
+    if not OPENAI_API_KEY:
         return f"Новости по {topic} недоступны"
-    url = "https://newsapi.org/v2/top-headlines"
-    params = {"q": topic, "apiKey": NEWS_API_KEY, "language": "ru"}
+
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": "gpt-4o",
+        "messages": [
+            {
+                "role": "user",
+                "content": (
+                    f"Расскажи кратко свежие новости о {topic}. "
+                    "Ответь на русском."
+                ),
+            }
+        ],
+        "tools": [
+            {"type": "function", "function": {"name": "browser.search"}}
+        ],
+        "tool_choice": {
+            "type": "function",
+            "function": {
+                "name": "browser.search",
+                "arguments": json.dumps({"query": topic, "recency_days": 1}),
+            },
+        },
+    }
+
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.get(url, params=params, timeout=10)
+            resp = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=15,
+            )
             resp.raise_for_status()
             data = resp.json()
-            headlines = [a.get("title") for a in data.get("articles", [])[:3]]
-            return "; ".join(headlines)
+            message = data.get("choices", [{}])[0].get("message", {})
+            return message.get("content", "").strip()
         except Exception as e:
             logger.error("Не удалось получить новости: %s", e)
             return ""
