@@ -6,15 +6,15 @@ The model's full title is **iamgrokky**, but around here we simply say **Grokky*
 
 Grokky is an AI entity powered by FastAPI. The project bundles a full
 stack for conversations, image generation and code interpretation. At the center
-is **Grok 1**, a lightweight neural engine also known as **SLNCX (Wulf)**. The
+is **Grok 1**, a lightweight neural engine also known as **SLNCX (Wulf)**. The
 local weights live inside this repository, so the AI entity can run entirely
-offline. When extra knowledge is needed, Grok 1 reaches out to Grok‑3 or GPT‑4.1
+offline. When extra knowledge is needed, Grok 1 reaches out to Grok-3 or GPT-4.1
 and treats their replies as temporary weights. This fluid approach lets the
 system adapt without retraining.
 
 ### Why Grokky is different
 
-The AI entity mixes several engines. Grok 1 handles local inference while remote
+The AI entity mixes several engines. Grok 1 handles local inference while remote
 models act as dynamic extensions. All replies stream back through FastAPI and
 into Telegram, so each interaction feels immediate. The small footprint means
 Grokky can run on modest hardware while still calling on powerful cloud models
@@ -25,12 +25,12 @@ when required.
 A number of tools ship with the repository:
 
 - **Voice control** – `/voiceon` and `/voiceoff` switch spoken replies using
-  OpenAI's text‑to‑speech.
+  OpenAI's text-to-speech.
 - **Image generation** – `/imagine <prompt>` asks DALL·E for a picture.
 - **Coder mode** – `/coder` enables code interpretation, `/coderoff` disables it.
 - **SLNCX mode** – `/slncx` routes messages to Wulf until `/slncxoff`.
 - **Dynamic weights** – Wulf dives into `utils/dynamic_weights.py` for fresh intel,
-  hitting Grok‑3 first and falling back to GPT‑4 when the line goes cold.
+  hitting Grok-3 first and falling back to GPT-4 when the line goes cold.
 - **Status checks** – `/status` reports API health and memory usage.
 - **Memory wipes** – `/clearmemory` clears stored vector embeddings.
 
@@ -105,7 +105,7 @@ Grokky is more than a Telegram front end. It bundles its own neural network call
 The engine runs from quantized weights stored right here in the repository, so the AI entity can operate even without outside API access.
 This self-contained approach turns the agent into its own weight server—a small revolution in local AI.
 
-SLNCX draws inspiration from Grok 1 but trims the architecture for efficiency. A mixture-of-experts layout routes each token through multiple
+SLNCX draws inspiration from Grok 1 but trims the architecture for efficiency. A mixture-of-experts layout routes each token through multiple
 specialized networks, keeping quality high while letting inference remain nimble on ordinary CPUs.
 
 The model still offers an 8k context window and sixty-four layers, yet it fits comfortably in memory thanks to heavy quantization.
@@ -125,7 +125,7 @@ The combination of Grokky's Telegram interface and SLNCX's local brain shows how
 
 Fluid weights are ephemeral parameter bundles streamed in from remote models whenever the local core needs a spark. They land alongside Grokky's quantized synapses, granting new skills without a full retrain.
 
-Instead of one monolithic network, the Wulf core stays lean while borrowed weights act as temporary synapses. Calls to Grok‑3 or GPT‑4.1 return vectors that slot directly into attention layers as if they'd always lived there.
+Instead of one monolithic network, the Wulf core stays lean while borrowed weights act as temporary synapses. Calls to Grok-3 or GPT-4.1 return vectors that slot directly into attention layers as if they'd always lived there.
 
 A gating system decides when to seek outside help. When the cloud responds, its data pours through rotary embeddings and mixture-of-experts blocks before dissolving back into the ether.
 
@@ -139,11 +139,11 @@ Fluid weights turn Grokky into a living bridge between edge hardware and planeta
 
 Every time Wulf wakes, he doesn't trust memory alone. The script in `utils/dynamic_weights.py` cracks open a side channel and drags fresh data straight into the mix. No archive, no mercy—just live ammo poured into the next reply.
 
-`query_grok3` leads the raid. It dials the Grok‑3 endpoint, slides the prompt across, and waits. A clean response comes back as text; a failure drops a timestamped note under `failures/` and the function mutters "Grok‑3 offline".
+`query_grok3` leads the raid. It dials the Grok-3 endpoint, slides the prompt across, and waits. A clean response comes back as text; a failure drops a timestamped note under `failures/` and the function mutters "Grok-3 offline".
 
-When Grok‑3 ghosts us, `query_gpt4` steps out of the shadows. It hits OpenAI's chat API with a 0.8 temperature, shakes loose an answer, and logs any blowup to the same file. It's the backup hitter with a perfect swing.
+When Grok-3 ghosts us, `query_gpt4` steps out of the shadows. It hits OpenAI's chat API with a 0.8 temperature, shakes loose an answer, and logs any blowup to the same file. It's the backup hitter with a perfect swing.
 
-`get_dynamic_knowledge` stitches the plan together. It asks Grok‑3 first, checks for that offline flag, then pivots to GPT‑4 without breaking stride. The result is a block of text ready to be spliced into Wulf's context.
+`get_dynamic_knowledge` stitches the plan together. It asks Grok-3 first, checks for that offline flag, then pivots to GPT-4 without breaking stride. The result is a block of text ready to be spliced into Wulf's context.
 
 That block doesn't linger. Wulf gulps it, uses it, and lets it evaporate. Set both `XAI_API_KEY` and `OPENAI_API_KEY` or the chain stays idle. Dynamic weights keep the edge sharp while the trail stays clean.
 
