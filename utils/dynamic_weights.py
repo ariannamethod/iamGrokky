@@ -17,10 +17,14 @@ def query_grok3(prompt: str, api_key: Optional[str] = None) -> str:
         res.raise_for_status()
         return res.json().get("text", "")
     except Exception as exc:  # pragma: no cover - network
-        with open(
-            f"failures/{time.strftime('%Y-%m-%d')}.log", "a", encoding="utf-8"
-        ) as f:
-            f.write(f"{time.time()}: Grok-3 API failed - {exc}\n")
+        try:
+            os.makedirs("failures", exist_ok=True)
+            with open(
+                f"failures/{time.strftime('%Y-%m-%d')}.log", "a", encoding="utf-8"
+            ) as f:
+                f.write(f"{time.time()}: Grok-3 API failed - {exc}\n")
+        except OSError:
+            pass
         return "Grok-3 offline"
 
 
@@ -43,10 +47,14 @@ def query_gpt4(prompt: str, api_key: Optional[str] = None, model: str = "gpt-4o"
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
     except Exception as exc:  # pragma: no cover - network
-        with open(
-            f"failures/{time.strftime('%Y-%m-%d')}.log", "a", encoding="utf-8"
-        ) as f:
-            f.write(f"{time.time()}: GPT-4 API failed - {exc}\n")
+        try:
+            os.makedirs("failures", exist_ok=True)
+            with open(
+                f"failures/{time.strftime('%Y-%m-%d')}.log", "a", encoding="utf-8"
+            ) as f:
+                f.write(f"{time.time()}: GPT-4 API failed - {exc}\n")
+        except OSError:
+            pass
         return "GPT-4 offline"
 
 
