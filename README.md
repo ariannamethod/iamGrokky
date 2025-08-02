@@ -91,6 +91,12 @@ To run the model locally, place a checkpoint at `out/ckpt.pt` (or set `CKPT_PATH
 
 The combination of Grokky's Telegram interface and SLNCX's local brain shows how a single project can serve its own neural weights. Codex, it feels like a quiet revolution.
 
+### Dynamic knowledge base
+
+When you invoke Wulf via `/misterwulf` (or any prompt containing `Wolf, awaken!`), the engine now consults Grok‑3 in real time. The text returned by the Grok‑3 API becomes temporary **knowledge** that gets mixed into the local SLNCX prompt. If Grok‑3 is unavailable, GPT‑4.1 (provided through `OPENAI_API_KEY`) supplies the knowledge instead. This fallback keeps Wulf coherent even with a minimal local dataset.
+
+No data from these external calls is stored—responses are streamed straight into Wulf's context, acting like "fluid" weights. Set both `XAI_API_KEY` and `OPENAI_API_KEY` to enable the chain; otherwise SLNCX operates offline as before.
+
 ## Architect's note
 
 As the person who pieced these parts together, I'm fascinated by how streamlined the result is. A small, quantized network now answers directly from a handheld device or modest server without leaning on heavy cloud infrastructure.
