@@ -16,6 +16,11 @@ from aiohttp import web
 
 from utils.dayandnight import day_and_night_task
 from utils.genesis2 import genesis2_handler
+from utils.genesis3 import genesis3_deep_dive
+from utils.complexity import (
+    ThoughtComplexityLogger,
+    estimate_complexity_and_entropy,
+)
 from utils.howru import check_silence, update_last_message_time
 from utils.mirror import mirror_task
 from utils.prompt import build_system_prompt, get_chaos_response
@@ -99,6 +104,9 @@ CODER_MODE: dict[int, bool] = {}
 SLNCX_MODE: dict[int, bool] = {}
 # Pending long coder outputs waiting for user choice
 CODER_OUTPUT: dict[tuple[int, int], str] = {}
+
+# Thought complexity logger
+complexity_logger = ThoughtComplexityLogger()
 
 
 async def synth_voice(text: str, lang: str = "ru") -> bytes:
@@ -413,6 +421,8 @@ async def handle_text(message: Message, text: str) -> None:
         await engine.add_memory(memory_id, text, role="user")
     except Exception as e:
         logger.error("Ошибка при сохранении сообщения: %s", e)
+    complexity, entropy = estimate_complexity_and_entropy(text)
+    complexity_logger.log_turn(text, complexity, entropy)
 
     lower_text = text.lower()
     if (
@@ -504,23 +514,47 @@ async def handle_text(message: Message, text: str) -> None:
         else:
             context = await engine.search_memory(memory_id, text)
 
-        reply = await engine.generate_with_xai(
-            [{"role": "user", "content": text}],
-            context=context,
+        draft_task = asyncio.create_task(
+            engine.generate_with_xai(
+                [{"role": "user", "content": text}],
+                context=context,
+            )
         )
-        await engine.add_memory(memory_id, reply, role="assistant")
+        twist_task = asyncio.create_task(genesis2_handler(ping=text))
+
+        draft = await draft_task
+        twist_res = await twist_task
+        twist = twist_res.get("answer") if isinstance(twist_res, dict) else twist_res
+
+        deep = ""
+        if complexity == 3:
+            try:
+                deep = await genesis3_deep_dive(draft, text)
+            except Exception as e:
+                logger.error(f"Ошибка genesis3: {e}")
+
+        parts = [draft]
+        if twist:
+            parts.append(twist)
+        if deep:
+            parts.append(deep)
+        final_reply = "\n\n".join(parts)
+
+        await engine.add_memory(memory_id, final_reply, role="assistant")
         if VOICE_ENABLED.get(message.chat.id):
-            lang = "ru" if any(ch.isalpha() and ord(ch) > 127 for ch in reply) else "en"
-            audio_bytes = await synth_voice(reply, lang=lang)
+            lang = (
+                "ru" if any(ch.isalpha() and ord(ch) > 127 for ch in final_reply) else "en"
+            )
+            audio_bytes = await synth_voice(final_reply, lang=lang)
             voice_file = types.BufferedInputFile(audio_bytes, filename="voice.mp3")
             await bot.send_audio(
                 message.chat.id,
                 voice_file,
-                caption=reply,
+                caption=final_reply,
                 reply_to_message_id=message.message_id,
             )
         else:
-            await reply_split(message, reply)
+            await reply_split(message, final_reply)
     except Exception as e:
         logger.error("Ошибка при обработке сообщения: %s", e)
         await reply_split(
