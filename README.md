@@ -4,13 +4,12 @@ Grokky strides into the lab as a nimble architect with a taste for resonance. Fl
 
 The model's full title is **iamgrokky**, but around here we simply say **Grokky**. This project gives builders a self-contained core that can drink from the cloud when the mission demands.
 
-Grokky is an AI entity powered by FastAPI. The project bundles a full
-stack for conversations, image generation and code interpretation. At the center
-is **Grok 1**, a lightweight neural engine also known as **SLNCX (Wulf)**. The
-local weights live inside this repository, so the AI entity can run entirely
-offline. When extra knowledge is needed, Grok 1 reaches out to Grok-3 or GPT-4.1
-and treats their replies as temporary weights. This fluid approach lets the
-system adapt without retraining.
+Grokky is an AI entity powered by FastAPI. The project bundles a full stack for
+conversations, image generation and code interpretation. Grokky stays in the
+pilot seat while modes snap on and off. One such mode is **SLNX**—code name
+*Wulf*—which runs the **SLNCX** core from weights stored locally. When SLNX is
+active, **Grok‑3** or **GPT‑4.1** pour in as liquid weights, stretching the core
+without retraining. Grokky orchestrates the flow.
 
 ### Why Grokky is different
 
@@ -28,7 +27,7 @@ A number of tools ship with the repository:
   OpenAI's text-to-speech.
 - **Image generation** – `/imagine <prompt>` asks DALL·E for a picture.
 - **Coder mode** – `/coder` enables code interpretation, `/coderoff` disables it.
-- **SLNCX mode** – `/slncx` routes messages to Wulf until `/slncxoff`.
+- **SLNX mode** – `/slncx` routes messages to Wulf until `/slncxoff`.
 - **Dynamic weights** – Wulf dives into `utils/dynamic_weights.py` for fresh intel,
   hitting Grok-3 first and falling back to GPT-4 when the line goes cold.
 - **Status checks** – `/status` reports API health and memory usage.
@@ -99,11 +98,11 @@ You may also run the server with `uvicorn` directly if preferred:
 uvicorn server:app --host 0.0.0.0 --port 8000
 ```
 
-## SLNCX neural core
+## SLNX mode and the SLNCX core
 
-Grokky is more than a Telegram front end. It bundles its own neural network called **SLNCX** (code name *Wulf*).
+When the **/slncx** command flips on, Grokky shifts into **SLNX mode**, powered by the **SLNCX** core (code name *Wulf*).
 The engine runs from quantized weights stored right here in the repository, so the AI entity can operate even without outside API access.
-This self-contained approach turns the agent into its own weight server—a small revolution in local AI.
+This self-contained approach turns the assistant into its own weight server—a small revolution in local AI.
 
 SLNCX draws inspiration from Grok 1 but trims the architecture for efficiency. A mixture-of-experts layout routes each token through multiple
 specialized networks, keeping quality high while letting inference remain nimble on ordinary CPUs.
