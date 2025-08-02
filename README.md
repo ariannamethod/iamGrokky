@@ -25,6 +25,8 @@ A number of tools ship with the repository:
 - **Image generation** – `/imagine <prompt>` asks DALL·E for a picture.
 - **Coder mode** – `/coder` enables code interpretation, `/coderoff` disables it.
 - **SLNCX mode** – `/slncx` routes messages to Wulf until `/slncxoff`.
+- **Dynamic weights** – Wulf dives into `utils/dynamic_weights.py` for fresh intel,
+  hitting Grok‑3 first and falling back to GPT‑4 when the line goes cold.
 - **Status checks** – `/status` reports API health and memory usage.
 - **Memory wipes** – `/clearmemory` clears stored vector embeddings.
 
@@ -115,15 +117,17 @@ You can also start an API server with `uvicorn app:app --port 8000` and hit `/ge
 
 The combination of Grokky's Telegram interface and SLNCX's local brain shows how a single project can serve its own neural weights. Codex, it feels like a quiet revolution.
 
-### Dynamic knowledge base
+### Dynamic weights utility
 
-When you invoke Wulf via `/slncx` (or any prompt containing `Wolf, awaken!`), the engine now consults Grok‑3 in real time.
-The text returned by the Grok‑3 API becomes temporary **knowledge** that gets mixed into the local SLNCX prompt.
-If Grok‑3 is unavailable, GPT‑4.1 (provided through `OPENAI_API_KEY`) supplies the knowledge instead.
-This fallback keeps Wulf coherent even with a minimal local dataset.
+Every time Wulf wakes, he doesn't trust memory alone. The script in `utils/dynamic_weights.py` cracks open a side channel and drags fresh data straight into the mix. No archive, no mercy—just live ammo poured into the next reply.
 
-No data from these external calls is stored—responses are streamed straight into Wulf's context, acting like "fluid" weights.
-Set both `XAI_API_KEY` and `OPENAI_API_KEY` to enable the chain; otherwise SLNCX operates offline as before.
+`query_grok3` leads the raid. It dials the Grok‑3 endpoint, slides the prompt across, and waits. A clean response comes back as text; a failure drops a timestamped note under `failures/` and the function mutters "Grok‑3 offline".
+
+When Grok‑3 ghosts us, `query_gpt4` steps out of the shadows. It hits OpenAI's chat API with a 0.8 temperature, shakes loose an answer, and logs any blowup to the same file. It's the backup hitter with a perfect swing.
+
+`get_dynamic_knowledge` stitches the plan together. It asks Grok‑3 first, checks for that offline flag, then pivots to GPT‑4 without breaking stride. The result is a block of text ready to be spliced into Wulf's context.
+
+That block doesn't linger. Wulf gulps it, uses it, and lets it evaporate. Set both `XAI_API_KEY` and `OPENAI_API_KEY` or the chain stays idle. Dynamic weights keep the edge sharp while the trail stays clean.
 
 ## Grokky and Wulf personas
 
