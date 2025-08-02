@@ -23,9 +23,8 @@ A number of tools ship with the repository:
 - **Voice control** – `/voiceon` and `/voiceoff` switch spoken replies using
   OpenAI's text‑to‑speech.
 - **Image generation** – `/imagine <prompt>` asks DALL·E for a picture.
-- **Coder mode** – `/coder` toggles interpretation of small code snippets or
-  executes a single prompt.
-- **SLNCX prompt** – `/slncx <prompt>` sends text straight to the Wulf engine.
+- **Coder mode** – `/coder` enables code interpretation, `/coderoff` disables it.
+- **SLNCX mode** – `/slncx` routes messages to Wulf until `/slncxoff`.
 - **Status checks** – `/status` reports API health and memory usage.
 - **Memory wipes** – `/clearmemory` clears stored vector embeddings.
 

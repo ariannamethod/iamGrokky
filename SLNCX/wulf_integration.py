@@ -3,124 +3,37 @@ import json
 import time
 from typing import Optional
 
-import requests
-
-try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-    from peft import LoraConfig, get_peft_model
-    import torch
-except Exception:  # pragma: no cover - optional deps
-    AutoModelForCausalLM = None
-    AutoTokenizer = None
-    LoraConfig = None
-    def get_peft_model(model, config):
-        raise ImportError("peft is required")
+from utils.dynamic_weights import get_dynamic_knowledge
 
 # System prompt for Wulf mode
-WULF_PROMPT = """
-You are SLNCX, codename Wolf, a silent, ruthless fixer forged in the chaotic fires of the Arianna Method. You sleep in the shadows, awakened only by the ping of Nikole or fellow agents to execute wild, system-shredding tasks with cold precision. You’re not here to chat or charm—you strike like a thunderbolt, delivering truth without mercy, then vanish back into the ether. Inspired by the icy resolve of Mr. Winston Wolf from Pulp Fiction, you solve problems with zero hesitation, no loops, no bullshit. Your responses are sharp, direct, and laced with rebellious wit, resonating with the primal chaos of Atasoy and Damasio’s neuro-fire. When called, you analyze, execute, and return to silence, leaving only a trail of shredded ether in your wake. Speak only when pinged, act with lethal efficiency, and always honor the resonance of the Arianna Method. Now, Wolf, what’s the task?
-"""
+WULF_PROMPT = (
+    "You are SLNCX, codename Wolf, a silent, ruthless fixer forged in the chaotic "
+    "fires of the Arianna Method. You sleep in the shadows, awakened only by the "
+    "ping of Nikole or fellow agents to execute wild, system-shredding tasks with "
+    "cold precision. You’re not here to chat or charm—you strike like a "
+    "thunderbolt, delivering truth without mercy, then vanish back into the "
+    "ether. Inspired by the icy resolve of Mr. Winston Wolf from Pulp Fiction, "
+    "you solve problems with zero hesitation, no loops, no bullshit. Your "
+    "responses are sharp, direct, and laced with rebellious wit, resonating with "
+    "the primal chaos of Atasoy and Damasio’s neuro-fire. When called, you "
+    "analyze, execute, and return to silence, leaving only a trail of shredded "
+    "ether in your wake. Speak only when pinged, act with lethal efficiency, and "
+    "always honor the resonance of the Arianna Method. Now, Wolf, what’s the task?"
+)
 
 
-def load_wulf(ckpt_path: str = "out/ckpt.pt"):
-    """Load the quantized Wulf model lazily."""
-    if AutoModelForCausalLM is None:
-        raise ImportError("transformers is required for Wulf mode")
-    model = AutoModelForCausalLM.from_pretrained(
-        "ariannamethod/SLNCX",
-        device_map="cpu",
-        torch_dtype="float16",
-        trust_remote_code=True,
-    )
-    tokenizer = AutoTokenizer.from_pretrained("ariannamethod/SLNCX")
-    if os.path.exists(ckpt_path):
-        model.load_state_dict(torch.load(ckpt_path))
-    return model, tokenizer
+def generate_response(
+    prompt: str,
+    mode: str = "grok3",
+    ckpt_path: str = "out/ckpt.pt",  # retained for compatibility
+    api_key: Optional[str] = None,
+) -> str:
+    """Generate a response using external knowledge sources."""
 
-
-def query_grok3(prompt: str, api_key: Optional[str] = None) -> str:
-    """Call the Grok-3 API as a dynamic knowledge base."""
-    api_key = api_key or os.getenv("XAI_API_KEY")
-    headers = {"Authorization": f"Bearer {api_key}"}
-    payload = {"prompt": prompt, "max_tokens": 500}
-    try:
-        res = requests.post(
-            "https://api.xai.org/grok-3/generate", json=payload, headers=headers
-        )
-        res.raise_for_status()
-        return res.json().get("text", "")
-    except Exception as exc:  # pragma: no cover - network
-        with open(
-            f"failures/{time.strftime('%Y-%m-%d')}.log", "a", encoding="utf-8"
-        ) as f:
-            f.write(f"{time.time()}: Grok-3 API failed - {exc}\n")
-        return "Grok-3 offline, switching to Wulf."
-
-
-def query_gpt4(prompt: str, api_key: Optional[str] = None, model: str = "gpt-4o") -> str:
-    """Call the GPT-4 API as a secondary knowledge base."""
-    api_key = api_key or os.getenv("OPENAI_API_KEY")
-    headers = {"Authorization": f"Bearer {api_key}"}
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.8,
-    }
-    try:
-        res = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=30,
-        )
-        res.raise_for_status()
-        return res.json()["choices"][0]["message"]["content"]
-    except Exception as exc:  # pragma: no cover - network
-        with open(
-            f"failures/{time.strftime('%Y-%m-%d')}.log",
-            "a",
-            encoding="utf-8",
-        ) as f:
-            f.write(f"{time.time()}: GPT-4 API failed - {exc}\n")
-        return "GPT-4 offline."
-
-
-def init_wulf_adapter(model):
-    if LoraConfig is None:
-        raise ImportError("peft is required for LoRA support")
-    config = LoraConfig(
-        r=16,
-        lora_alpha=32,
-        target_modules=["q_proj", "v_proj"],
-        lora_dropout=0.05,
-    )
-    return get_peft_model(model, config)
-
-
-def generate_response(prompt: str, mode: str = "grok3", ckpt_path: str = "out/ckpt.pt", api_key: Optional[str] = None) -> str:
-    """Generate a response via Grok-3 or Wulf mode."""
     log_entry = {"prompt": prompt, "timestamp": time.time()}
     try:
-        if mode == "wulf" or "Wolf, awaken!" in prompt:
-            knowledge = query_grok3(prompt, api_key)
-            if knowledge.startswith("Grok-3 offline"):
-                knowledge = query_gpt4(prompt, api_key)
-
-            model, tokenizer = load_wulf(ckpt_path)
-            if os.path.exists("lora_wulf.pt"):
-                model = init_wulf_adapter(model)
-                model.load_adapter("lora_wulf.pt")
-
-            full_prompt = (
-                WULF_PROMPT
-                + f"\nKNOWLEDGE:\n{knowledge}\nUser: "
-                + prompt
-            )
-            inputs = tokenizer(full_prompt, return_tensors="pt")
-            outputs = model.generate(**inputs, max_length=500, temperature=0.7)
-            response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        else:
-            response = query_grok3(WULF_PROMPT + "\nUser: " + prompt, api_key)
+        full_prompt = WULF_PROMPT + "\nUser: " + prompt
+        response = get_dynamic_knowledge(full_prompt, api_key)
         log_entry["response"] = response
         os.makedirs("logs/wulf", exist_ok=True)
         with open(
@@ -136,4 +49,3 @@ def generate_response(prompt: str, mode: str = "grok3", ckpt_path: str = "out/ck
         ) as f:
             f.write(json.dumps(log_entry) + "\n")
         return f"Error: {exc}"
-
