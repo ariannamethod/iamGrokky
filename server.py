@@ -95,6 +95,8 @@ except Exception as e:
 VOICE_ENABLED = {}
 # Chats currently in coder mode
 CODER_MODE: dict[int, bool] = {}
+# Chats currently in SLNCX mode
+SLNCX_MODE: dict[int, bool] = {}
 # Pending long coder outputs waiting for user choice
 CODER_OUTPUT: dict[tuple[int, int], str] = {}
 
@@ -225,27 +227,42 @@ async def cmd_voice(message: Message):
 
 @dp.message(Command("coder"))
 async def cmd_coder(message: Message):
-    """Toggle coder mode or run a single prompt."""
+    """Enable coder mode or run a single prompt."""
     args = message.text.split(maxsplit=1)
     chat_id = message.chat.id
     if len(args) == 1:
-        CODER_MODE[chat_id] = not CODER_MODE.get(chat_id, False)
-        state = "activated" if CODER_MODE[chat_id] else "deactivated"
-        await message.reply(f"Coder mode {state}. Send /coder again to toggle.")
+        CODER_MODE[chat_id] = True
+        await message.reply("Coder mode on. /coderoff to exit.")
     else:
         await handle_coder_prompt(message, args[1])
 
 
+@dp.message(Command("coderoff"))
+async def cmd_coderoff(message: Message):
+    """Disable coder mode."""
+    CODER_MODE[message.chat.id] = False
+    await message.reply("Coder mode off.")
+
+
 @dp.message(Command("slncx"))
 async def cmd_slncx(message: Message):
-    """Run a prompt through the Wulf (SLNCX) engine."""
+    """Enable SLNCX mode or run a single prompt."""
     parts = message.text.split(maxsplit=1)
+    chat_id = message.chat.id
     if len(parts) == 1:
-        await message.reply("🌀 Format: /slncx <prompt>")
-        return
-    prompt = parts[1]
-    reply = await asyncio.to_thread(generate_response, prompt, "wulf")
-    await reply_split(message, reply)
+        SLNCX_MODE[chat_id] = True
+        await message.reply("SLNCX mode on. /slncxoff to exit.")
+    else:
+        prompt = parts[1]
+        reply = await asyncio.to_thread(generate_response, prompt, "wulf")
+        await reply_split(message, reply)
+
+
+@dp.message(Command("slncxoff"))
+async def cmd_slncxoff(message: Message):
+    """Disable SLNCX mode."""
+    SLNCX_MODE[message.chat.id] = False
+    await message.reply("SLNCX mode off.")
 
 
 @dp.message(Command("status"))
@@ -261,7 +278,7 @@ async def cmd_status(message: Message):
             stats = engine.index.describe_index_stats()
             total_vectors = stats.get("total_vector_count", 0)
             status_text += f"Векторов в памяти: {total_vectors}"
-        except:
+        except Exception:
             status_text += "Ошибка при получении статистики памяти"
 
     await reply_split(message, status_text)
@@ -351,8 +368,18 @@ async def coder_choice(callback: types.CallbackQuery):
 
 
 async def handle_text(message: Message, text: str) -> None:
+    try:
+        await update_last_message_time()
+    except Exception as e:
+        logger.error("Ошибка при обновлении времени последнего сообщения: %s", e)
+
     if CODER_MODE.get(message.chat.id):
         await handle_coder_prompt(message, text)
+        return
+
+    if SLNCX_MODE.get(message.chat.id):
+        reply = await asyncio.to_thread(generate_response, text, "wulf")
+        await reply_split(message, reply)
         return
 
     if not engine:
@@ -361,11 +388,6 @@ async def handle_text(message: Message, text: str) -> None:
             "🌀 Грокки: Мой движок неисправен! Свяжитесь с моим создателем.",
         )
         return
-
-    try:
-        await update_last_message_time()
-    except Exception as e:
-        logger.error("Ошибка при обновлении времени последнего сообщения: %s", e)
 
     is_group = message.chat.type in ["group", "supergroup"]
     mention = "grokky" in text.lower() or (
@@ -604,11 +626,13 @@ async def on_startup(app):
     try:
         await bot.set_my_commands(
             [
-                types.BotCommand(command="voiceon", description="/voiceon"),
-                types.BotCommand(command="voiceoff", description="/voiceoff"),
-                types.BotCommand(command="imagine", description="/imagine <prompt>"),
-                types.BotCommand(command="coder", description="toggle or use coder"),
-                types.BotCommand(command="slncx", description="SLNCX mode"),
+                types.BotCommand(command="voiceon", description="voiceon"),
+                types.BotCommand(command="voiceoff", description="voiceoff"),
+                types.BotCommand(command="imagine", description="imagine"),
+                types.BotCommand(command="coder", description="coder"),
+                types.BotCommand(command="coderoff", description="coderoff"),
+                types.BotCommand(command="slncx", description="slncx"),
+                types.BotCommand(command="slncxoff", description="slncxoff"),
             ]
         )
         await bot.set_chat_menu_button(menu_button=types.MenuButtonCommands())
