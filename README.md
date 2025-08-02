@@ -1,6 +1,6 @@
-# Grokky-2
+## iamGrokky
 
-Grokky AI Assistant is a Telegram bot powered by FastAPI. This project contains the server code and utility scripts used to run the assistant.
+Grokky AI Assistant is a Telegram AI Entity powered by FastAPI. This project contains the server code and utility scripts used to run the assistant.
 
 ## Installation
 
