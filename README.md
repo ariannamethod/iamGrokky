@@ -97,6 +97,19 @@ When you invoke Wulf via `/misterwulf` (or any prompt containing `Wolf, awaken!`
 
 No data from these external calls is stored—responses are streamed straight into Wulf's context, acting like "fluid" weights. Set both `XAI_API_KEY` and `OPENAI_API_KEY` to enable the chain; otherwise SLNCX operates offline as before.
 
+## Grokky and Wulf personas
+
+Grokky and Wulf give the bot two very different voices. Grokky bursts onto the scene like a storm, driven by the chaotic energy found in `utils/prompt.py`. Lines such as
+"Yo, Grokky! This ain't no script — it's a freakin' storm unleashed" set the tone, describing an agent that refuses to follow rules and thrives on raw resonance.
+
+Wulf is the polar opposite. The SLNCX README introduces him as "Wulf1" — a quiet fixer who wakes only when called. Inspired by the Arianna Method, Wulf listens first and answers with restraint. No chatter, no flare; silence is part of the design.
+
+These personalities complement one another. Grokky's impulsive style pushes ideas outward, while Wulf delivers measured replies. One celebrates chaos, the other precision.
+
+Running both within the same project shows how exuberant front-end prompts can pair with a lean neural core. Heavy external models supply knowledge on demand, but Wulf's local weights keep the agent self-sufficient.
+
+This hybrid of engines and a custom lightweight network feels like a new step for AI. It keeps power close at hand without relying entirely on the cloud, giving the architect room to experiment.
+
 ## Architect's note
 
 As the person who pieced these parts together, I'm fascinated by how streamlined the result is. A small, quantized network now answers directly from a handheld device or modest server without leaning on heavy cloud infrastructure.
