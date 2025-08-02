@@ -236,12 +236,12 @@ async def cmd_coder(message: Message):
         await handle_coder_prompt(message, args[1])
 
 
-@dp.message(Command("misterwulf"))
-async def cmd_misterwulf(message: Message):
+@dp.message(Command("slncx"))
+async def cmd_slncx(message: Message):
     """Run a prompt through the Wulf (SLNCX) engine."""
     parts = message.text.split(maxsplit=1)
     if len(parts) == 1:
-        await message.reply("🌀 Format: /misterwulf <prompt>")
+        await message.reply("🌀 Format: /slncx <prompt>")
         return
     prompt = parts[1]
     reply = await asyncio.to_thread(generate_response, prompt, "wulf")
@@ -608,7 +608,7 @@ async def on_startup(app):
                 types.BotCommand(command="voiceoff", description="/voiceoff"),
                 types.BotCommand(command="imagine", description="/imagine <prompt>"),
                 types.BotCommand(command="coder", description="toggle or use coder"),
-                types.BotCommand(command="misterwulf", description="SLNCX mode"),
+                types.BotCommand(command="slncx", description="SLNCX mode"),
             ]
         )
         await bot.set_chat_menu_button(menu_button=types.MenuButtonCommands())
