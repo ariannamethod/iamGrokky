@@ -72,3 +72,27 @@ is synthesized using OpenAI's text-to-speech API with the male `onyx` voice.
 ## Webhook troubleshooting
 
 If the bot is not receiving updates, verify the Telegram webhook configuration. The webhook URL **must** point to `/webhook` on your domain without the bot token appended. `server.py` will try to fix the webhook on startup, and you can also run `python fix_webhook.py` manually. See [WEBHOOK_FIX_INSTRUCTIONS.md](WEBHOOK_FIX_INSTRUCTIONS.md) for step-by-step instructions.
+
+## SLNCX neural core
+
+iamGrokky is more than a Telegram front end. It bundles its own neural network called **SLNCX** (code name *Wulf*). The engine runs from quantized weights stored right here in the repository, so the bot can operate even without outside API access. This self-contained approach turns the agent into its own weight server—a small revolution in local AI.
+
+SLNCX draws inspiration from Grok1 but trims the architecture for efficiency. A mixture-of-experts layout routes each token through multiple specialized networks, keeping quality high while letting inference remain nimble on ordinary CPUs.
+
+The model still offers an 8k context window and sixty-four layers, yet it fits comfortably in memory thanks to heavy quantization. Rotary position embeddings ensure long-range attention without extra overhead.
+
+A minimal CLI and an HTTP endpoint under `SLNCX/` let you load checkpoints and query the engine. Every interaction is logged under `logs/wulf/`, and failures drop tracebacks into `failures/` for quick debugging.
+
+Wulf's dataset is small and focused. It wasn't built to chat about everything; instead it specializes in terse, goal-driven replies. Checkpoints load lazily and stay resident in memory for subsequent calls.
+
+Components are split into reusable pieces—layers, attention blocks, and the mixture-of-experts modules—so you can tinker as the design evolves. Two-bit quantization keeps the footprint light, making CPU-only deployment practical.
+
+To run the model locally, place a checkpoint at `out/ckpt.pt` (or set `CKPT_PATH`) and execute `wulf_cli.py` with your prompt. You can also start an API server with `uvicorn app:app --port 8000` and hit `/generate` with JSON payloads.
+
+The combination of Grokky's Telegram interface and SLNCX's local brain shows how a single project can serve its own neural weights. Codex, it feels like a quiet revolution.
+
+## Architect's note
+
+As the person who pieced these parts together, I'm fascinated by how streamlined the result is. A small, quantized network now answers directly from a handheld device or modest server without leaning on heavy cloud infrastructure.
+
+I believe this local-first design hints at a broader shift. Massive models will always exist, but there's power in a compact agent that carries its own intelligence wherever it goes. It's simple, efficient, and oddly liberating.
