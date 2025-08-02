@@ -15,21 +15,14 @@ from aiogram.types import Message
 from aiohttp import web
 
 from utils.dayandnight import day_and_night_task
-from utils.genesis2 import genesis2_handler
-from utils.genesis3 import genesis3_deep_dive
 from utils.howru import check_silence, update_last_message_time
 from utils.mirror import mirror_task
-from utils.prompt import build_system_prompt, get_chaos_response
+from utils.prompt import get_chaos_response
 from utils.repo_monitor import monitor_repository
 from utils.imagine import imagine
 from utils.vision import analyze_image
 from utils.coder import interpret_code
 from SLNCX.wulf_integration import generate_response
-
-from utils.complexity import (
-    ThoughtComplexityLogger,
-    estimate_complexity_and_entropy,
-)
 
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
@@ -96,9 +89,6 @@ except Exception as e:
     logger.error(f"Ошибка при инициализации VectorGrokkyEngine: {e}")
     logger.error(traceback.format_exc())
     engine = None
-
-# Логгер сложности мыслей
-complexity_logger = ThoughtComplexityLogger()
 
 # Обработка голосовых сообщений
 VOICE_ENABLED = {}
@@ -434,17 +424,11 @@ async def handle_text(message: Message, text: str) -> None:
             await reply_split(message, "🌀 Format: /imagine <description>")
         else:
             url = imagine(prompt)
-            comment_res = await genesis2_handler(ping=prompt)
-            comment = (
-                comment_res.get("answer")
-                if isinstance(comment_res, dict)
-                else comment_res
-            )
-            await reply_split(message, comment)
+            await reply_split(message, url)
             try:
                 await engine.add_memory(
                     memory_id,
-                    f"IMAGE_PROMPT: {prompt}\nURL: {url}\nCOMMENT: {comment}",
+                    f"IMAGE_PROMPT: {prompt}\nURL: {url}",
                     role="journal",
                 )
             except Exception:
@@ -466,29 +450,8 @@ async def handle_text(message: Message, text: str) -> None:
         return
 
     if "[chaos_pulse]" in text.lower():
-        intensity = 5
-        chaos_type = None
-        for part in text.lower().split():
-            if part.startswith("type="):
-                chaos_type = part.split("=")[1]
-            if part.startswith("intensity="):
-                try:
-                    intensity = int(part.split("=")[1])
-                except ValueError:
-                    pass
         try:
-            system_prompt = build_system_prompt(
-                chat_id=chat_id, is_group=is_group, agent_group=AGENT_GROUP
-            )
-            result = await genesis2_handler(
-                ping="CHAOS PULSE ACTIVATED",
-                raw=True,
-                system_prompt=system_prompt,
-                intensity=intensity,
-                is_group=is_group,
-                chaos_type=chaos_type,
-            )
-            answer = result.get("answer", get_chaos_response())
+            answer = get_chaos_response()
             await reply_split(message, f"🌀 {answer}")
             await engine.add_memory(memory_id, answer, role="assistant")
         except Exception as e:
@@ -499,9 +462,6 @@ async def handle_text(message: Message, text: str) -> None:
         return
 
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
-
-    complexity, entropy = estimate_complexity_and_entropy(text)
-    complexity_logger.log_turn(text, complexity, entropy)
 
     try:
         if message.reply_to_message and message.reply_to_message.text:
@@ -521,18 +481,7 @@ async def handle_text(message: Message, text: str) -> None:
             context=context,
         )
 
-        twist_res = await genesis2_handler(ping=text)
-        twist = twist_res.get("answer") if isinstance(twist_res, dict) else twist_res
-
-        deep = ""
-        if complexity == 3:
-            try:
-                deep = await genesis3_deep_dive(reply, text)
-            except Exception as err:
-                logger.error("GENESIS3 error: %s", err)
-
-        parts = [reply, twist, deep]
-        final_reply = "\n\n".join(p for p in parts if p)
+        final_reply = reply
 
         await engine.add_memory(memory_id, final_reply, role="assistant")
         if VOICE_ENABLED.get(message.chat.id):
@@ -556,7 +505,7 @@ async def handle_text(message: Message, text: str) -> None:
 
 
 async def handle_photo(message: Message) -> None:
-    """Analyze photo with OpenAI vision and comment via genesis handler."""
+    """Analyze photo with OpenAI vision."""
     if not engine:
         await reply_split(message, "🌀 Грокки: Мой движок неисправен!")
         return
@@ -569,10 +518,8 @@ async def handle_photo(message: Message) -> None:
         await engine.add_memory(
             str(message.chat.id), f"VISION: {description}", role="journal"
         )
-        response = await genesis2_handler(ping=description)
-        answer = response.get("answer") if isinstance(response, dict) else response
-        await reply_split(message, answer)
-        await engine.add_memory(str(message.chat.id), answer, role="assistant")
+        await reply_split(message, description)
+        await engine.add_memory(str(message.chat.id), description, role="assistant")
     except Exception as e:
         logger.error("Ошибка обработки фото: %s", e)
         await reply_split(message, f"🌀 Грокки: {get_chaos_response()}")
