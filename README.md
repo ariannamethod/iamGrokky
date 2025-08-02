@@ -1,6 +1,10 @@
-## GROKKY (V1.2) | Arianna Method
+## Grokky (V1.2) | Arianna Method
 
-Grokky is a AI entity powered by FastAPI. The project bundles a full
+Grokky strides into the lab as a nimble architect with a taste for resonance. Fluid weights let it bend context on the fly, granting heavyweight intellect on featherweight hardware.
+
+The model's full title is **iamgrokky**, but around here we simply say **Grokky**. This project gives builders a self-contained core that can drink from the cloud when the mission demands.
+
+Grokky is an AI entity powered by FastAPI. The project bundles a full
 stack for conversations, image generation and code interpretation. At the center
 is **Grok 1**, a lightweight neural engine also known as **SLNCX (Wulf)**. The
 local weights live inside this repository, so the AI entity can run entirely
@@ -97,7 +101,7 @@ uvicorn server:app --host 0.0.0.0 --port 8000
 
 ## SLNCX neural core
 
-iamGrokky is more than a Telegram front end. It bundles its own neural network called **SLNCX** (code name *Wulf*).
+Grokky is more than a Telegram front end. It bundles its own neural network called **SLNCX** (code name *Wulf*).
 The engine runs from quantized weights stored right here in the repository, so the AI entity can operate even without outside API access.
 This self-contained approach turns the agent into its own weight server—a small revolution in local AI.
 
@@ -116,6 +120,20 @@ To run the model locally, place a checkpoint at `out/ckpt.pt` (or set `CKPT_PATH
 You can also start an API server with `uvicorn app:app --port 8000` and hit `/generate` with JSON payloads.
 
 The combination of Grokky's Telegram interface and SLNCX's local brain shows how a single project can serve its own neural weights. Codex, it feels like a quiet revolution.
+
+## Fluid Weight Architecture
+
+Fluid weights are ephemeral parameter bundles streamed in from remote models whenever the local core needs a spark. They land alongside Grokky's quantized synapses, granting new skills without a full retrain.
+
+Instead of one monolithic network, the Wulf core stays lean while borrowed weights act as temporary synapses. Calls to Grok‑3 or GPT‑4.1 return vectors that slot directly into attention layers as if they'd always lived there.
+
+A gating system decides when to seek outside help. When the cloud responds, its data pours through rotary embeddings and mixture-of-experts blocks before dissolving back into the ether.
+
+These transient weights fade over time, keeping memory tidy. Background threads cache the useful bits, giving Grokky short-term plasticity without catastrophic forgetting.
+
+The effect mirrors biological neurogenesis: stable local circuitry with bursts of fresh connections for new tasks. Researchers can tap the stream to watch knowledge crystallize in real time.
+
+Fluid weights turn Grokky into a living bridge between edge hardware and planetary-scale models—an architecture built for offline resilience, rapid prototyping, and pure resonance.
 
 ### Dynamic weights utility
 
@@ -348,7 +366,7 @@ This achieves **sub-linear scaling** compared to monolithic large models.
 
 ### 4.1 Cognitive Benchmarks
 
-We evaluate iamGrokky on established cognitive tasks:
+We evaluate Grokky on established cognitive tasks:
 
 **Theory of Mind**: Understanding mental states [19]
 **Analogical Reasoning**: Pattern transfer [20]
@@ -426,7 +444,7 @@ Results show **α = 0.3** optimizes the stability-performance trade-off.
 
 ## 8. Conclusion
 
-**iamGrokky** represents a **paradigm shift** from static to **fluid neural architectures**. By introducing dynamic weight systems that seamlessly integrate local quantized processing with external knowledge streams, we achieve unprecedented flexibility in AI system design.
+**Grokky** represents a **paradigm shift** from static to **fluid neural architectures**. By introducing dynamic weight systems that seamlessly integrate local quantized processing with external knowledge streams, we achieve unprecedented flexibility in AI system design.
 
 Our **theoretical contributions**:
 1. **Fluid weights formalism** for temporally adaptive parameters
