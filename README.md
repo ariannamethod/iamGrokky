@@ -1,8 +1,8 @@
-## iamGrokky
+## GROKKY (V1.2) | Arianna Method
 
-Grokky is a Telegram AI entity powered by FastAPI. The project bundles a full
+Grokky is a AI entity powered by FastAPI. The project bundles a full
 stack for conversations, image generation and code interpretation. At the center
-is **Grok 1**, a lightweight neural engine also known as **SLNCX (Wulf1)**. The
+is **Grok 1**, a lightweight neural engine also known as **SLNCX (Wulf)**. The
 local weights live inside this repository, so the AI entity can run entirely
 offline. When extra knowledge is needed, Grok 1 reaches out to Grok‑3 or GPT‑4.1
 and treats their replies as temporary weights. This fluid approach lets the
