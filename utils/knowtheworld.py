@@ -67,11 +67,13 @@ async def know_the_world_task(
     if engine is None:
         engine = VectorGrokkyEngine()
 
-    interval = interval or 86400
+    if interval is None:
+        interval = 86400
 
     count = 0
     while True:
-        await asyncio.sleep(random.randint(0, 3600))
+        if interval:
+            await asyncio.sleep(random.randint(0, 3600))
         try:
             city_news = await fetch_news(BOT_LOCATION)
             world_parts = []
