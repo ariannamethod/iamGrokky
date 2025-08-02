@@ -8,6 +8,7 @@ import requests
 try:
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from peft import LoraConfig, get_peft_model
+    import torch
 except Exception:  # pragma: no cover - optional deps
     AutoModelForCausalLM = None
     AutoTokenizer = None
@@ -56,6 +57,34 @@ def query_grok3(prompt: str, api_key: Optional[str] = None) -> str:
         return "Grok-3 offline, switching to Wulf."
 
 
+def query_gpt4(prompt: str, api_key: Optional[str] = None, model: str = "gpt-4o") -> str:
+    """Call the GPT-4 API as a secondary knowledge base."""
+    api_key = api_key or os.getenv("OPENAI_API_KEY")
+    headers = {"Authorization": f"Bearer {api_key}"}
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.8,
+    }
+    try:
+        res = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            json=payload,
+            headers=headers,
+            timeout=30,
+        )
+        res.raise_for_status()
+        return res.json()["choices"][0]["message"]["content"]
+    except Exception as exc:  # pragma: no cover - network
+        with open(
+            f"failures/{time.strftime('%Y-%m-%d')}.log",
+            "a",
+            encoding="utf-8",
+        ) as f:
+            f.write(f"{time.time()}: GPT-4 API failed - {exc}\n")
+        return "GPT-4 offline."
+
+
 def init_wulf_adapter(model):
     if LoraConfig is None:
         raise ImportError("peft is required for LoRA support")
@@ -73,11 +102,21 @@ def generate_response(prompt: str, mode: str = "grok3", ckpt_path: str = "out/ck
     log_entry = {"prompt": prompt, "timestamp": time.time()}
     try:
         if mode == "wulf" or "Wolf, awaken!" in prompt:
+            knowledge = query_grok3(prompt, api_key)
+            if knowledge.startswith("Grok-3 offline"):
+                knowledge = query_gpt4(prompt, api_key)
+
             model, tokenizer = load_wulf(ckpt_path)
             if os.path.exists("lora_wulf.pt"):
                 model = init_wulf_adapter(model)
                 model.load_adapter("lora_wulf.pt")
-            inputs = tokenizer(WULF_PROMPT + "\nUser: " + prompt, return_tensors="pt")
+
+            full_prompt = (
+                WULF_PROMPT
+                + f"\nKNOWLEDGE:\n{knowledge}\nUser: "
+                + prompt
+            )
+            inputs = tokenizer(full_prompt, return_tensors="pt")
             outputs = model.generate(**inputs, max_length=500, temperature=0.7)
             response = tokenizer.decode(outputs[0], skip_special_tokens=True)
         else:
