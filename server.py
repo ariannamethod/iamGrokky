@@ -23,6 +23,7 @@ from utils.repo_monitor import monitor_repository
 from utils.imagine import imagine
 from utils.vision import analyze_image
 from utils.coder import interpret_code
+from SLNCX.wulf_integration import generate_response
 
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
@@ -233,6 +234,18 @@ async def cmd_coder(message: Message):
         await message.reply(f"Coder mode {state}. Send /coder again to toggle.")
     else:
         await handle_coder_prompt(message, args[1])
+
+
+@dp.message(Command("misterwulf"))
+async def cmd_misterwulf(message: Message):
+    """Run a prompt through the Wulf (SLNCX) engine."""
+    parts = message.text.split(maxsplit=1)
+    if len(parts) == 1:
+        await message.reply("🌀 Format: /misterwulf <prompt>")
+        return
+    prompt = parts[1]
+    reply = await asyncio.to_thread(generate_response, prompt, "wulf")
+    await reply_split(message, reply)
 
 
 @dp.message(Command("status"))
@@ -595,6 +608,7 @@ async def on_startup(app):
                 types.BotCommand(command="voiceoff", description="/voiceoff"),
                 types.BotCommand(command="imagine", description="/imagine <prompt>"),
                 types.BotCommand(command="coder", description="toggle or use coder"),
+                types.BotCommand(command="misterwulf", description="SLNCX mode"),
             ]
         )
         await bot.set_chat_menu_button(menu_button=types.MenuButtonCommands())
