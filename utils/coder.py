@@ -23,7 +23,21 @@ async def interpret_code(prompt: str) -> str:
             instructions=INSTRUCTIONS,
             input=prompt,
         )
-        return response.output.strip()
+
+        output = response.output
+        if isinstance(output, str):
+            return output.strip()
+        if isinstance(output, list):
+            parts = []
+            for item in output:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict) and "text" in item:
+                    parts.append(item["text"])
+                else:
+                    parts.append(str(item))
+            return "".join(parts).strip()
+        return str(output).strip()
     except Exception as exc:  # pragma: no cover - network
         return f"Code interpreter error: {exc}"
 
