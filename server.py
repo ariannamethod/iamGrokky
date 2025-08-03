@@ -341,10 +341,6 @@ async def cmd_clearmemory(message: Message):
 
 async def handle_coder_prompt(message: Message, text: str) -> None:
     """Process a coder-mode prompt via OpenAI code interpreter."""
-    if not engine:
-        await reply_split(message, "🌀 Grokky engine is unavailable")
-        return
-
     chat_id = str(message.chat.id)
     memory_id = (
         f"{chat_id}_{message.from_user.id}"
@@ -352,17 +348,19 @@ async def handle_coder_prompt(message: Message, text: str) -> None:
         else str(message.from_user.id)
     )
 
-    try:
-        await engine.add_memory(memory_id, text, role="user")
-    except Exception:
-        pass
+    if engine:
+        try:
+            await engine.add_memory(memory_id, text, role="user")
+        except Exception:
+            pass
 
     result = await interpret_code(text)
 
-    try:
-        await engine.add_memory(memory_id, result, role="assistant")
-    except Exception:
-        pass
+    if engine:
+        try:
+            await engine.add_memory(memory_id, result, role="assistant")
+        except Exception:
+            pass
 
     if len(result) > 3500:
         CODER_OUTPUT[(message.chat.id, message.from_user.id)] = result
