@@ -1,7 +1,7 @@
 import os
 import json
 import time
-from typing import Optional
+from typing import Optional, Any
 
 from utils.dynamic_weights import get_dynamic_knowledge
 
@@ -22,6 +22,30 @@ WULF_PROMPT = (
 )
 
 
+def _extract_text(resp: Any) -> str:
+    """Extract plain text from various response object formats."""
+    if isinstance(resp, str):
+        return resp
+
+    try:
+        output = getattr(resp, "output", None)
+        if isinstance(output, list):
+            parts: list[str] = []
+            for item in output:
+                content = getattr(item, "content", [])
+                for piece in content:
+                    if getattr(piece, "type", None) == "output_text" and hasattr(
+                        piece, "text"
+                    ):
+                        parts.append(piece.text)
+            if parts:
+                return "".join(parts)
+    except Exception:  # pragma: no cover - best effort
+        pass
+
+    return str(resp)
+
+
 def generate_response(
     prompt: str,
     mode: str = "grok3",
@@ -33,7 +57,8 @@ def generate_response(
     log_entry = {"prompt": prompt, "timestamp": time.time()}
     try:
         full_prompt = WULF_PROMPT + "\nUser: " + prompt
-        response = get_dynamic_knowledge(full_prompt, api_key)
+        raw_response = get_dynamic_knowledge(full_prompt, api_key)
+        response = _extract_text(raw_response)
         log_entry["response"] = response
         os.makedirs("logs/wulf", exist_ok=True)
         with open(
