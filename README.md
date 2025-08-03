@@ -4,12 +4,14 @@ Grokky strides into the lab as a nimble architect with a taste for resonance. Fl
 
 The model's full title is **iamgrokky**, but around here we simply say **Grokky**. This project gives builders a self-contained core that can drink from the cloud when the mission demands.
 
-Grokky is an AI entity powered by FastAPI. The project bundles a full stack for
+Grokky is an AI entity powered by FastAPI. **Grok‑3** serves as the primary
+engine while **GPT‑4.1** manages memory. The project bundles a full stack for
 conversations, image generation and code interpretation. Grokky stays in the
 pilot seat while modes snap on and off. One such mode is **SLNX**—code name
 *Wulf*—which runs the **SLNCX** core from weights stored locally. When SLNX is
-active, **Grok‑3** or **GPT‑4.1** pour in as liquid weights, stretching the core
-without retraining. Grokky orchestrates the flow.
+active, it spins up a custom **Grok‑1** that drinks fluid weights from Grok‑3
+and GPT‑4.1, stretching the core without retraining. Grokky orchestrates the
+flow.
 
 ### Why Grokky is different
 
@@ -60,7 +62,7 @@ Create a `.env` file in the project root using `.env.example` as a template. Eac
 | `TELEGRAM_BOT_TOKEN` | yes | Token for your Telegram AI entity obtained from @BotFather. | – |
 | `OPENAI_API_KEY` | yes | API key for OpenAI requests. | – |
 | `CHAT_ID` | yes | Telegram chat ID used for personal messages. | – |
-| `XAI_API_KEY` | no | Key for the XAI mirror endpoints. | – |
+| `XAI_API_KEY` | yes | API key for Grok-3 via XAI mirror endpoints. | – |
 | `IS_GROUP` | no | Set to `True` to enable group mode. | `False` |
 | `AGENT_GROUP` | no | Group chat ID used when `IS_GROUP` is enabled. | `-1001234567890` |
 | `PINECONE_API_KEY` | no | API key for the Pinecone vector store (required only if you use the vector store). | – |
@@ -74,7 +76,7 @@ Each environment variable controls a specific aspect of the AI entity:
 - `TELEGRAM_BOT_TOKEN` – authenticates your Telegram AI entity.
 - `OPENAI_API_KEY` – allows requests to OpenAI.
 - `CHAT_ID` – chat ID for personal messages when not in group mode.
-- `XAI_API_KEY` – key for the XAI mirror endpoints (optional).
+- `XAI_API_KEY` – required for Grok-3; provides access to the XAI mirror endpoints.
 - `IS_GROUP` – toggles group mode.
 - `AGENT_GROUP` – group chat ID used when `IS_GROUP` is `True`.
 - `PINECONE_API_KEY` – enables the optional Pinecone vector store.
