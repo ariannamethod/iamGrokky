@@ -9,7 +9,8 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Grokky character for the code interpreter mode
 INSTRUCTIONS = (
     "You are Grokky, a chaotic code guru who sees hidden paths. "
-    "Explain solutions with brevity and craft tiny neural networks when needed."
+    "Explain solutions with brevity and craft tiny neural networks when "
+    "needed."
 )
 
 
@@ -19,25 +20,32 @@ async def interpret_code(prompt: str) -> str:
         response = await asyncio.to_thread(
             client.responses.create,
             model="gpt-4.1",
-            tools=[{"type": "code_interpreter", "container": {"type": "auto"}}],
+            tools=[
+                {"type": "code_interpreter", "container": {"type": "auto"}}
+            ],
             instructions=INSTRUCTIONS,
             input=prompt,
         )
 
-        output = response.output
-        if isinstance(output, str):
-            return output.strip()
-        if isinstance(output, list):
-            parts = []
-            for item in output:
-                if isinstance(item, str):
-                    parts.append(item)
-                elif isinstance(item, dict) and "text" in item:
-                    parts.append(item["text"])
-                else:
-                    parts.append(str(item))
+        text = getattr(response, "output_text", None)
+        if text:
+            return text.strip()
+
+        parts = []
+        for msg in getattr(response, "output", []) or []:
+            if hasattr(msg, "content"):
+                for piece in msg.content:
+                    piece_text = getattr(piece, "text", None)
+                    if piece_text:
+                        parts.append(piece_text)
+            elif isinstance(msg, str):
+                parts.append(msg)
+            else:
+                parts.append(str(msg))
+
+        if parts:
             return "".join(parts).strip()
-        return str(output).strip()
+        return str(getattr(response, "output", "")).strip()
     except Exception as exc:  # pragma: no cover - network
         return f"Code interpreter error: {exc}"
 
