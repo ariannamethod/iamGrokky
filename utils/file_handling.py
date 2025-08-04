@@ -9,16 +9,26 @@ from pathlib import Path
 import random
 import re
 import json
+import time
+import argparse
 from datetime import datetime
 import aiohttp
 from bs4 import BeautifulSoup
 import numpy as np
 import sqlite3
 try:
+    import rarfile
+except ImportError:
+    rarfile = None
+try:
     from char_gen import CharGen  # Assume from SUPERTIME
 except ImportError:
     CharGen = None
-from grok_api import query_grok3  # Grok-3/GPT-4.1 fallback
+try:
+    from grok_api import query_grok3  # Grok-3/GPT-4.1 fallback
+except ImportError:  # pragma: no cover - optional dependency
+    def query_grok3(*args, **kwargs):
+        return ""
 from pypdf import PdfReader
 try:
     import docx
@@ -50,6 +60,8 @@ try:
 except ImportError:
     yaml = None
 
+from utils.dynamic_weights import apply_pulse_weights
+
 # Глобальные настройки
 DEFAULT_MAX_TEXT_SIZE = 100_000
 REPO_SNAPSHOT_PATH = "config/repo_snapshot.md"
@@ -64,6 +76,15 @@ mars starship optimus robots xai resonance chaos wulf multiplanetary arcadia
 shred void pulse storm nikole spark civilization self sustaining grok xai
 file process data extract summarize chaos tags pulse shred neural cosmos
 """
+
+
+def log_event(msg: str, log_type: str = "info") -> None:
+    log_dir = LOG_DIR if log_type == "info" else Path("logs/failures")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"{datetime.now().strftime('%Y-%m-%d')}.jsonl"
+    entry = {"timestamp": datetime.now().isoformat(), "type": log_type, "message": msg}
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 # Mini-Markov с n-gram и semantic boost
 class MiniMarkov:
@@ -112,7 +133,8 @@ class MiniMarkov:
             if state not in self.chain or not self.chain[state]:
                 break
             choices = list(self.chain[state].keys())
-            weights = [self.chain[state][w] * (1 + self.pulse * random.uniform(0.8, 1.2)) for w in choices]
+            raw = [self.chain[state][w] for w in choices]
+            weights = apply_pulse_weights(raw, self.pulse)
             next_word = random.choices(choices, weights=weights, k=1)[0]
             result.append(next_word)
             state = tuple(list(state[1:]) + [next_word])
@@ -158,7 +180,8 @@ class MiniESN:
             np.dot(self.W_in, input_vector) + np.dot(self.W, self.state) + content_boost
         )
         output = np.dot(self.W_out, self.state)
-        predicted = np.argmax(output)
+        weights = apply_pulse_weights(output.tolist(), chaos_pulse.get())
+        predicted = int(np.argmax(weights))
         return self.rev_map.get(predicted, '.unknown')
 
     def update(self, text: str, pulse: float):
@@ -248,7 +271,6 @@ bio = BioOrchestra()
 markov = MiniMarkov(_SEED_CORPUS, n=3)
 esn = MiniESN()
 cg = CharGen(seed_text="Files pulse with chaos. Mars ignites the void. Wulf shreds.", seed=42) if CharGen else None
-init_cache_db()
 
 # SQLite кэш
 def init_cache_db():
@@ -286,6 +308,8 @@ def load_cache(path: str, max_age: float = 43200) -> Optional[Dict]:
         if result:
             return {"ext": result[0], "hash": result[1], "tags": result[2], "relevance": result[3], "summary": result[4]}
         return None
+
+init_cache_db()
 
 # Async paraphrase
 async def paraphrase(text: str, prefix: str = "Summarize this for kids: ") -> str:
@@ -325,6 +349,7 @@ class FileHandler:
             ".doc": self._extract_doc,
             ".odt": self._extract_odt,
             ".zip": self._extract_zip,
+            ".rar": self._extract_rar,
             ".tar": self._extract_tar,
             ".tar.gz": self._extract_tar,
             ".tgz": self._extract_tar,
@@ -565,6 +590,58 @@ class FileHandler:
                 log_event(f"ZIP error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[ZIP error: {str(e)}]"
 
+    async def _extract_rar(self, path: str) -> str:
+        async with self._semaphore:
+            if rarfile:
+                try:
+                    texts = []
+                    with rarfile.RarFile(path) as rf:
+                        for name in rf.namelist():
+                            if name.endswith("/"):
+                                continue
+                            try:
+                                data = rf.read(name)
+                                ext = await self._detect_extension(name)
+                                extractor = self._extractors.get(ext)
+                                if extractor and extractor not in {self._extract_zip, self._extract_tar, self._extract_rar}:
+                                    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                                        tmp.write(data)
+                                        tmp.flush()
+                                        text = await extractor(tmp.name)
+                                    os.unlink(tmp.name)
+                                else:
+                                    try:
+                                        text = data.decode("utf-8")
+                                    except UnicodeDecodeError:
+                                        text = data.decode("latin1", "ignore")
+                                texts.append(text)
+                            except Exception:
+                                continue
+                    combined = "\n".join(texts)
+                    esn.update(combined, chaos_pulse.get())
+                    return self._truncate(combined) if combined.strip() else "[RAR empty]"
+                except Exception as e:
+                    log_event(f"RAR error ({os.path.basename(path)}): {str(e)}", "error")
+                    return f"[RAR error: {str(e)}]"
+            try:
+                with zipfile.ZipFile(path) as zf:
+                    texts = []
+                    for name in zf.namelist():
+                        if name.endswith("/"):
+                            continue
+                        try:
+                            data = zf.read(name)
+                            text = data.decode("utf-8", "ignore")
+                            texts.append(text)
+                        except Exception:
+                            continue
+                combined = "\n".join(texts)
+                esn.update(combined, chaos_pulse.get())
+                return self._truncate(combined) if combined.strip() else "[RAR empty]"
+            except Exception as e:
+                log_event(f"RAR error ({os.path.basename(path)}): {str(e)}", "error")
+                return f"[RAR error: {str(e)}]"
+
     async def _extract_tar(self, path: str) -> str:
         async with self._semaphore:
             try:
@@ -617,8 +694,8 @@ class FileHandler:
 
 async def parse_and_store_file(
     path: str,
-    handler: FileHandler | None = None,
-    engine: 'VectorGrokkyEngine' | None = None,
+    handler: Optional["FileHandler"] = None,
+    engine: Optional["VectorGrokkyEngine"] = None,
 ) -> str:
     from utils.vector_engine import VectorGrokkyEngine
     handler = handler or FileHandler()

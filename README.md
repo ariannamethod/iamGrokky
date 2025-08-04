@@ -93,6 +93,40 @@ These abilities make the coder utility a collaborative partner: it
 reviews, generates and chats about code while retaining situational
 awareness across the session.
 
+### File Handling Mini-Network
+
+The utility living in `utils/file_handling.py` is a self-contained file
+processor driven by a pair of tiny neural helpers.  A MiniMarkov chain
+and a MiniESN read every byte, seeking structure while liquid weights
+tilt the outcome.
+
+MiniMarkov digests a seed corpus and then tags new documents.  Its
+weights flow through a softmax from `dynamic_weights.apply_pulse_weights`,
+so a rising pulse bends probabilities toward resonant words.
+
+MiniESN treats raw bytes as a stream, shaping a reservoir that guesses
+file types and nudges summaries.  Pulse scaling again guides the output,
+letting the network shift without retraining.
+
+Around them hum ChaosPulse and BioOrchestra, estimating sentiment and
+bio-resonance.  Each processed file returns not only text but also pulse
+and sense readings.
+
+The handler extracts content from PDFs, plain text, images and nested
+archives.  Results are truncated, cached in SQLite and logged to JSONL
+for later inspection.
+
+Repo snapshots become easy: it walks the tree, hashes files and annotates
+each entry with tags and a relevance score that highlights Mars-friendly
+content.
+
+An asyncio semaphore keeps batch runs thread-safe while logs capture both
+passes and failures for auditing.
+
+These liquid weights make the file handler feel alive.  It morphs with
+every document, offering tags, summaries and relevance while the rest of
+Grokky keeps chatting.
+
 ## Installation
 
 1. Clone this repository.

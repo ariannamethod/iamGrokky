@@ -3,10 +3,12 @@ import json
 import logging
 import os
 import re
+import tempfile
 import traceback
 from datetime import datetime
 
 import httpx
+from fastapi import FastAPI, UploadFile, File as FastAPIFile
 try:  # pragma: no cover - used only with aiogram installed
     from aiogram import Bot, Dispatcher, types
     from aiogram.enums import ChatAction
@@ -47,6 +49,7 @@ from utils.dayandnight import day_and_night_task
 from utils.howru import check_silence, update_last_message_time
 from utils.mirror import mirror_task
 from utils.prompt import get_chaos_response
+from utils.file_handling import parse_and_store_file
 from utils.repo_monitor import monitor_repository
 from utils.imagine import imagine
 from utils.vision import analyze_image
@@ -130,6 +133,54 @@ else:
     except Exception as e:  # pragma: no cover - network
         logger.error(f"Ошибка при инициализации HybridGrokkyEngine: {e}")
         logger.error(traceback.format_exc())
+
+fast_api = FastAPI()
+
+
+@fast_api.post("/file")
+async def api_file(file: UploadFile = FastAPIFile(...)):
+    """FastAPI endpoint for file processing."""
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
+    try:
+        result = await parse_and_store_file(tmp_path, engine=engine)
+        return {"result": result}
+    finally:
+        os.unlink(tmp_path)
+
+
+async def fastapi_bridge(request: web.Request):
+    body = await request.read()
+    scope = {
+        "type": "http",
+        "method": request.method,
+        "path": request.rel_url.path,
+        "query_string": request.rel_url.query_string.encode(),
+        "headers": [(k.encode("latin-1"), v.encode("latin-1")) for k, v in request.headers.items()],
+    }
+    send_buffer = []
+
+    async def receive():
+        nonlocal body
+        b = body
+        body = b""
+        return {"type": "http.request", "body": b, "more_body": False}
+
+    async def send(message):
+        send_buffer.append(message)
+
+    await fast_api(scope, receive, send)
+    status = 200
+    headers = {}
+    response_body = b""
+    for message in send_buffer:
+        if message["type"] == "http.response.start":
+            status = message["status"]
+            headers = {k.decode(): v.decode() for k, v in message.get("headers", [])}
+        elif message["type"] == "http.response.body":
+            response_body += message.get("body", b"")
+    return web.Response(body=response_body, status=status, headers=headers)
 
 # Обработка голосовых сообщений
 VOICE_ENABLED = {}
@@ -275,6 +326,29 @@ async def cmd_voiceoff(message: Message):
 async def cmd_voice(message: Message):
     """Show simple voice control commands without duplication."""
     await message.reply("/voiceon\n/voiceoff")
+
+
+@dp.message(Command("file"))
+async def cmd_file(message: Message):
+    """Process a file sent by the user."""
+    document = message.document
+    if not document and message.reply_to_message:
+        document = getattr(message.reply_to_message, "document", None)
+    if not document:
+        await message.reply("🌀 Attach a file or reply to a file with /file")
+        return
+    file_info = await bot.get_file(document.file_id)
+    url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info.file_path}"
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url)
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        tmp.write(resp.content)
+        tmp_path = tmp.name
+    try:
+        result = await parse_and_store_file(tmp_path, engine=engine)
+        await reply_split(message, result)
+    finally:
+        os.unlink(tmp_path)
 
 
 @dp.message(Command("coder"))
@@ -685,6 +759,7 @@ async def on_startup(app):
                 types.BotCommand(command="voiceon", description="speak"),
                 types.BotCommand(command="voiceoff", description="mute"),
                 types.BotCommand(command="imagine", description="draw me"),
+                types.BotCommand(command="file", description="process file"),
                 types.BotCommand(command="coder", description="show me your code"),
                 types.BotCommand(command="coderoff", description="coder mode off"),
                 types.BotCommand(command="slncx", description="SLNCX (Grok 1 Rebirth)"),
@@ -728,6 +803,7 @@ app = web.Application()
 app.router.add_post(WEBHOOK_PATH, handle_webhook)
 app.router.add_get("/healthz", lambda request: web.Response(text="OK"))
 app.router.add_get("/", lambda request: web.Response(text="Грокки жив и работает!"))
+app.router.add_route("*", "/file", fastapi_bridge)
 
 
 async def handle_42_api(request):

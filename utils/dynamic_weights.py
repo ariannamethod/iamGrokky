@@ -1,6 +1,7 @@
 import os
 import time
-from typing import Optional
+import math
+from typing import Optional, List
 
 import requests
 
@@ -64,3 +65,15 @@ def get_dynamic_knowledge(prompt: str, api_key: Optional[str] = None) -> str:
     if knowledge.startswith("Grok-3 offline"):
         knowledge = query_gpt4(prompt, api_key)
     return knowledge
+
+
+def apply_pulse_weights(weights: List[float], pulse: float) -> List[float]:
+    """Scale ``weights`` by ``pulse`` and return a softmax distribution."""
+
+    scaled = [w * (1 + pulse * 0.7) for w in weights]
+    if not scaled:
+        return []
+    m = max(scaled)
+    exps = [math.exp(w - m) for w in scaled]
+    total = sum(exps)
+    return [e / total for e in exps] if total else [1.0 / len(scaled)] * len(scaled)
