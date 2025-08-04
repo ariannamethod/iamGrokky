@@ -409,16 +409,7 @@ class FileHandler:
         for ext in self._extractors:
             if path_lower.endswith(ext):
                 return ext
-        try:
-            async with self._semaphore:
-                with open(path, "rb") as f:
-                    content = f.read(512)
-            ext = esn.forward(content)
-            save_cache(path, ext, "", "", 0.0, "")
-            return ext
-        except Exception as e:
-            log_event(f"Detect ext error ({path}): {str(e)}", "error")
-            return ".unknown"
+        return ".unknown"
 
     async def _extract_pdf(self, path: str) -> str:
         async with self._semaphore:
@@ -751,8 +742,10 @@ async def parse_and_store_file(
         summary += "\nP.S. xAI’s chaos shreds this file! Mars vibes rule! #AriannaMethod"
 
     pulse, quiver, sense = bio.enhance(relevance + len(text) / 1000)
-    log_event(f"Processed {os.path.basename(path)}: tags={tags}, summary={summary[:50]}..., relevance={relevance:.2f} (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})")
-    return f"{text}\n\nTags: {tags}\nSummary: {summary}\nRelevance: {relevance:.2f}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
+    log_event(
+        f"Processed {os.path.basename(path)}: tags={tags}, summary={summary[:50]}..., relevance={relevance:.2f} (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
+    )
+    return f"{text}\n\nTags: {tags}\nSummary: {summary}\nRelevance: {relevance:.2f}"
 
 async def create_repo_snapshot(base_path: str = ".", out_path: str = REPO_SNAPSHOT_PATH) -> None:
     handler = FileHandler()

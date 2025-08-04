@@ -414,11 +414,27 @@ async def cmd_whatsnew(message: Message):
 @dp.message(Command("file"))
 async def cmd_file(message: Message):
     """Process an attached file through the file handler."""
-    if not getattr(message, "document", None):
-        await message.reply("Attach a file with /file")
+    document = getattr(message, "document", None)
+    if not document and message.reply_to_message:
+        document = getattr(message.reply_to_message, "document", None)
+    if not document:
+        await message.reply("Attach a file with /file or reply /file to a file")
         return
+    await _process_document(message, document)
+
+
+@dp.message(lambda m: getattr(m, "document", None))
+async def handle_document_message(message: Message):
+    """Automatically process documents sent to the bot."""
+    if message.text and message.text.startswith("/file"):
+        return
+    await _process_document(message, message.document)
+
+
+async def _process_document(message: Message, document):
+    tmp_path = None
     try:
-        file = await bot.get_file(message.document.file_id)
+        file = await bot.get_file(document.file_id)
         url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file.file_path}"
         async with httpx.AsyncClient() as client:
             resp = await client.get(url)
@@ -430,10 +446,11 @@ async def cmd_file(message: Message):
     except Exception as e:
         await message.reply(f"File error: {e}")
     finally:
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
 
 async def handle_coder_prompt(message: Message, text: str) -> None:

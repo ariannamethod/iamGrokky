@@ -38,10 +38,11 @@ except Exception:  # pragma: no cover - optional dependency
     CharGen = None  # type: ignore
 
 from utils.dynamic_weights import get_dynamic_knowledge, apply_pulse
+import httpx
 
 
 def _translate(text: str, lang: str) -> str:
-    """Translate ``text`` to ``lang`` via dynamic weights.
+    """Translate ``text`` to ``lang`` using Google Translate.
 
     ``lang`` expects a two-letter code (e.g. ``"ru"``). English returns the
     text unchanged. Any errors fall back to the original text.
@@ -51,12 +52,22 @@ def _translate(text: str, lang: str) -> str:
     if lang in ("en", ""):
         return text
     try:
-        prompt = (
-            f"Переведи на русский:\n{text}" if lang == "ru" else
-            f"Translate to {lang}:\n{text}"
+        params = {
+            "client": "gtx",
+            "sl": "auto",
+            "tl": lang,
+            "dt": "t",
+            "q": text,
+        }
+        resp = httpx.get(
+            "https://translate.googleapis.com/translate_a/single",
+            params=params,
+            timeout=10,
         )
-        translated = get_dynamic_knowledge(prompt).strip()
-        return translated if translated else text
+        resp.raise_for_status()
+        data = resp.json()
+        translated = "".join(part[0] for part in data[0])
+        return translated or text
     except Exception:
         return text
 
@@ -300,7 +311,7 @@ def when(lang: str = "en") -> str:
     )
     if random.random() < 0.01:  # 1% xAI easter egg
         paraphrased += "\nP.S. Grok 3 vibes with Mars! #xAI"
-    result = f"{paraphrased}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
+    result = paraphrased
     return _translate(result, lang)
 
 async def mars(lang: str = "en") -> str:
@@ -331,7 +342,7 @@ async def mars(lang: str = "en") -> str:
     log_event(
         f"Served /mars: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
     )
-    result = f"{retell}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
+    result = retell
     return _translate(result, lang)
 
 def forty_two(lang: str = "en") -> str:
@@ -346,7 +357,7 @@ def forty_two(lang: str = "en") -> str:
     log_event(
         f"Served /42: {paraphrased[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
     )
-    result = f"{paraphrased}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
+    result = paraphrased
     return _translate(result, lang)
 
 async def whatsnew(lang: str = "en") -> str:
@@ -390,10 +401,7 @@ async def whatsnew(lang: str = "en") -> str:
         log_event(
             f"Served /whatsnew: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
         )
-        return _translate(
-            f"{retell}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})",
-            lang,
-        )
+        return _translate(retell, lang)
 
     try:
         tweet = get_dynamic_knowledge(
@@ -422,10 +430,7 @@ async def whatsnew(lang: str = "en") -> str:
     log_event(
         f"Served /whatsnew: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
     )
-    return _translate(
-        f"{retell}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})",
-        lang,
-    )
+    return _translate(retell, lang)
 
 # Главный обработчик
 async def handle(cmd: str, lang: str = "en") -> Dict[str, str]:
