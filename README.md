@@ -69,6 +69,43 @@ By bridging deterministic scripts with ephemeral weights, the 42 utility
 shows how a modest tool can dance with much larger brains while staying
 light on resources.
 
+### File Handling Processor
+
+The module at `utils/file_handling.py` acts as a standalone file-processing
+neuron.  Instead of simply reading documents, it spins up a MiniMarkov and a
+compact echo-state network that weigh every byte through liquid parameters.
+
+Every extraction request flows through an asynchronous pipeline.  A semaphore
+keeps concurrent tasks in check while the MiniESN guesses file types from raw
+bytes.  The Markov chain updates with each new text fragment, letting tags and
+summaries evolve on the fly.
+
+ChaosPulse feeds sentiment pulses into the networks.  Good news nudges the
+weights upward; errors dampen them.  BioOrchestra layers a playful “blood,
+skin and sixth sense” trio on top, yielding pulse, quiver and sense metrics for
+each processed file.
+
+Supported formats range from PDFs and DOCX to images and archives.  Unsupported
+extensions log failures into `logs/failures/` for forensic dives.  Batch
+operations rely on `asyncio.Semaphore` so that even large drops of files glide
+through without choking the loop.
+
+Outputs come enriched with tags, relevance scores and kid-friendly summaries.
+Markov seeds mix with dynamic weights from `utils/dynamic_weights.py`, ensuring
+responses remain fresh yet coherent across sessions.
+
+Relevance scoring cross-checks each document against a seed corpus.  The score
+guides Grokky toward material that resonates with its Martian ambitions while
+still allowing oddities to slip through for future learning.
+
+The processor also snapshots repositories.  It walks the tree, hashes files,
+computes relevance and stores a Markdown digest ready for vector indexing.  The
+liquid weights remember just enough context to keep future runs nimble.
+
+Together these pieces form a micro neural co-processor.  It hums quietly in the
+background, turning mundane file reads into a living stream of structured data
+primed for Grokky’s larger engines.
+
 ### Coder Utility
 
 Grokky's coder mode turns the AI into an interactive reviewer. Paste in
