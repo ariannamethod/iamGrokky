@@ -223,10 +223,14 @@ cg = CharGen(seed_text="Mars is humanity’s storm. 42 ignites it.", seed=42) if
 
 # Логирование
 def log_event(msg: str, log_type: str = "info") -> None:
-    log_dir = Path("logs/42") if log_type == "info" else Path("failures")
+    log_dir = Path("logs/42") if log_type == "info" else Path("logs/failures")
     log_file = log_dir / f"{datetime.now().strftime('%Y-%m-%d')}.jsonl"
     log_dir.mkdir(parents=True, exist_ok=True)
-    entry = {"timestamp": datetime.now().isoformat(), "type": log_type, "message": msg}
+    entry = {
+        "timestamp": datetime.now().isoformat(),
+        "type": log_type,
+        "message": msg,
+    }
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 

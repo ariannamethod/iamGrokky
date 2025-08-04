@@ -10,6 +10,8 @@ import random
 import re
 import json
 from datetime import datetime
+import time
+import argparse
 import aiohttp
 from bs4 import BeautifulSoup
 import numpy as np
@@ -18,7 +20,11 @@ try:
     from char_gen import CharGen  # Assume from SUPERTIME
 except ImportError:
     CharGen = None
-from grok_api import query_grok3  # Grok-3/GPT-4.1 fallback
+try:
+    from grok_api import query_grok3  # Grok-3/GPT-4.1 fallback
+except Exception:  # pragma: no cover - fallback for tests
+    def query_grok3(*args, **kwargs):
+        return ""
 from pypdf import PdfReader
 try:
     import docx
@@ -49,6 +55,13 @@ try:
     import yaml
 except ImportError:
     yaml = None
+try:
+    import rarfile
+except ImportError:
+    rarfile = None
+from importlib import import_module
+
+log_event = import_module("utils.42").log_event
 
 # Глобальные настройки
 DEFAULT_MAX_TEXT_SIZE = 100_000
@@ -122,14 +135,14 @@ class MiniMarkov:
 
 # MiniESN с адаптивным reservoir и training
 class MiniESN:
-    def __init__(self, input_size: int = 512, base_hidden_size: int = 512, output_size: int = 14):
+    def __init__(self, input_size: int = 512, base_hidden_size: int = 512, output_size: int = 15):
         self.input_size = input_size
         self.base_hidden_size = base_hidden_size
         self.output_size = output_size
         self.ext_map = {
             '.pdf': 0, '.txt': 1, '.md': 2, '.docx': 3, '.rtf': 4, '.doc': 5,
-            '.odt': 6, '.zip': 7, '.tar': 8, '.png': 9, '.html': 10, '.json': 11,
-            '.csv': 12, '.yaml': 13
+            '.odt': 6, '.zip': 7, '.rar': 8, '.tar': 9, '.png': 10, '.html': 11,
+            '.json': 12, '.csv': 13, '.yaml': 14
         }
         self.rev_map = {v: k for k, v in self.ext_map.items()}
         self.state = None
@@ -162,6 +175,8 @@ class MiniESN:
         return self.rev_map.get(predicted, '.unknown')
 
     def update(self, text: str, pulse: float):
+        if self.state is None:
+            self._init_reservoir(len(text.encode('utf-8')))
         words = re.findall(r'\w+', text.lower())
         input_vector = np.array([hash(w) % self.input_size for w in words[:self.input_size]] + [0] * (self.input_size - min(len(words), self.input_size)))
         self.state = self.leaky_rate * self.state + (1 - self.leaky_rate) * np.tanh(
@@ -248,7 +263,6 @@ bio = BioOrchestra()
 markov = MiniMarkov(_SEED_CORPUS, n=3)
 esn = MiniESN()
 cg = CharGen(seed_text="Files pulse with chaos. Mars ignites the void. Wulf shreds.", seed=42) if CharGen else None
-init_cache_db()
 
 # SQLite кэш
 def init_cache_db():
@@ -267,6 +281,8 @@ def init_cache_db():
         """)
         conn.execute("DELETE FROM file_cache WHERE timestamp < ?", (time.time() - 7 * 86400,))  # Cleanup old
         conn.commit()
+
+init_cache_db()
 
 def save_cache(path: str, ext: str, hash: str, tags: str, relevance: float, summary: str):
     with sqlite3.connect(CACHE_DB) as conn:
@@ -325,6 +341,7 @@ class FileHandler:
             ".doc": self._extract_doc,
             ".odt": self._extract_odt,
             ".zip": self._extract_zip,
+            ".rar": self._extract_rar,
             ".tar": self._extract_tar,
             ".tar.gz": self._extract_tar,
             ".tgz": self._extract_tar,
@@ -565,6 +582,45 @@ class FileHandler:
                 log_event(f"ZIP error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[ZIP error: {str(e)}]"
 
+    async def _extract_rar(self, path: str) -> str:
+        async with self._semaphore:
+            if rarfile is None:
+                # Fallback to zipfile if possible
+                try:
+                    return await self._extract_zip(path)
+                except Exception:
+                    return "[RAR unsupported: install rarfile]"
+            try:
+                texts = []
+                with rarfile.RarFile(path) as rf:
+                    for name in rf.namelist():
+                        if name.endswith("/"):
+                            continue
+                        try:
+                            data = rf.read(name)
+                            ext = await self._detect_extension(name)
+                            extractor = self._extractors.get(ext)
+                            if extractor and extractor not in {self._extract_zip, self._extract_tar, self._extract_rar}:
+                                with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                                    tmp.write(data)
+                                    tmp.flush()
+                                    text = await extractor(tmp.name)
+                                os.unlink(tmp.name)
+                            else:
+                                try:
+                                    text = data.decode("utf-8")
+                                except UnicodeDecodeError:
+                                    text = data.decode("latin1", "ignore")
+                            texts.append(text)
+                        except Exception:
+                            continue
+                combined = "\n".join(texts)
+                esn.update(combined, chaos_pulse.get())
+                return self._truncate(combined) if combined.strip() else "[RAR empty]"
+            except Exception as e:
+                log_event(f"RAR error ({os.path.basename(path)}): {str(e)}", "error")
+                return f"[RAR error: {str(e)}]"
+
     async def _extract_tar(self, path: str) -> str:
         async with self._semaphore:
             try:
@@ -618,7 +674,7 @@ class FileHandler:
 async def parse_and_store_file(
     path: str,
     handler: FileHandler | None = None,
-    engine: 'VectorGrokkyEngine' | None = None,
+    engine: Optional['VectorGrokkyEngine'] = None,
 ) -> str:
     from utils.vector_engine import VectorGrokkyEngine
     handler = handler or FileHandler()

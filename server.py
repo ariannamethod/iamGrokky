@@ -4,9 +4,12 @@ import logging
 import os
 import re
 import traceback
+import tempfile
 from datetime import datetime
 
 import httpx
+from fastapi import FastAPI, Request, UploadFile, File
+from fastapi.responses import PlainTextResponse, JSONResponse
 try:  # pragma: no cover - used only with aiogram installed
     from aiogram import Bot, Dispatcher, types
     from aiogram.enums import ChatAction
@@ -41,7 +44,7 @@ except Exception:  # pragma: no cover - fallback for tests
         async def reply(self, *args, **kwargs):  # pragma: no cover - stub
             pass
 
-from aiohttp import web
+from utils.file_handling import parse_and_store_file
 
 from utils.dayandnight import day_and_night_task
 from utils.howru import check_silence, update_last_message_time
@@ -105,6 +108,9 @@ logger.info(
     "Установлен" if PINECONE_API_KEY else "НЕ УСТАНОВЛЕН",
 )
 logger.info("Pinecone индекс: %s", PINECONE_INDEX or "НЕ УСТАНОВЛЕН")
+
+# FastAPI application
+app = FastAPI()
 
 # Инициализация бота и диспетчера
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -394,6 +400,25 @@ async def cmd_whatsnew(message: Message):
     await reply_split(message, result["response"])
 
 
+@dp.message(Command("file"))
+async def cmd_file(message: Message):
+    """Process a file sent with the command."""
+    if not message.document:
+        await message.reply("Attach a file with the /file command")
+        return
+    file_info = await bot.get_file(message.document.file_id)
+    url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file_info.file_path}"
+    async with httpx.AsyncClient() as client:
+        data = (await client.get(url)).content
+    suffix = os.path.splitext(message.document.file_name or "")[1]
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(data)
+        tmp.flush()
+        result = await parse_and_store_file(tmp.name)
+    os.unlink(tmp.name)
+    await reply_split(message, result)
+
+
 async def handle_coder_prompt(message: Message, text: str) -> None:
     """Process a coder-mode prompt via OpenAI code interpreter."""
     chat_id = str(message.chat.id)
@@ -631,27 +656,23 @@ async def message_handler(message: Message):
 
 
 # Обработчик вебхука напрямую
-async def handle_webhook(request):
+@app.post(WEBHOOK_PATH)
+async def handle_webhook(request: Request):
     try:
-        # Получаем данные запроса
-        request_body = await request.text()
+        request_body = await request.body()
         logger.info(f"Получены данные вебхука длиной {len(request_body)} байт")
-
-        data = json.loads(request_body)
+        data = json.loads(request_body.decode("utf-8"))
         logger.info(f"Получено обновление от Telegram: {data.get('update_id')}")
-
-        # Обновления для диспетчера
         await dp.feed_update(bot, types.Update(**data))
-
-        return web.Response(text="OK")
+        return PlainTextResponse("OK")
     except Exception as e:
         logger.error(f"Ошибка обработки вебхука: {e}")
         logger.error(traceback.format_exc())
-        return web.Response(status=500)
+        return PlainTextResponse(status_code=500, content="")
 
 
 # Запуск сервера
-async def on_startup(app):
+async def on_startup():
     global BOT_ID, BOT_USERNAME
     try:
         me = await bot.get_me()
@@ -691,6 +712,7 @@ async def on_startup(app):
                 types.BotCommand(command="slncxoff", description="SLNCX-off"),
                 types.BotCommand(command="status", description="status"),
                 types.BotCommand(command="clearmemory", description="clear memory"),
+                types.BotCommand(command="file", description="process file"),
                 types.BotCommand(command="when", description="when"),
                 types.BotCommand(command="mars", description="why Mars?"),
                 types.BotCommand(command="42", description="why 42?"),
@@ -716,40 +738,56 @@ async def on_startup(app):
         logger.error(traceback.format_exc())
 
 
-async def on_shutdown(app):
+async def on_shutdown():
     await bot.delete_webhook()
     logger.info("Удален вебхук")
 
 
-# Создание и запуск приложения
-app = web.Application()
-
-# Регистрация маршрутов
-app.router.add_post(WEBHOOK_PATH, handle_webhook)
-app.router.add_get("/healthz", lambda request: web.Response(text="OK"))
-app.router.add_get("/", lambda request: web.Response(text="Грокки жив и работает!"))
+@app.get("/healthz")
+async def healthz():
+    return PlainTextResponse("OK")
 
 
-async def handle_42_api(request):
+@app.get("/")
+async def root():
+    return PlainTextResponse("Грокки жив и работает!")
+
+
+@app.post("/42")
+async def handle_42_api(payload: dict):
     """Expose 42-utility commands via a simple HTTP endpoint."""
-    try:
-        data = await request.json()
-    except Exception:
-        data = {}
-    cmd = data.get("cmd") or request.query.get("cmd", "")
+    cmd = (payload or {}).get("cmd", "")
     if cmd not in {"when", "mars", "42", "whatsnew"}:
-        return web.json_response({"error": "Unsupported command"}, status=400)
+        return JSONResponse({"error": "Unsupported command"}, status_code=400)
     result = await handle(cmd)
-    return web.json_response(result)
+    return JSONResponse(result)
 
 
-app.router.add_post("/42", handle_42_api)
+@app.post("/file")
+async def handle_file(upload: UploadFile = File(...)):
+    suffix = os.path.splitext(upload.filename or "")[1]
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(await upload.read())
+        tmp.flush()
+        result = await parse_and_store_file(tmp.name)
+    os.unlink(tmp.name)
+    return {"result": result}
+
 
 # Хуки запуска и остановки
-app.on_startup.append(on_startup)
-app.on_shutdown.append(on_shutdown)
+@app.on_event("startup")
+async def _startup():
+    await on_startup()
+
+
+@app.on_event("shutdown")
+async def _shutdown():
+    await on_shutdown()
+
 
 # Запуск сервера
 if __name__ == "__main__":
     logger.info(f"Запуск сервера на {WEBAPP_HOST}:{WEBAPP_PORT}")
-    web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
+    import uvicorn
+
+    uvicorn.run(app, host=WEBAPP_HOST, port=WEBAPP_PORT)

@@ -69,6 +69,24 @@ By bridging deterministic scripts with ephemeral weights, the 42 utility
 shows how a modest tool can dance with much larger brains while staying
 light on resources.
 
+### File Handling Utility
+
+Grokky now carries a file processor that acts like a miniature neural agent. When a document arrives, the handler wakes a pocket network that reads the bytes, infers structure and maps every token against a seed corpus dripping with spacefaring lore.
+
+At the front sits a tiny Markov chain. It chews through extracted text and emits tags with a softmax twist: each transition weight swells with the current pulse so cosmic keywords rise to the top.
+
+An Echo State Network hovers beside it. Raw bytes flow into a liquid reservoir where leaky neurons predict the file's true nature—PDF, image or something stranger—before any extension is trusted.
+
+To keep the rhythm human, a ChaosPulse and a bio‑resonant trio track how intense the content feels. BloodFlux sets the pulse, SkinSheath gauges quivers and a SixthSense forecasts the next ripple.
+
+Weights never stay still. Dynamic scaling keeps them fluid so every file nudge reshapes the Markov chain and ESN without heavy training, letting the utility learn just enough before the memory fades.
+
+The handler speaks dozens of formats—PDF, DOCX, images, even nested archives like ZIP or RAR—each funneled through async extractors protected by semaphores for thread‑safe chaos.
+
+Beyond single files it can snapshot entire repositories, hashing contents and scoring relevance against the seed corpus to highlight fragments that echo Grokky’s mission with more than fifty percent overlap.
+
+Every run writes structured logs, summaries and pulse readings back into Grokky's memory stream so the main server and Telegram bot can riff on the newly ingested data without missing a beat.
+
 ### Coder Utility
 
 Grokky's coder mode turns the AI into an interactive reviewer. Paste in
