@@ -37,7 +37,7 @@ try:  # pragma: no cover - optional dependency
 except Exception:  # pragma: no cover - optional dependency
     CharGen = None  # type: ignore
 
-from utils.dynamic_weights import get_dynamic_knowledge
+from utils.dynamic_weights import get_dynamic_knowledge, apply_pulse
 
 
 def _translate(text: str, lang: str) -> str:
@@ -150,7 +150,8 @@ class MiniMarkov:
             if state not in self.chain or not self.chain[state]:
                 break
             choices = list(self.chain[state].keys())
-            weights = [self.chain[state][w] * (1 + self.pulse * random.uniform(0.8, 1.2)) for w in choices]
+            raw = [self.chain[state][w] for w in choices]
+            weights = apply_pulse(raw, self.pulse)
             next_word = random.choices(choices, weights=weights, k=1)[0]
             result.append(next_word)
             state = tuple(result[-self.n:])

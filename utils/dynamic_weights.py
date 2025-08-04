@@ -1,6 +1,7 @@
 import os
 import time
-from typing import Optional
+import math
+from typing import Optional, Sequence, List
 
 import requests
 
@@ -64,3 +65,21 @@ def get_dynamic_knowledge(prompt: str, api_key: Optional[str] = None) -> str:
     if knowledge.startswith("Grok-3 offline"):
         knowledge = query_gpt4(prompt, api_key)
     return knowledge
+
+
+def apply_pulse(weights: Sequence[float], pulse: float) -> List[float]:
+    """Scale ``weights`` by ``pulse`` using a softmax normalisation.
+
+    ``pulse`` is expected to be between ``0`` and ``1``.  The function first
+    scales the weights by ``1 + pulse * 0.7`` and then applies a numerically
+    stable softmax.  The returned list sums to ``1`` and can be used directly
+    as probabilities.
+    """
+
+    scaled = [w * (1 + pulse * 0.7) for w in weights]
+    if not scaled:
+        return []
+    max_w = max(scaled)
+    exps = [math.exp(w - max_w) for w in scaled]
+    total = sum(exps) or 1.0
+    return [e / total for e in exps]

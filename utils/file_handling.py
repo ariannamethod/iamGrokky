@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import os
 import tarfile
 import tempfile
 import zipfile
+import time
 from typing import Callable, Dict, Optional, Tuple, List
 from pathlib import Path
 import random
@@ -18,7 +21,7 @@ try:
     from char_gen import CharGen  # Assume from SUPERTIME
 except ImportError:
     CharGen = None
-from grok_api import query_grok3  # Grok-3/GPT-4.1 fallback
+from utils.dynamic_weights import get_dynamic_knowledge, apply_pulse
 from pypdf import PdfReader
 try:
     import docx
@@ -49,14 +52,35 @@ try:
     import yaml
 except ImportError:
     yaml = None
+try:
+    import rarfile
+except ImportError:
+    rarfile = None
 
 # Глобальные настройки
 DEFAULT_MAX_TEXT_SIZE = 100_000
 REPO_SNAPSHOT_PATH = "config/repo_snapshot.md"
 LOG_DIR = Path("logs/file_handling")
+FAIL_DIR = Path("logs/failures")
 CACHE_DB = Path("cache/file_cache.db")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+FAIL_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DB.parent.mkdir(parents=True, exist_ok=True)
+
+
+def log_event(msg: str, log_type: str = "info") -> None:
+    """Write ``msg`` to the file-handling log and failures log if needed."""
+
+    entry = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "type": log_type,
+        "msg": msg,
+    }
+    with (LOG_DIR / f"{datetime.utcnow().date()}.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    if log_type == "error":
+        with (FAIL_DIR / f"{datetime.utcnow().date()}.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 _SEED_CORPUS = """
 mars starship optimus robots xai resonance chaos wulf multiplanetary arcadia
@@ -112,7 +136,8 @@ class MiniMarkov:
             if state not in self.chain or not self.chain[state]:
                 break
             choices = list(self.chain[state].keys())
-            weights = [self.chain[state][w] * (1 + self.pulse * random.uniform(0.8, 1.2)) for w in choices]
+            raw = [self.chain[state][w] for w in choices]
+            weights = apply_pulse(raw, self.pulse)
             next_word = random.choices(choices, weights=weights, k=1)[0]
             result.append(next_word)
             state = tuple(list(state[1:]) + [next_word])
@@ -151,19 +176,30 @@ class MiniESN:
 
     def forward(self, input_data: bytes, content: str = "") -> str:
         self._init_reservoir(len(input_data))
-        input_vector = np.array([b / 255 for b in input_data[:self.input_size]] + [0] * (self.input_size - min(len(input_data), self.input_size)))
+        input_vector = np.array(
+            [b / 255 for b in input_data[: self.input_size]]
+            + [0] * (self.input_size - min(len(input_data), self.input_size))
+        )
         keywords = {"mars": 0.15, "starship": 0.15, "xai": 0.1, "chaos": 0.1}
-        content_boost = sum(keywords.get(w, 0) for w in re.findall(r'\w+', content.lower()))
+        content_boost = sum(
+            keywords.get(w, 0) for w in re.findall(r"\w+", content.lower())
+        )
         self.state = self.leaky_rate * self.state + (1 - self.leaky_rate) * np.tanh(
             np.dot(self.W_in, input_vector) + np.dot(self.W, self.state) + content_boost
         )
         output = np.dot(self.W_out, self.state)
-        predicted = np.argmax(output)
-        return self.rev_map.get(predicted, '.unknown')
+        weights = apply_pulse(output.tolist(), chaos_pulse.get())
+        predicted = int(np.argmax(weights))
+        return self.rev_map.get(predicted, ".unknown")
 
     def update(self, text: str, pulse: float):
-        words = re.findall(r'\w+', text.lower())
-        input_vector = np.array([hash(w) % self.input_size for w in words[:self.input_size]] + [0] * (self.input_size - min(len(words), self.input_size)))
+        if self.state is None:
+            self._init_reservoir(len(text))
+        words = re.findall(r"\w+", text.lower())
+        input_vector = np.array(
+            [hash(w) % self.input_size for w in words[: self.input_size]]
+            + [0] * (self.input_size - min(len(words), self.input_size))
+        )
         self.state = self.leaky_rate * self.state + (1 - self.leaky_rate) * np.tanh(
             np.dot(self.W_in, input_vector) + np.dot(self.W, self.state) + pulse * 0.1
         )
@@ -184,9 +220,13 @@ class ChaosPulse:
         keywords = {"success": 0.2, "error": -0.25, "mars": 0.15, "data": 0.1, "failure": -0.3, "chaos": 0.1}
         pulse_change = sum(keywords.get(word, 0) for word in re.findall(r'\w+', text.lower()))
         try:
-            sentiment = query_grok3(f"Sentiment of: {text[:200]} (positive/negative/neutral)", temp=0.7).strip().lower()
-            pulse_change += 0.15 if 'positive' in sentiment else -0.15 if 'negative' in sentiment else 0
-        except:
+            sentiment = get_dynamic_knowledge(
+                f"Sentiment of: {text[:200]} (positive/negative/neutral)"
+            ).strip().lower()
+            pulse_change += (
+                0.15 if "positive" in sentiment else -0.15 if "negative" in sentiment else 0
+            )
+        except Exception:
             pass
         self.pulse = max(0.1, min(0.9, self.pulse + pulse_change + random.uniform(-0.05, 0.05)))
         self.last_update = time.time()
@@ -240,15 +280,22 @@ def compute_relevance(text: str) -> float:
     seed_words = set(re.findall(r'\w+', _SEED_CORPUS.lower()))
     text_words = set(re.findall(r'\w+', text.lower()))
     intersection = seed_words & text_words
-    return len(intersection) / max(len(seed_words), 1) if text_words else 0.0
+    return len(intersection) / max(len(text_words), 1) if text_words else 0.0
 
 # Инициализация
 chaos_pulse = ChaosPulse()
 bio = BioOrchestra()
 markov = MiniMarkov(_SEED_CORPUS, n=3)
 esn = MiniESN()
-cg = CharGen(seed_text="Files pulse with chaos. Mars ignites the void. Wulf shreds.", seed=42) if CharGen else None
-init_cache_db()
+cg = (
+    CharGen(
+        seed_text="Files pulse with chaos. Mars ignites the void. Wulf shreds.",
+        seed=42,
+    )
+    if CharGen
+    else None
+)
+
 
 # SQLite кэш
 def init_cache_db():
@@ -267,6 +314,9 @@ def init_cache_db():
         """)
         conn.execute("DELETE FROM file_cache WHERE timestamp < ?", (time.time() - 7 * 86400,))  # Cleanup old
         conn.commit()
+
+
+init_cache_db()
 
 def save_cache(path: str, ext: str, hash: str, tags: str, relevance: float, summary: str):
     with sqlite3.connect(CACHE_DB) as conn:
@@ -301,10 +351,12 @@ async def paraphrase(text: str, prefix: str = "Summarize this for kids: ") -> st
     except Exception as e:
         log_event(f"Paraphrase failed: {str(e)}", "error")
         try:
-            paraphrased = query_grok3(f"{prefix}{text[:200]}", temp=temp).strip()
+            paraphrased = get_dynamic_knowledge(f"{prefix}{text[:200]}").strip()
             markov.update_chain(paraphrased)
-            return paraphrased + " Void pulse activated! 🚀" if paraphrased else text
-        except:
+            return (
+                paraphrased + " Void pulse activated! 🚀" if paraphrased else text
+            )
+        except Exception:
             return text + " Ether’s silent, Wulf persists! 🌌"
 
 # FileHandler
@@ -325,6 +377,7 @@ class FileHandler:
             ".doc": self._extract_doc,
             ".odt": self._extract_odt,
             ".zip": self._extract_zip,
+            ".rar": self._extract_rar,
             ".tar": self._extract_tar,
             ".tar.gz": self._extract_tar,
             ".tgz": self._extract_tar,
@@ -359,10 +412,9 @@ class FileHandler:
             async with self._semaphore:
                 with open(path, "rb") as f:
                     content = f.read(512)
-                text = await self.extract_async(path)
-                ext = esn.forward(content, text)
-                save_cache(path, ext, "", "", 0.0, "")
-                return ext
+            ext = esn.forward(content)
+            save_cache(path, ext, "", "", 0.0, "")
+            return ext
         except Exception as e:
             log_event(f"Detect ext error ({path}): {str(e)}", "error")
             return ".unknown"
@@ -565,6 +617,44 @@ class FileHandler:
                 log_event(f"ZIP error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[ZIP error: {str(e)}]"
 
+    async def _extract_rar(self, path: str) -> str:
+        async with self._semaphore:
+            try:
+                if not rarfile:
+                    raise RuntimeError("rarfile not installed")
+                texts: List[str] = []
+                with rarfile.RarFile(path) as rf:
+                    for name in rf.namelist():
+                        if name.endswith("/"):
+                            continue
+                        try:
+                            data = rf.read(name)
+                            ext = await self._detect_extension(name)
+                            extractor = self._extractors.get(ext)
+                            if extractor and extractor not in {self._extract_zip, self._extract_tar, self._extract_rar}:
+                                with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                                    tmp.write(data)
+                                    tmp.flush()
+                                    text = await extractor(tmp.name)
+                                os.unlink(tmp.name)
+                            else:
+                                try:
+                                    text = data.decode("utf-8")
+                                except UnicodeDecodeError:
+                                    text = data.decode("latin1", "ignore")
+                            texts.append(text)
+                        except Exception:
+                            continue
+                combined = "\n".join(texts)
+                esn.update(combined, chaos_pulse.get())
+                return self._truncate(combined) if combined.strip() else "[RAR empty]"
+            except Exception as e:
+                try:
+                    return await self._extract_zip(path)
+                except Exception:
+                    log_event(f"RAR error ({os.path.basename(path)}): {str(e)}", "error")
+                    return f"[RAR error: {str(e)}]"
+
     async def _extract_tar(self, path: str) -> str:
         async with self._semaphore:
             try:
@@ -610,7 +700,12 @@ class FileHandler:
         return asyncio.run(extractor(path))
 
     async def extract_async(self, path: str) -> str:
-        return await self._extractors.get(await self._detect_extension(path), lambda x: f"[Unsupported file: {os.path.basename(x)}]")(path)
+        ext = await self._detect_extension(path)
+        extractor = self._extractors.get(ext)
+        if not extractor:
+            log_event(f"Unsupported file type: {os.path.basename(path)}", "error")
+            return f"[Unsupported file: {os.path.basename(path)}]"
+        return await extractor(path)
 
     async def extract_batch(self, paths: List[str]) -> List[str]:
         return await asyncio.gather(*(self.extract_async(p) for p in paths), return_exceptions=True)
