@@ -69,9 +69,9 @@ By bridging deterministic scripts with ephemeral weights, the 42 utility
 shows how a modest tool can dance with much larger brains while staying
 light on resources.
 
-### File Handling Processor
+### Context Neural Processor
 
-The module at `utils/file_handling.py` acts as a standalone file-processing
+The module at `utils/context_neural_processor.py` acts as a standalone file-processing
 neuron.  Instead of simply reading documents, it spins up a MiniMarkov and a
 compact echo-state network that weigh every byte through liquid parameters.
 

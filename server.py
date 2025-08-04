@@ -61,7 +61,7 @@ from utils.hybrid_engine import HybridGrokkyEngine
 
 # Special command handler from the playful 42 utility
 from utils import handle  # utils/42.py
-from utils.file_handling import parse_and_store_file
+from utils.context_neural_processor import parse_and_store_file
 
 # Настройки логирования
 logging.basicConfig(
