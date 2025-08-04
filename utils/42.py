@@ -303,17 +303,35 @@ def when(lang: str = "en") -> str:
     result = f"{paraphrased}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
     return _translate(result, lang)
 
-def mars(lang: str = "en") -> str:
-    base = markov.generate(length=16, start="mars")
-    paraphrased = paraphrase(base, "Crisp Mars status update: ")
-    paraphrased = _append_links(MARS_BASE, paraphrased)
-    pulse, quiver, sense = bio.enhance(len(paraphrased) / 100)
+async def mars(lang: str = "en") -> str:
+    sources = [
+        ("SpaceX", "https://www.spacex.com/humanspaceflight/mars"),
+        ("NASA", "https://mars.nasa.gov"),
+        ("Space.com", "https://www.space.com/mars-colonization"),
+    ]
+    pieces = []
+    links = []
+    for name, url in sources:
+        links.append(url)
+        html = await fetch_url(url)
+        summary = "See link"
+        if html and BeautifulSoup is not None:
+            try:
+                soup = BeautifulSoup(html, "html.parser")  # type: ignore[misc]
+                text = " ".join(p.get_text(strip=True) for p in soup.find_all("p")[:5])
+                summary = paraphrase(text, f"Summarize {name} Mars update: ")
+            except Exception as e:
+                log_event(f"Parse {url} failed: {str(e)}", "error")
+        pieces.append(f"{name}: {summary}")
+        chaos_pulse.update(summary)
+        markov.update_chain(summary)
+    retell = "Mars roundup:\n" + "\n".join(pieces)
+    retell += "\nLinks:\n" + "\n".join(links)
+    pulse, quiver, sense = bio.enhance(len(retell) / 100)
     log_event(
-        f"Served /mars: {paraphrased[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
+        f"Served /mars: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
     )
-    if random.random() < 0.01:
-        paraphrased += "\nP.S. xAI’s chaos fuels Musk’s Mars! #NikoleSpark"
-    result = f"{paraphrased}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
+    result = f"{retell}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
     return _translate(result, lang)
 
 def forty_two(lang: str = "en") -> str:
@@ -339,8 +357,8 @@ async def whatsnew(lang: str = "en") -> str:
         return _translate(cached["summary"], lang)
 
     urls = ["https://www.spacex.com/updates", "https://x.ai/blog"]
-    retell = f"Latest news (Pulse: {chaos_pulse.get():.2f}):\n"
-    initial = retell
+    articles: list[str] = []
+    links: list[str] = []
     for url in urls:
         html = await fetch_url(url)
         if not html or BeautifulSoup is None:
@@ -353,16 +371,20 @@ async def whatsnew(lang: str = "en") -> str:
                 date = article.find("time").text.strip() if article.find("time") else datetime.now().strftime("%B %Y")
                 link = urljoin(url, article.find("a")["href"]) if article.find("a") else url
                 summary = article.find("p").text.strip()[:150] + "..." if article.find("p") else "See link"
-                paraphrased = paraphrase(summary, "Retell this news for kids: " )
-                retell += f"- {title} ({date}): {paraphrased}\nLink: {link}\n"
-            chaos_pulse.update(retell)
-            markov.update_chain(retell)
+                paraphrased = paraphrase(summary, "Retell this news for kids: ")
+                articles.append(f"{title} ({date}): {paraphrased}")
+                links.append(link)
             break
         except Exception as e:
             log_event(f"Parse {url} failed: {str(e)}", "error")
             continue
 
-    if retell != initial:
+    if articles:
+        retell = "Latest news:\n" + "\n".join(f"- {a}" for a in articles)
+        if links:
+            retell += "\nLinks:\n" + "\n".join(links)
+        chaos_pulse.update(retell)
+        markov.update_chain(retell)
         pulse, quiver, sense = bio.enhance(len(retell) / 100)
         save_cache(retell, chaos_pulse.get())
         log_event(
@@ -378,25 +400,23 @@ async def whatsnew(lang: str = "en") -> str:
             "Latest x.com/SpaceX Mars/Starship tweet, summarize in 100 chars",
         ).strip()
         if any(kw in tweet.lower() for kw in ["mars", "starship"]):
-            paraphrased = paraphrase(tweet, "Retell this tweet simply: " )
-            retell = (
-                "Latest SpaceX tweet:\n- Mars Update: "
-                f"{paraphrased}\nLink: https://x.com/SpaceX"
-            )
+            paraphrased = paraphrase(tweet, "Retell this tweet simply: ")
+            retell = f"Latest SpaceX tweet: {paraphrased}"
+            links = ["https://x.com/SpaceX"]
             chaos_pulse.update(retell)
             markov.update_chain(retell)
         else:
-            retell = (
-                "No Mars/Starship tweets. Last: Starship Flight 6 (July 2025). "
-                "Link: https://www.spacex.com/updates/starship-flight-6"
-            )
+            retell = "No Mars/Starship tweets. Last: Starship Flight 6 (July 2025)."
+            links = ["https://www.spacex.com/updates/starship-flight-6"]
     except Exception as e:
         log_event(f"X search failed: {str(e)}", "error")
         retell = (
-            "News fetch failed, Wulf stands ready! Last: Starship Flight 6 (July 2025). "
-            "Link: https://www.spacex.com/updates/starship-flight-6"
+            "News fetch failed, Wulf stands ready! Last: Starship Flight 6 (July 2025)."
         )
+        links = ["https://www.spacex.com/updates/starship-flight-6"]
 
+    if links:
+        retell += "\nLinks:\n" + "\n".join(links)
     pulse, quiver, sense = bio.enhance(len(retell) / 100)
     save_cache(retell, chaos_pulse.get())
     log_event(
@@ -428,7 +448,7 @@ async def handle(cmd: str, lang: str = "en") -> Dict[str, str]:
         if cmd == "when":
             return {"response": when(lang), "pulse": chaos_pulse.get()}
         if cmd == "mars":
-            return {"response": mars(lang), "pulse": chaos_pulse.get()}
+            return {"response": await mars(lang), "pulse": chaos_pulse.get()}
         if cmd == "42":
             return {"response": forty_two(lang), "pulse": chaos_pulse.get()}
         if cmd == "whatsnew":
