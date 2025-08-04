@@ -1,20 +1,49 @@
+"""Playful mini neural network for Grokky's special commands.
+
+The module powers the `/when`, `/mars`, `/42` and `/whatsnew` commands.
+It mixes a tiny Markov chain with a couple of bio-inspired helpers to
+produce whimsical text and fetch small pieces of news.  The goal of this
+patch is not only to integrate the module into the main server but also
+to make it a little more robust and lively.
+"""
+
+import argparse
+import asyncio
+import contextlib
+import json
+import math
 import random
 import re
-import math
+import sqlite3
 import time
-import argparse
-import json
-import asyncio
+from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+from urllib.parse import urljoin
+
 import aiohttp
-from bs4 import BeautifulSoup  # Add to requirements.txt: aiohttp, beautifulsoup4
-from char_gen import CharGen  # Assume from SUPERTIME
-from grok_api import query_grok3  # Grok-3 API
-from collections import Counter, defaultdict
-import sqlite3
-import contextlib
+
+# Optional dependencies -----------------------------------------------------
+# BeautifulSoup is used for HTML parsing.  It is listed in requirements but
+# we guard the import so that tests can run even if the package is missing.
+try:  # pragma: no cover - optional dependency
+    from bs4 import BeautifulSoup  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    BeautifulSoup = None  # type: ignore
+
+# CharGen and Grok-3 API are external optional helpers.  We fall back to
+# lightweight stubs when they are not available.
+try:  # pragma: no cover - optional dependency
+    from char_gen import CharGen  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    CharGen = None  # type: ignore
+
+try:  # pragma: no cover - optional dependency
+    from grok_api import query_grok3  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    def query_grok3(*args, **kwargs):  # type: ignore
+        return ""
 
 LOG_DIR = Path("logs/42")
 CACHE_DB = Path("cache/cache.db")
@@ -195,8 +224,11 @@ def save_cache(summary: str, pulse: float):
         conn.commit()
 
 def load_cache(max_age: float = 43200) -> Optional[Dict]:
+    """Load cached news summary if it is still fresh."""
     with sqlite3.connect(CACHE_DB) as conn:
-        cursor = conn.execute("SELECT summary, pulse FROM whatsnew ORDER BY timestamp DESC LIMIT 1")
+        cursor = conn.execute(
+            "SELECT summary, pulse, timestamp FROM whatsnew ORDER BY timestamp DESC LIMIT 1"
+        )
         result = cursor.fetchone()
         if result and (time.time() - result[2]) < max_age:
             return {"summary": result[0], "pulse": result[1]}
@@ -270,10 +302,10 @@ async def whatsnew() -> str:
     retell = f"Latest news (Pulse: {chaos_pulse.get():.2f}):\n"
     for url in urls:
         html = await fetch_url(url)
-        if not html:
+        if not html or BeautifulSoup is None:
             continue
         try:
-            soup = BeautifulSoup(html, "html.parser")
+            soup = BeautifulSoup(html, "html.parser")  # type: ignore[misc]
             updates = soup.find_all("article", limit=3)
             for article in updates:
                 title = article.find("h2").text.strip() if article.find("h2") else "Update"
@@ -315,20 +347,37 @@ async def whatsnew() -> str:
 
 # Главный обработчик
 async def handle(cmd: str) -> Dict[str, str]:
+    """Main asynchronous dispatcher for the 42 utility.
+
+    Parameters
+    ----------
+    cmd:
+        Command name without the leading slash.  Supported values are
+        ``"when"``, ``"mars"``, ``"42"`` and ``"whatsnew"``.
+
+    Returns
+    -------
+    Dict[str, str]
+        Mapping with the textual ``response`` and the current ``pulse``.
+    """
+
     cmd = cmd.strip().lower()
     try:
         if cmd == "when":
             return {"response": when(), "pulse": chaos_pulse.get()}
-        elif cmd == "mars":
+        if cmd == "mars":
             return {"response": mars(), "pulse": chaos_pulse.get()}
-        elif cmd == "42":
+        if cmd == "42":
             return {"response": forty_two(), "pulse": chaos_pulse.get()}
-        elif cmd == "whatsnew":
+        if cmd == "whatsnew":
             return {"response": await whatsnew(), "pulse": chaos_pulse.get()}
-        else:
-            log_event(f"Unknown cmd: {cmd}", "error")
-            return {"response": "Unknown command! Try /when, /mars, /42, /whatsnew.", "pulse": chaos_pulse.get()}
-    except Exception as e:
+
+        log_event(f"Unknown cmd: {cmd}", "error")
+        return {
+            "response": "Unknown command! Try /when, /mars, /42, /whatsnew.",
+            "pulse": chaos_pulse.get(),
+        }
+    except Exception as e:  # pragma: no cover - best effort
         log_event(f"Handle {cmd} failed: {str(e)}", "error")
         return {"response": f"Error: {str(e)}. Wulf persists!", "pulse": chaos_pulse.get()}
 
