@@ -56,6 +56,9 @@ from SLNCX.wulf_integration import generate_response
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
 
+# Special command handler from the playful 42 utility
+from utils import handle  # utils/42.py
+
 # Настройки логирования
 logging.basicConfig(
     level=logging.INFO,
@@ -337,6 +340,34 @@ async def cmd_clearmemory(message: Message):
         logger.error(f"Ошибка при очистке памяти: {e}")
         logger.error(traceback.format_exc())
         await reply_split(message, "🌀 Произошла ошибка при очистке памяти")
+
+
+@dp.message(Command("when"))
+async def cmd_when(message: Message):
+    """Handle /when command via the 42 utility."""
+    result = await handle("when")
+    await reply_split(message, result["response"])
+
+
+@dp.message(Command("mars"))
+async def cmd_mars(message: Message):
+    """Handle /mars command via the 42 utility."""
+    result = await handle("mars")
+    await reply_split(message, result["response"])
+
+
+@dp.message(Command("42"))
+async def cmd_42(message: Message):
+    """Handle /42 command via the 42 utility."""
+    result = await handle("42")
+    await reply_split(message, result["response"])
+
+
+@dp.message(Command("whatsnew"))
+async def cmd_whatsnew(message: Message):
+    """Handle /whatsnew command via the 42 utility."""
+    result = await handle("whatsnew")
+    await reply_split(message, result["response"])
 
 
 async def handle_coder_prompt(message: Message, text: str) -> None:
@@ -627,13 +658,19 @@ async def on_startup(app):
     try:
         await bot.set_my_commands(
             [
-                types.BotCommand(command="voiceon", description="voiceon"),
-                types.BotCommand(command="voiceoff", description="voiceoff"),
-                types.BotCommand(command="imagine", description="imagine"),
-                types.BotCommand(command="coder", description="coder"),
-                types.BotCommand(command="coderoff", description="coderoff"),
-                types.BotCommand(command="slncx", description="slncx"),
-                types.BotCommand(command="slncxoff", description="slncxoff"),
+                types.BotCommand(command="voiceon", description="speak"),
+                types.BotCommand(command="voiceoff", description="mute"),
+                types.BotCommand(command="imagine", description="draw me"),
+                types.BotCommand(command="coder", description="show me your code"),
+                types.BotCommand(command="coderoff", description="coder mode off"),
+                types.BotCommand(command="slncx", description="SLNCX (Grok 1 Rebirth)"),
+                types.BotCommand(command="slncxoff", description="SLNCX-off"),
+                types.BotCommand(command="status", description="status"),
+                types.BotCommand(command="clearmemory", description="clear memory"),
+                types.BotCommand(command="when", description="when"),
+                types.BotCommand(command="mars", description="why Mars?"),
+                types.BotCommand(command="42", description="why 42?"),
+                types.BotCommand(command="whatsnew", description="what's going on with Earth"),
             ]
         )
         await bot.set_chat_menu_button(menu_button=types.MenuButtonCommands())
@@ -667,6 +704,22 @@ app = web.Application()
 app.router.add_post(WEBHOOK_PATH, handle_webhook)
 app.router.add_get("/healthz", lambda request: web.Response(text="OK"))
 app.router.add_get("/", lambda request: web.Response(text="Грокки жив и работает!"))
+
+
+async def handle_42_api(request):
+    """Expose 42-utility commands via a simple HTTP endpoint."""
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    cmd = data.get("cmd") or request.query.get("cmd", "")
+    if cmd not in {"when", "mars", "42", "whatsnew"}:
+        return web.json_response({"error": "Unsupported command"}, status=400)
+    result = await handle(cmd)
+    return web.json_response(result)
+
+
+app.router.add_post("/42", handle_42_api)
 
 # Хуки запуска и остановки
 app.on_startup.append(on_startup)
