@@ -142,6 +142,17 @@ CODER_MODE: dict[int, bool] = {}
 SLNCX_MODE: dict[int, bool] = {}
 # Pending long coder outputs waiting for user choice
 CODER_OUTPUT: dict[tuple[int, int], str] = {}
+# Preferred language per chat
+CHAT_LANG: dict[int, str] = {}
+
+
+def detect_language(text: str) -> str:
+    """Very small heuristic language detector."""
+    if re.search("[а-яА-Я]", text):
+        return "ru"
+    if re.search("[a-zA-Z]", text):
+        return "en"
+    return "en"
 
 
 async def synth_voice(text: str, lang: str = "ru") -> bytes:
@@ -254,8 +265,11 @@ async def reply_split(message: Message, text: str) -> None:
     total = len(chunks)
 
     for idx, chunk in enumerate(chunks, start=1):
-        prefix = f"🌀 Ответ в {total} частях. Часть {idx}/{total}:\n"
-        full_text = prefix + chunk
+        if total > 1:
+            prefix = f"🌀 Ответ в {total} частях. Часть {idx}/{total}:\n"
+            full_text = prefix + chunk
+        else:
+            full_text = chunk
         if idx == 1:
             await message.reply(full_text)
         else:
@@ -368,7 +382,7 @@ async def cmd_clearmemory(message: Message):
 @dp.message(Command("when"))
 async def cmd_when(message: Message):
     """Handle /when command via the 42 utility."""
-    lang = getattr(message.from_user, "language_code", "en") or "en"
+    lang = CHAT_LANG.get(message.chat.id, detect_language(message.text or ""))
     result = await handle("when", lang)
     await reply_split(message, result["response"])
 
@@ -376,7 +390,7 @@ async def cmd_when(message: Message):
 @dp.message(Command("mars"))
 async def cmd_mars(message: Message):
     """Handle /mars command via the 42 utility."""
-    lang = getattr(message.from_user, "language_code", "en") or "en"
+    lang = CHAT_LANG.get(message.chat.id, detect_language(message.text or ""))
     result = await handle("mars", lang)
     await reply_split(message, result["response"])
 
@@ -384,7 +398,7 @@ async def cmd_mars(message: Message):
 @dp.message(Command("42"))
 async def cmd_42(message: Message):
     """Handle /42 command via the 42 utility."""
-    lang = getattr(message.from_user, "language_code", "en") or "en"
+    lang = CHAT_LANG.get(message.chat.id, detect_language(message.text or ""))
     result = await handle("42", lang)
     await reply_split(message, result["response"])
 
@@ -392,7 +406,7 @@ async def cmd_42(message: Message):
 @dp.message(Command("whatsnew"))
 async def cmd_whatsnew(message: Message):
     """Handle /whatsnew command via the 42 utility."""
-    lang = getattr(message.from_user, "language_code", "en") or "en"
+    lang = CHAT_LANG.get(message.chat.id, detect_language(message.text or ""))
     result = await handle("whatsnew", lang)
     await reply_split(message, result["response"])
 
@@ -482,6 +496,9 @@ async def handle_text(message: Message, text: str) -> None:
         await update_last_message_time()
     except Exception as e:
         logger.error("Ошибка при обновлении времени последнего сообщения: %s", e)
+
+    lang = detect_language(text)
+    CHAT_LANG[message.chat.id] = lang
 
     if CODER_MODE.get(message.chat.id):
         await handle_coder_prompt(message, text)
