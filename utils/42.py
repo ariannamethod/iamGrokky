@@ -9,9 +9,7 @@ to make it a little more robust and lively.
 
 import argparse
 import asyncio
-import contextlib
 import json
-import math
 import random
 import re
 import sqlite3
@@ -32,18 +30,14 @@ try:  # pragma: no cover - optional dependency
 except Exception:  # pragma: no cover - optional dependency
     BeautifulSoup = None  # type: ignore
 
-# CharGen and Grok-3 API are external optional helpers.  We fall back to
-# lightweight stubs when they are not available.
+# CharGen is optional.  For Grok-3 access we use the dynamic weights helper
+# which falls back to GPT when Grok-3 is unavailable.
 try:  # pragma: no cover - optional dependency
     from char_gen import CharGen  # type: ignore
 except Exception:  # pragma: no cover - optional dependency
     CharGen = None  # type: ignore
 
-try:  # pragma: no cover - optional dependency
-    from grok_api import query_grok3  # type: ignore
-except Exception:  # pragma: no cover - optional dependency
-    def query_grok3(*args, **kwargs):  # type: ignore
-        return ""
+from utils.dynamic_weights import get_dynamic_knowledge
 
 LOG_DIR = Path("logs/42")
 CACHE_DB = Path("cache/cache.db")
@@ -256,7 +250,7 @@ def paraphrase(text: str, prefix: str = "Retell simply: ") -> str:
             markov.update_chain(paraphrased)
             return paraphrased + random.choice([" Shred the cosmos! 🌌", " Thunderstrike alive! 🚀"])
         else:
-            paraphrased = query_grok3(f"{prefix}{text[:200]}", temp=temp).strip()
+            paraphrased = get_dynamic_knowledge(f"{prefix}{text[:200]}").strip()
             markov.update_chain(paraphrased)
             return paraphrased + " Void pulse kicks in! 🌩️" if paraphrased else text
     except Exception as e:
@@ -328,7 +322,9 @@ async def whatsnew() -> str:
         return f"{retell}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
     
     try:
-        tweet = query_grok3("Latest x.com/SpaceX Mars/Starship tweet, summarize in 100 chars", temp=0.8).strip()
+        tweet = get_dynamic_knowledge(
+            "Latest x.com/SpaceX Mars/Starship tweet, summarize in 100 chars"
+        ).strip()
         if any(kw in tweet.lower() for kw in ["mars", "starship"]):
             paraphrased = paraphrase(tweet, "Retell this tweet simply: ")
             retell = f"Latest SpaceX tweet:\n- Mars Update: {paraphrased}\nLink: https://x.com/SpaceX"

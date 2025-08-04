@@ -55,6 +55,7 @@ from SLNCX.wulf_integration import generate_response
 
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
+from utils.hybrid_engine import HybridGrokkyEngine
 
 # Special command handler from the playful 42 utility
 from utils import handle  # utils/42.py
@@ -121,6 +122,13 @@ if os.getenv("ENABLE_VECTOR_ENGINE") == "1":
         logger.info("VectorGrokkyEngine инициализирован успешно")
     except Exception as e:  # pragma: no cover - network
         logger.error(f"Ошибка при инициализации VectorGrokkyEngine: {e}")
+        logger.error(traceback.format_exc())
+else:
+    try:
+        engine = HybridGrokkyEngine()
+        logger.info("HybridGrokkyEngine инициализирован успешно")
+    except Exception as e:  # pragma: no cover - network
+        logger.error(f"Ошибка при инициализации HybridGrokkyEngine: {e}")
         logger.error(traceback.format_exc())
 
 # Обработка голосовых сообщений
