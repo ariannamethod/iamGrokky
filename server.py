@@ -353,28 +353,32 @@ async def cmd_clearmemory(message: Message):
 @dp.message(Command("when"))
 async def cmd_when(message: Message):
     """Handle /when command via the 42 utility."""
-    result = await handle("when")
+    lang = getattr(message.from_user, "language_code", "en") or "en"
+    result = await handle("when", lang=lang)
     await reply_split(message, result["response"])
 
 
 @dp.message(Command("mars"))
 async def cmd_mars(message: Message):
     """Handle /mars command via the 42 utility."""
-    result = await handle("mars")
+    lang = getattr(message.from_user, "language_code", "en") or "en"
+    result = await handle("mars", lang=lang)
     await reply_split(message, result["response"])
 
 
 @dp.message(Command("42"))
 async def cmd_42(message: Message):
     """Handle /42 command via the 42 utility."""
-    result = await handle("42")
+    lang = getattr(message.from_user, "language_code", "en") or "en"
+    result = await handle("42", lang=lang)
     await reply_split(message, result["response"])
 
 
 @dp.message(Command("whatsnew"))
 async def cmd_whatsnew(message: Message):
     """Handle /whatsnew command via the 42 utility."""
-    result = await handle("whatsnew")
+    lang = getattr(message.from_user, "language_code", "en") or "en"
+    result = await handle("whatsnew", lang=lang)
     await reply_split(message, result["response"])
 
 
@@ -723,7 +727,8 @@ async def handle_42_api(request):
     cmd = data.get("cmd") or request.query.get("cmd", "")
     if cmd not in {"when", "mars", "42", "whatsnew"}:
         return web.json_response({"error": "Unsupported command"}, status=400)
-    result = await handle(cmd)
+    lang = data.get("lang") or request.query.get("lang", "en")
+    result = await handle(cmd, lang=lang)
     return web.json_response(result)
 
 

@@ -7,91 +7,130 @@ class HybridGrokkyEngine:
     def __init__(self):
         self.openai_key = os.getenv("OPENAI_API_KEY")
         self.xai_key = os.getenv("XAI_API_KEY")
-        self.openai_h = {
-            "Authorization": f"Bearer {self.openai_key}",
-            "Content-Type": "application/json",
-            "OpenAI-Beta": "assistants=v1"
-        }
-        self.xai_h = {
-            "Authorization": f"Bearer {self.xai_key}",
-            "Content-Type": "application/json"
-        }
+
+        # Формируем заголовки только если ключи установлены, чтобы избежать
+        # ошибочных запросов на OpenAI, которые приводят к 400 ошибкам.
+        self.openai_h = (
+            {
+                "Authorization": f"Bearer {self.openai_key}",
+                "Content-Type": "application/json",
+                "OpenAI-Beta": "assistants=v1",
+            }
+            if self.openai_key
+            else {}
+        )
+        self.xai_h = (
+            {
+                "Authorization": f"Bearer {self.xai_key}",
+                "Content-Type": "application/json",
+            }
+            if self.xai_key
+            else {}
+        )
+
+        # Локальный кэш нитей для Assistant API
         self.threads = {}  # user_id -> thread_id
         # ID предварительно созданного ассистента OpenAI
         self.ASSISTANT_ID = os.getenv("OPENAI_ASSISTANT_ID")
 
     async def setup_openai_infrastructure(self):
-        """Dummy check to ensure OpenAI credentials are configured."""
-        if not self.openai_key:
-            raise RuntimeError("OPENAI_API_KEY is not configured")
-        # Nothing else to set up for now
-        return True
+        """Проверяет наличие OpenAI API.
+
+        Возвращает ``True``, если ключ настроен, иначе ``False``. Это
+        позволяет работать без памяти GPT, не обрывая работу основного
+        движка Grok-3."""
+        return bool(self.openai_key)
 
     async def get_or_create_thread(self, user_id: str):
-        """Получает или создает Thread для пользователя"""
-        if user_id not in self.threads:
-            async with httpx.AsyncClient() as client:
-                res = await client.post(
-                    "https://api.openai.com/v1/threads",
-                    headers=self.openai_h,
-                    json={"metadata": {"user_id": user_id}}
-                )
-                res.raise_for_status()
-                self.threads[user_id] = res.json()["id"]
-        return self.threads[user_id]
+        """Получает или создает Thread для пользователя.
+
+        Если OpenAI не настроен или запрос завершается ошибкой, возвращает
+        ``None`` и тем самым отключает память GPT для данного пользователя."""
+        if not self.openai_key:
+            return None
+        try:
+            if user_id not in self.threads:
+                async with httpx.AsyncClient() as client:
+                    res = await client.post(
+                        "https://api.openai.com/v1/threads",
+                        headers=self.openai_h,
+                        json={"metadata": {"user_id": user_id}},
+                        timeout=30,
+                    )
+                    res.raise_for_status()
+                    self.threads[user_id] = res.json().get("id")
+            return self.threads.get(user_id)
+        except Exception:
+            return None
 
     async def add_memory(self, user_id: str, content: str, role="user"):
         """Добавляет сообщение в Thread памяти"""
         tid = await self.get_or_create_thread(user_id)
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                f"https://api.openai.com/v1/threads/{tid}/messages",
-                headers=self.openai_h,
-                json={"role": role, "content": content}
-            )
+        if not tid:
+            return
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"https://api.openai.com/v1/threads/{tid}/messages",
+                    headers=self.openai_h,
+                    json={"role": role, "content": content},
+                    timeout=30,
+                )
+        except Exception:
+            # При ошибках записи памяти просто пропускаем
+            pass
 
     async def search_memory(self, user_id: str, query: str) -> str:
-        """Выполняет поиск в памяти через GPT-4o mini Assistant"""
-        if not self.ASSISTANT_ID:
+        """Выполняет поиск в памяти через GPT-4o mini Assistant."""
+        if not (self.openai_key and self.ASSISTANT_ID):
             return ""
 
         tid = await self.get_or_create_thread(user_id)
-        async with httpx.AsyncClient() as client:
-            # добавляем поисковый запрос
-            await client.post(
-                f"https://api.openai.com/v1/threads/{tid}/messages",
-                headers=self.openai_h,
-                json={"role": "user", "content": f"ПОИСК: {query}"}
-            )
-
-            # запускаем Assistant
-            run = await client.post(
-                f"https://api.openai.com/v1/threads/{tid}/runs",
-                headers=self.openai_h,
-                json={"assistant_id": self.ASSISTANT_ID}
-            )
-            run_id = run.json()["id"]
-
-            # ждём завершения
-            while True:
-                await asyncio.sleep(1)
-                st = await client.get(
-                    f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}",
-                    headers=self.openai_h
-                )
-                if st.json()["status"] == "completed":
-                    break
-
-            # берём ответ
-            msgs = await client.get(
-                f"https://api.openai.com/v1/threads/{tid}/messages",
-                headers=self.openai_h,
-                params={"limit": 1}
-            )
-            data = msgs.json()["data"]
-            if data:
-                return data[0]["content"][0]["text"]["value"]
+        if not tid:
             return ""
+        try:
+            async with httpx.AsyncClient() as client:
+                # добавляем поисковый запрос
+                await client.post(
+                    f"https://api.openai.com/v1/threads/{tid}/messages",
+                    headers=self.openai_h,
+                    json={"role": "user", "content": f"ПОИСК: {query}"},
+                    timeout=30,
+                )
+
+                # запускаем Assistant
+                run = await client.post(
+                    f"https://api.openai.com/v1/threads/{tid}/runs",
+                    headers=self.openai_h,
+                    json={"assistant_id": self.ASSISTANT_ID},
+                    timeout=30,
+                )
+                run_id = run.json().get("id")
+
+                # ждём завершения
+                while True:
+                    await asyncio.sleep(1)
+                    st = await client.get(
+                        f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}",
+                        headers=self.openai_h,
+                        timeout=30,
+                    )
+                    if st.json().get("status") == "completed":
+                        break
+
+                # берём ответ
+                msgs = await client.get(
+                    f"https://api.openai.com/v1/threads/{tid}/messages",
+                    headers=self.openai_h,
+                    params={"limit": 1},
+                    timeout=30,
+                )
+                data = msgs.json().get("data", [])
+                if data:
+                    return data[0]["content"][0]["text"]["value"]
+        except Exception:
+            pass
+        return ""
 
     async def generate_with_xai(
         self, messages: list, context: str = ""

@@ -39,6 +39,38 @@ except Exception:  # pragma: no cover - optional dependency
 
 from utils.dynamic_weights import get_dynamic_knowledge
 
+
+def _translate(text: str, lang: str) -> str:
+    """Translate ``text`` into the language specified by ``lang``.
+
+    The function uses the dynamic knowledge helper (Grok-3 with GPT fallback)
+    so that the special commands can answer in the same language as the user
+    even though their base prompts are in English.  If translation fails or the
+    requested language is English, the original text is returned.
+    """
+
+    if not lang or lang.startswith("en"):
+        return text
+
+    # Map short codes to readable language names for the prompt
+    code = lang.split("-")[0].lower()
+    names = {
+        "ru": "Russian",
+        "uk": "Ukrainian",
+        "es": "Spanish",
+        "de": "German",
+        "fr": "French",
+    }
+    target = names.get(code, code)
+
+    try:
+        translated = get_dynamic_knowledge(
+            f"Translate into {target} and keep meaning:\n{text}"
+        ).strip()
+        return translated or text
+    except Exception:
+        return text
+
 LOG_DIR = Path("logs/42")
 CACHE_DB = Path("cache/cache.db")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -259,21 +291,27 @@ def paraphrase(text: str, prefix: str = "Retell simply: ") -> str:
 
 # Команды
 def when() -> str:
-    base = markov.generate(length=12, start="starship")
-    paraphrased = paraphrase(base, "Answer like a decisive fixer: ")
+    """Return timeline for Mars colonisation keeping source links."""
+    paraphrased = paraphrase(
+        WHEN_BASE,
+        "Summarise the plan and keep all URLs: ",
+    )
     pulse, quiver, sense = bio.enhance(len(paraphrased) / 100)
-    log_event(f"Served /when: {paraphrased[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})")
-    if random.random() < 0.01:  # 1% xAI easter egg
-        paraphrased += "\nP.S. Grok 3 vibes with Mars! #xAI"
+    log_event(
+        f"Served /when: {paraphrased[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
+    )
     return f"{paraphrased}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
 
 def mars() -> str:
-    base = markov.generate(length=16, start="mars")
-    paraphrased = paraphrase(base, "Crisp Mars status update: ")
+    """Explain why Mars matters and keep reference links."""
+    paraphrased = paraphrase(
+        MARS_BASE,
+        "Retell the benefits of Mars colonisation, keep URLs: ",
+    )
     pulse, quiver, sense = bio.enhance(len(paraphrased) / 100)
-    log_event(f"Served /mars: {paraphrased[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})")
-    if random.random() < 0.01:
-        paraphrased += "\nP.S. xAI’s chaos fuels Musk’s Mars! #NikoleSpark"
+    log_event(
+        f"Served /mars: {paraphrased[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
+    )
     return f"{paraphrased}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
 
 def forty_two() -> str:
@@ -294,6 +332,7 @@ async def whatsnew() -> str:
     
     urls = ["https://www.spacex.com/updates", "https://x.ai/blog"]
     retell = f"Latest news (Pulse: {chaos_pulse.get():.2f}):\n"
+    added = False
     for url in urls:
         html = await fetch_url(url)
         if not html or BeautifulSoup is None:
@@ -303,22 +342,34 @@ async def whatsnew() -> str:
             updates = soup.find_all("article", limit=3)
             for article in updates:
                 title = article.find("h2").text.strip() if article.find("h2") else "Update"
-                date = article.find("time").text.strip() if article.find("time") else datetime.now().strftime("%B %Y")
+                date = (
+                    article.find("time").text.strip()
+                    if article.find("time")
+                    else datetime.now().strftime("%B %Y")
+                )
                 link = urljoin(url, article.find("a")["href"]) if article.find("a") else url
-                summary = article.find("p").text.strip()[:150] + "..." if article.find("p") else "See link"
+                summary = (
+                    article.find("p").text.strip()[:150] + "..."
+                    if article.find("p")
+                    else "See link"
+                )
                 paraphrased = paraphrase(summary, "Retell this news for kids: ")
                 retell += f"- {title} ({date}): {paraphrased}\nLink: {link}\n"
-            chaos_pulse.update(retell)
-            markov.update_chain(retell)
-            break
+                added = True
+            if added:
+                chaos_pulse.update(retell)
+                markov.update_chain(retell)
+                break
         except Exception as e:
             log_event(f"Parse {url} failed: {str(e)}", "error")
             continue
-    
-    if "Latest news" in retell:
+
+    if added:
         pulse, quiver, sense = bio.enhance(len(retell) / 100)
         save_cache(retell, chaos_pulse.get())
-        log_event(f"Served /whatsnew: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})")
+        log_event(
+            f"Served /whatsnew: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
+        )
         return f"{retell}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
     
     try:
@@ -342,40 +393,33 @@ async def whatsnew() -> str:
     return f"{retell}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
 
 # Главный обработчик
-async def handle(cmd: str) -> Dict[str, str]:
+async def handle(cmd: str, lang: str = "en") -> Dict[str, str]:
     """Main asynchronous dispatcher for the 42 utility.
 
-    Parameters
-    ----------
-    cmd:
-        Command name without the leading slash.  Supported values are
-        ``"when"``, ``"mars"``, ``"42"`` and ``"whatsnew"``.
-
-    Returns
-    -------
-    Dict[str, str]
-        Mapping with the textual ``response`` and the current ``pulse``.
+    ``lang`` is a language code (e.g. ``"ru"`` or ``"en"``) used to translate
+    the response into the user's language.
     """
 
     cmd = cmd.strip().lower()
     try:
         if cmd == "when":
-            return {"response": when(), "pulse": chaos_pulse.get()}
-        if cmd == "mars":
-            return {"response": mars(), "pulse": chaos_pulse.get()}
-        if cmd == "42":
-            return {"response": forty_two(), "pulse": chaos_pulse.get()}
-        if cmd == "whatsnew":
-            return {"response": await whatsnew(), "pulse": chaos_pulse.get()}
+            resp = when()
+        elif cmd == "mars":
+            resp = mars()
+        elif cmd == "42":
+            resp = forty_two()
+        elif cmd == "whatsnew":
+            resp = await whatsnew()
+        else:
+            log_event(f"Unknown cmd: {cmd}", "error")
+            resp = "Unknown command! Try /when, /mars, /42, /whatsnew."
 
-        log_event(f"Unknown cmd: {cmd}", "error")
-        return {
-            "response": "Unknown command! Try /when, /mars, /42, /whatsnew.",
-            "pulse": chaos_pulse.get(),
-        }
+        resp = _translate(resp, lang)
+        return {"response": resp, "pulse": chaos_pulse.get()}
     except Exception as e:  # pragma: no cover - best effort
         log_event(f"Handle {cmd} failed: {str(e)}", "error")
-        return {"response": f"Error: {str(e)}. Wulf persists!", "pulse": chaos_pulse.get()}
+        err = f"Error: {str(e)}. Wulf persists!"
+        return {"response": _translate(err, lang), "pulse": chaos_pulse.get()}
 
 # CLI для теста
 if __name__ == "__main__":
