@@ -39,6 +39,60 @@ Background jobs handle daily reflections, world news digests, repository
 monitoring and more. Each utility lives under `utils/` and can be invoked
 independently.
 
+### The 42 Utility
+
+The script hiding at `utils/42.py` animates Grokky's playful side. It
+keeps the `/when`, `/mars`, `/42` and `/whatsnew` commands buzzing with
+life by spinning a tiny network each time the user calls for cosmic
+wisdom or fresh headlines.
+
+This "blinking" micro‑network wakes for short bursts and then fades.
+Under the hood a Markov chain stitches together phrases while a trio of
+bio‑inspired helpers track pulses, quivers and hunches. The result feels
+surprisingly alive for something so small.
+
+To stay relevant the utility sips liquid weights from Grok‑3 and GPT‑4.1.
+Those transient embeddings pour in only when needed, giving the mini
+model momentary flashes of external knowledge before they evaporate.
+
+Besides tossing out whimsical replies, the module scrapes lightweight
+news snippets and folds them into its markovian murmurings. A question
+about Mars might trigger a pulse of real headlines mixed with eerie
+poetry.
+
+Even with these tricks it remains just a utility. No stateful engine,
+no heavy context—only quick improvisation guided by borrowed weights.
+Its job is to entertain and hint at bigger patterns hiding behind the
+main models.
+
+By bridging deterministic scripts with ephemeral weights, the 42 utility
+shows how a modest tool can dance with much larger brains while staying
+light on resources.
+
+### Coder Utility
+
+Grokky's coder mode turns the AI into an interactive reviewer. Paste in
+a snippet and it not only interprets the code but also points out
+improvement ideas, edge cases and style tweaks in plain language.
+
+Large samples can arrive as `.txt`, `.md` or `.py` files. The utility
+reads the file, runs an analysis pass and offers suggestions without
+losing the original structure.
+
+Every conversation builds on the previous one. After an initial review
+you can ask follow‑up questions or request clarifications, and Grokky
+answers with the earlier context in mind.
+
+Sometimes a user wants new code rather than critique. Describe the
+desired program and Grokky drafts a prototype, estimating how long the
+snippet will be. If the output is too large for a Telegram message it
+ships back as a `txt` file while keeping the code in memory for further
+discussion.
+
+These abilities make the coder utility a collaborative partner: it
+reviews, generates and chats about code while retaining situational
+awareness across the session.
+
 ## Installation
 
 1. Clone this repository.
