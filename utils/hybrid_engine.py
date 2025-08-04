@@ -73,8 +73,14 @@ class HybridGrokkyEngine:
             except Exception as exc:  # pragma: no cover - network
                 print(f"OpenAI add_memory failed: {exc}")
 
-    async def search_memory(self, user_id: str, query: str) -> str:
-        """Выполняет поиск в памяти через GPT-4o mini Assistant"""
+    async def search_memory(self, user_id: str, query: str, limit: int = 5) -> str:
+        """Выполняет поиск в памяти через GPT-4o mini Assistant.
+
+        Параметр ``limit`` добавлен для совместимости с ``VectorGrokkyEngine``
+        и управляет количеством сообщений, извлекаемых из потока. В текущей
+        реализации используется только для ограничения числа получаемых
+        сообщений и не влияет на качество поиска.
+        """
         if not (self.ASSISTANT_ID and self.openai_key):
             return ""
 
@@ -116,7 +122,7 @@ class HybridGrokkyEngine:
                 msgs = await client.get(
                     f"https://api.openai.com/v1/threads/{tid}/messages",
                     headers=self.openai_h,
-                    params={"limit": 1},
+                    params={"limit": limit},
                     timeout=15,
                 )
                 data = msgs.json().get("data", [])
@@ -124,6 +130,38 @@ class HybridGrokkyEngine:
                     return data[0]["content"][0]["text"]["value"]
             except Exception as exc:  # pragma: no cover - network
                 print(f"OpenAI search_memory failed: {exc}")
+        return ""
+
+    async def get_recent_memory(self, user_id: str, limit: int = 10) -> str:
+        """Возвращает последние сообщения из памяти пользователя."""
+        if not (self.ASSISTANT_ID and self.openai_key):
+            return ""
+
+        tid = await self.get_or_create_thread(user_id)
+        if not tid:
+            return ""
+
+        async with httpx.AsyncClient() as client:
+            try:
+                msgs = await client.get(
+                    f"https://api.openai.com/v1/threads/{tid}/messages",
+                    headers=self.openai_h,
+                    params={"limit": limit},
+                    timeout=15,
+                )
+                data = msgs.json().get("data", [])
+                context_parts = []
+                for msg in reversed(data):  # chronological order
+                    role = msg.get("role", "")
+                    content = msg.get("content", [])
+                    if content:
+                        text = content[0].get("text", {}).get("value", "")
+                        if text:
+                            context_parts.append(f"[{role}]: {text}")
+                if context_parts:
+                    return "\n".join(context_parts)
+            except Exception as exc:  # pragma: no cover - network
+                print(f"OpenAI get_recent_memory failed: {exc}")
         return ""
 
     async def generate_with_xai(
