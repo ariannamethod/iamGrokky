@@ -19,7 +19,7 @@ class DummyEngine:
     async def get_recent_memory(self, user_id, limit=10):
         return "recent"
 
-@pytest.mark.asyncio
+@pytest.mark.anyio("asyncio")
 async def test_know_the_world_once(monkeypatch):
     async def fake_fetch(topic):
         return f"news {topic}"
