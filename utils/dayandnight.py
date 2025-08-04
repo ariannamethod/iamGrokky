@@ -47,7 +47,7 @@ async def day_and_night_task(
                 {"role": "user", "content": prompt}
             ])
         except Exception as exc:
-            logger.error("Не удалось получить дневное резюме: %s", exc)
+            logger.exception("Не удалось получить дневное резюме")
             reflection = f"Сбой генерации: {exc}"
 
         entry = f"{datetime.now().date()}: {reflection}"
