@@ -16,7 +16,7 @@ class DummyEngine:
     async def add_memory(self, user_id, content, role="user"):
         self.mem.append((user_id, content, role))
 
-@pytest.mark.asyncio
+@pytest.mark.anyio("asyncio")
 async def test_day_and_night_once():
     engine = DummyEngine()
     await day_and_night_task(engine, interval=0, iterations=1)

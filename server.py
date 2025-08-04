@@ -235,16 +235,28 @@ async def summarize_link(url: str, extra: int = 2) -> str:
 
 
 async def reply_split(message: Message, text: str) -> None:
-    """Reply, splitting into at most two Telegram messages."""
-    limit = 4096
-    if len(text) <= limit:
-        await message.reply(text)
-        return
+    """Reply, splitting long text into multiple Telegram messages.
 
-    part1 = text[:limit]
-    part2 = text[limit:]
-    await message.reply(f"🌀 Ответ в двух частях. Часть 1/2:\n{part1}")
-    await bot.send_message(message.chat.id, f"Часть 2/2:\n{part2}")
+    Telegram messages are limited to 4096 characters. The previous
+    implementation only supported splitting into two parts which caused
+    failures when the second part still exceeded the limit. This version
+    handles arbitrary length by chunking the message and numbering each
+    part.
+    """
+
+    limit = 4096
+    # Reserve space for the prefix added to each chunk.
+    chunk_size = limit - 100
+    chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+    total = len(chunks)
+
+    for idx, chunk in enumerate(chunks, start=1):
+        prefix = f"🌀 Ответ в {total} частях. Часть {idx}/{total}:\n"
+        full_text = prefix + chunk
+        if idx == 1:
+            await message.reply(full_text)
+        else:
+            await bot.send_message(message.chat.id, full_text)
 
 
 @dp.message(Command("voiceon"))

@@ -21,7 +21,7 @@ class DummyBot:
     async def send_message(self, chat_id, text):
         self.sent.append((chat_id, text))
 
-@pytest.mark.asyncio
+@pytest.mark.anyio("asyncio")
 async def test_reply_split_two_parts(monkeypatch):
     msg = DummyMsg()
     bot = DummyBot()
@@ -34,3 +34,20 @@ async def test_reply_split_two_parts(monkeypatch):
     assert len(bot.sent) == 1
     assert "Часть 1/2" in msg.replies[0]
     assert "Часть 2/2" in bot.sent[0][1]
+
+
+@pytest.mark.anyio("asyncio")
+async def test_reply_split_three_parts(monkeypatch):
+    msg = DummyMsg()
+    bot = DummyBot()
+    monkeypatch.setattr(server, "bot", bot)
+
+    long_text = "a" * 9000
+    await server.reply_split(msg, long_text)
+
+    # First part is via reply, remaining via bot
+    assert len(msg.replies) == 1
+    assert len(bot.sent) == 2
+    assert "Часть 1/3" in msg.replies[0]
+    assert "Часть 2/3" in bot.sent[0][1]
+    assert "Часть 3/3" in bot.sent[1][1]

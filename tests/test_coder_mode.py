@@ -13,7 +13,7 @@ class DummyMessage:
         self.from_user = type('User', (), {'id': 42})()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio("asyncio")
 async def test_handle_coder_prompt_without_engine(monkeypatch):
     outputs = []
 
