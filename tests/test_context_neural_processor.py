@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 from reportlab.pdfgen import canvas
 
-from utils.file_handling import FileHandler, compute_relevance, create_repo_snapshot
+from utils.context_neural_processor import FileHandler, compute_relevance, create_repo_snapshot
 
 
 @pytest.mark.asyncio

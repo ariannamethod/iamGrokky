@@ -58,18 +58,19 @@ except ImportError:
     rarfile = None
 
 # Глобальные настройки
+BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_MAX_TEXT_SIZE = 100_000
-REPO_SNAPSHOT_PATH = "config/repo_snapshot.md"
-LOG_DIR = Path("logs/file_handling")
-FAIL_DIR = Path("logs/failures")
-CACHE_DB = Path("cache/file_cache.db")
+REPO_SNAPSHOT_PATH = BASE_DIR / "config/repo_snapshot.md"
+LOG_DIR = BASE_DIR / "logs/context_neural_processor"
+FAIL_DIR = BASE_DIR / "logs/failures"
+CACHE_DB = BASE_DIR / "cache/context_neural_cache.db"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 FAIL_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DB.parent.mkdir(parents=True, exist_ok=True)
 
 
 def log_event(msg: str, log_type: str = "info") -> None:
-    """Write ``msg`` to the file-handling log and failures log if needed."""
+    """Write ``msg`` to the context neural processor log and failures log if needed."""
 
     entry = {
         "timestamp": datetime.utcnow().isoformat(),
@@ -301,7 +302,7 @@ cg = (
 def init_cache_db():
     with sqlite3.connect(CACHE_DB) as conn:
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS file_cache (
+            CREATE TABLE IF NOT EXISTS context_neural_cache (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 path TEXT UNIQUE,
                 ext TEXT,
@@ -312,7 +313,7 @@ def init_cache_db():
                 timestamp REAL
             )
         """)
-        conn.execute("DELETE FROM file_cache WHERE timestamp < ?", (time.time() - 7 * 86400,))  # Cleanup old
+        conn.execute("DELETE FROM context_neural_cache WHERE timestamp < ?", (time.time() - 7 * 86400,))  # Cleanup old
         conn.commit()
 
 
@@ -321,7 +322,7 @@ init_cache_db()
 def save_cache(path: str, ext: str, hash: str, tags: str, relevance: float, summary: str):
     with sqlite3.connect(CACHE_DB) as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO file_cache (path, ext, hash, tags, relevance, summary, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO context_neural_cache (path, ext, hash, tags, relevance, summary, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (path, ext, hash, tags, relevance, summary, time.time())
         )
         conn.commit()
@@ -329,7 +330,7 @@ def save_cache(path: str, ext: str, hash: str, tags: str, relevance: float, summ
 def load_cache(path: str, max_age: float = 43200) -> Optional[Dict]:
     with sqlite3.connect(CACHE_DB) as conn:
         cursor = conn.execute(
-            "SELECT ext, hash, tags, relevance, summary FROM file_cache WHERE path = ? AND timestamp > ?",
+            "SELECT ext, hash, tags, relevance, summary FROM context_neural_cache WHERE path = ? AND timestamp > ?",
             (path, time.time() - max_age)
         )
         result = cursor.fetchone()
