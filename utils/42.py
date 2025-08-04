@@ -239,61 +239,94 @@ async def fetch_url(url: str, timeout: int = 10) -> Optional[str]:
         log_event(f"Fetch {url} failed: {str(e)}", "error")
         return None
 
-# Парфраз
 def paraphrase(text: str, prefix: str = "Retell simply: ") -> str:
+    """Light-weight paraphraser used by the command helpers."""
     temp = 0.8 + chaos_pulse.get() * 0.2
     try:
-        if cg:
+        if cg:  # CharGen takes precedence when available
             paraphrased = cg.generate(prefix=prefix + text[:200], n=400, temp=temp).strip()
             if not paraphrased or len(paraphrased) < 50:
                 raise ValueError("Paraphrase too short")
             markov.update_chain(paraphrased)
             return paraphrased + random.choice([" Shred the cosmos! 🌌", " Thunderstrike alive! 🚀"])
-        else:
-            paraphrased = get_dynamic_knowledge(f"{prefix}{text[:200]}").strip()
-            markov.update_chain(paraphrased)
-            return paraphrased + " Void pulse kicks in! 🌩️" if paraphrased else text
-    except Exception as e:
+        paraphrased = get_dynamic_knowledge(f"{prefix}{text[:200]}").strip()
+        markov.update_chain(paraphrased)
+        return paraphrased + " Void pulse kicks in! 🌩️" if paraphrased else text
+    except Exception as e:  # pragma: no cover - logging only
         log_event(f"Paraphrase failed: {str(e)}", "error")
         return text + " Wulf holds the line! 🌌"
 
-# Команды
-def when() -> str:
-    base = markov.generate(length=12, start="starship")
-    paraphrased = paraphrase(base, "Answer like a decisive fixer: ")
-    pulse, quiver, sense = bio.enhance(len(paraphrased) / 100)
-    log_event(f"Served /when: {paraphrased[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})")
+
+def translate(text: str, lang: str) -> str:
+    """Translate *text* to the desired *lang* using the dynamic weights helper.
+
+    If translation fails the original text is returned so the command still
+    produces a meaningful response.
+    """
+    if not lang or lang.startswith("en"):
+        return text
+    try:
+        translated = get_dynamic_knowledge(f"Translate to {lang}: {text}").strip()
+        return translated or text
+    except Exception as e:  # pragma: no cover - best effort
+        log_event(f"Translate failed: {str(e)}", "error")
+        return text
+
+def when(lang: str = "en") -> str:
+    """Return timeline for Musk's Mars plans with preserved reference links."""
+    summary, links = WHEN_BASE.split("Links:", 1)
+    paraphrased = paraphrase(summary, "Answer like a decisive fixer: ")
+    response = paraphrased + "\nLinks:\n" + links.strip()
+    pulse, quiver, sense = bio.enhance(len(response) / 100)
+    log_event(
+        f"Served /when: {paraphrased[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
+    )
     if random.random() < 0.01:  # 1% xAI easter egg
-        paraphrased += "\nP.S. Grok 3 vibes with Mars! #xAI"
-    return f"{paraphrased}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
+        response += "\nP.S. Grok 3 vibes with Mars! #xAI"
+    response = f"{response}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
+    return translate(response, lang)
 
-def mars() -> str:
-    base = markov.generate(length=16, start="mars")
-    paraphrased = paraphrase(base, "Crisp Mars status update: ")
-    pulse, quiver, sense = bio.enhance(len(paraphrased) / 100)
-    log_event(f"Served /mars: {paraphrased[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})")
+
+def mars(lang: str = "en") -> str:
+    """Explain why Mars matters and keep reference links intact."""
+    summary, links = MARS_BASE.split("Links:", 1)
+    paraphrased = paraphrase(summary, "Crisp Mars status update: ")
+    response = paraphrased + "\nLinks:\n" + links.strip()
+    pulse, quiver, sense = bio.enhance(len(response) / 100)
+    log_event(
+        f"Served /mars: {paraphrased[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
+    )
     if random.random() < 0.01:
-        paraphrased += "\nP.S. xAI’s chaos fuels Musk’s Mars! #NikoleSpark"
-    return f"{paraphrased}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
+        response += "\nP.S. xAI’s chaos fuels Musk’s Mars! #NikoleSpark"
+    response = f"{response}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
+    return translate(response, lang)
 
-def forty_two() -> str:
+
+def forty_two(lang: str = "en") -> str:
+    """Return a playful 42 fact, translating if necessary."""
     base_text = markov.generate(length=10, start="42")
     paraphrased = paraphrase(base_text, "Fun 42 fact with Wulf edge: ")
-    if random.random() < 1/42:
+    if random.random() < 1 / 42:
         paraphrased += "\nP.S. 42 engines - Musk’s Arcadia prophecy! https://en.wikipedia.org/wiki/42_(number)"
     pulse, quiver, sense = bio.enhance(len(paraphrased) / 50)
-    log_event(f"Served /42: {paraphrased[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})")
-    return f"{paraphrased}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
+    log_event(
+        f"Served /42: {paraphrased[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
+    )
+    response = f"{paraphrased}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
+    return translate(response, lang)
 
-async def whatsnew() -> str:
+
+async def whatsnew(lang: str = "en") -> str:
+    """Fetch recent news from SpaceX or xAI with caching and translation."""
     init_cache_db()
     cached = load_cache()
     if cached:
         chaos_pulse.pulse = cached["pulse"]
-        return cached["summary"]
-    
+        return translate(cached["summary"], lang)
+
     urls = ["https://www.spacex.com/updates", "https://x.ai/blog"]
     retell = f"Latest news (Pulse: {chaos_pulse.get():.2f}):\n"
+    found = False
     for url in urls:
         html = await fetch_url(url)
         if not html or BeautifulSoup is None:
@@ -310,17 +343,20 @@ async def whatsnew() -> str:
                 retell += f"- {title} ({date}): {paraphrased}\nLink: {link}\n"
             chaos_pulse.update(retell)
             markov.update_chain(retell)
+            found = True
             break
         except Exception as e:
             log_event(f"Parse {url} failed: {str(e)}", "error")
             continue
-    
-    if "Latest news" in retell:
+
+    if found:
         pulse, quiver, sense = bio.enhance(len(retell) / 100)
         save_cache(retell, chaos_pulse.get())
-        log_event(f"Served /whatsnew: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})")
-        return f"{retell}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
-    
+        log_event(
+            f"Served /whatsnew: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
+        )
+        return translate(f"{retell}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})", lang)
+
     try:
         tweet = get_dynamic_knowledge(
             "Latest x.com/SpaceX Mars/Starship tweet, summarize in 100 chars"
@@ -331,18 +367,25 @@ async def whatsnew() -> str:
             chaos_pulse.update(retell)
             markov.update_chain(retell)
         else:
-            retell = "No Mars/Starship tweets. Last: Starship Flight 6 (July 2025). Link: https://www.spacex.com/updates/starship-flight-6"
-    except Exception as e:
+            retell = (
+                "No Mars/Starship tweets. Last: Starship Flight 6 (July 2025). Link: https://www.spacex.com/updates/starship-flight-6"
+            )
+    except Exception as e:  # pragma: no cover - best effort
         log_event(f"X search failed: {str(e)}", "error")
-        retell = "News fetch failed, Wulf stands ready! Last: Starship Flight 6 (July 2025). Link: https://www.spacex.com/updates/starship-flight-6"
-    
+        retell = (
+            "News fetch failed, Wulf stands ready! Last: Starship Flight 6 (July 2025). Link: https://www.spacex.com/updates/starship-flight-6"
+        )
+
     pulse, quiver, sense = bio.enhance(len(retell) / 100)
     save_cache(retell, chaos_pulse.get())
-    log_event(f"Served /whatsnew: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})")
-    return f"{retell}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})"
+    log_event(
+        f"Served /whatsnew: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
+    )
+    return translate(f"{retell}\n(Pulse: {pulse:.2f}, Sense: {sense:.2f})", lang)
+
 
 # Главный обработчик
-async def handle(cmd: str) -> Dict[str, str]:
+async def handle(cmd: str, lang: str = "en") -> Dict[str, str]:
     """Main asynchronous dispatcher for the 42 utility.
 
     Parameters
@@ -360,13 +403,13 @@ async def handle(cmd: str) -> Dict[str, str]:
     cmd = cmd.strip().lower()
     try:
         if cmd == "when":
-            return {"response": when(), "pulse": chaos_pulse.get()}
+            return {"response": when(lang), "pulse": chaos_pulse.get()}
         if cmd == "mars":
-            return {"response": mars(), "pulse": chaos_pulse.get()}
+            return {"response": mars(lang), "pulse": chaos_pulse.get()}
         if cmd == "42":
-            return {"response": forty_two(), "pulse": chaos_pulse.get()}
+            return {"response": forty_two(lang), "pulse": chaos_pulse.get()}
         if cmd == "whatsnew":
-            return {"response": await whatsnew(), "pulse": chaos_pulse.get()}
+            return {"response": await whatsnew(lang), "pulse": chaos_pulse.get()}
 
         log_event(f"Unknown cmd: {cmd}", "error")
         return {

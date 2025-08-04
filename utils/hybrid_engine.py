@@ -10,7 +10,8 @@ class HybridGrokkyEngine:
         self.openai_h = {
             "Authorization": f"Bearer {self.openai_key}",
             "Content-Type": "application/json",
-            "OpenAI-Beta": "assistants=v1"
+            # Use the v2 Assistants API to avoid 400 errors on thread creation.
+            "OpenAI-Beta": "assistants=v2",
         }
         self.xai_h = {
             "Authorization": f"Bearer {self.xai_key}",
