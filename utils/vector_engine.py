@@ -3,6 +3,7 @@ import httpx
 import traceback
 import logging
 import time
+import asyncio
 from datetime import datetime
 import hashlib
 import numpy as np
@@ -169,8 +170,10 @@ class VectorGrokkyEngine:
             # Уникальный ID для записи
             record_id = f"{user_id}_{role}_{int(time.time()*1000)}"
 
-            # Сохраняем в Pinecone
-            self.index.upsert(vectors=[(record_id, embedding, metadata)])
+            # Сохраняем в Pinecone без блокировки event loop
+            await asyncio.to_thread(
+                self.index.upsert, vectors=[(record_id, embedding, metadata)]
+            )
 
             logger.info(
                 f"Добавлена запись в память: user={user_id}, role={role}, id={record_id}"
