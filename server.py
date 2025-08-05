@@ -7,6 +7,7 @@ import traceback
 from datetime import datetime
 import tempfile
 from urllib.parse import urlparse
+from ipaddress import ip_address
 
 import httpx
 try:  # pragma: no cover - used only with aiogram installed
@@ -609,8 +610,20 @@ async def handle_text(message: Message, text: str) -> None:
             await reply_split(message, "🚫 Некорректная ссылка.")
             return
         parsed = urlparse(raw_url)
-        domain = parsed.netloc.lower()
-        if parsed.scheme not in {"http", "https"} or domain in BANNED_DOMAINS:
+        host = (parsed.hostname or "").lower()
+        invalid = (
+            parsed.scheme not in {"http", "https"}
+            or host in BANNED_DOMAINS
+        )
+        if not invalid:
+            try:
+                ip = ip_address(host)
+                if ip.is_private or ip.is_loopback:
+                    invalid = True
+            except ValueError:
+                if host in {"localhost"}:
+                    invalid = True
+        if invalid:
             await reply_split(message, "🚫 Некорректная ссылка.")
             return
         url = parsed.geturl()
