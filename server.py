@@ -108,11 +108,7 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX = os.getenv("PINECONE_INDEX")
 
 logger.info(f"Запуск бота с webhook на {WEBHOOK_URL}")
-logger.info(
-    "Токен бота: %s...%s",
-    TELEGRAM_BOT_TOKEN[:5],
-    TELEGRAM_BOT_TOKEN[-5:],
-)
+logger.info("Токен бота: [MASKED]")
 logger.info("XAI API ключ: %s", "Установлен" if XAI_API_KEY else "НЕ УСТАНОВЛЕН")
 logger.info("OpenAI API ключ: %s", "Установлен" if OPENAI_API_KEY else "НЕ УСТАНОВЛЕН")
 logger.info(
