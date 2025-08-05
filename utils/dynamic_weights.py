@@ -3,7 +3,7 @@ import time
 import math
 from typing import Optional, Sequence, List
 
-import requests
+import httpx
 
 
 def query_grok3(prompt: str, api_key: Optional[str] = None) -> str:
@@ -12,7 +12,7 @@ def query_grok3(prompt: str, api_key: Optional[str] = None) -> str:
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     payload = {"prompt": prompt, "max_tokens": 500}
     try:
-        res = requests.post(
+        res = httpx.post(
             "https://api.xai.org/grok-3/generate", json=payload, headers=headers
         )
         res.raise_for_status()
@@ -39,7 +39,7 @@ def query_gpt4(prompt: str, api_key: Optional[str] = None, model: str = "gpt-4o"
         "temperature": 0.8,
     }
     try:
-        res = requests.post(
+        res = httpx.post(
             "https://api.openai.com/v1/chat/completions",
             json=payload,
             headers=headers,
