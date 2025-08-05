@@ -84,6 +84,7 @@ WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 WEBAPP_PORT = int(os.getenv("PORT", 8080))
 CHAT_ID = os.getenv("CHAT_ID")
 AGENT_GROUP = os.getenv("AGENT_GROUP")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 
 # Ключ OpenAI для распознавания речи
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -715,7 +716,7 @@ async def on_startup():
             drop_pending_updates=True
         )  # Сначала удалим старый вебхук
         await asyncio.sleep(1)  # Даем время на обработку
-        await bot.set_webhook(url=WEBHOOK_URL)
+        await bot.set_webhook(url=WEBHOOK_URL, secret_token=WEBHOOK_SECRET)
         logger.info(f"Установлен вебхук на {WEBHOOK_URL}")
     except Exception as e:
         logger.error(f"Ошибка при установке вебхука: {e}")
@@ -771,6 +772,10 @@ app = FastAPI()
 @app.post(WEBHOOK_PATH)
 async def handle_webhook(request: Request):
     try:
+        secret_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+        if WEBHOOK_SECRET and secret_header != WEBHOOK_SECRET:
+            return PlainTextResponse(status_code=403, content="forbidden")
+
         request_body = await request.body()
         logger.info(f"Получены данные вебхука длиной {len(request_body)} байт")
         data = json.loads(request_body)
