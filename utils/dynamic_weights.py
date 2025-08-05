@@ -13,7 +13,10 @@ def query_grok3(prompt: str, api_key: Optional[str] = None) -> str:
     payload = {"prompt": prompt, "max_tokens": 500}
     try:
         res = httpx.post(
-            "https://api.xai.org/grok-3/generate", json=payload, headers=headers
+            "https://api.xai.org/grok-3/generate",
+            json=payload,
+            headers=headers,
+            timeout=30,
         )
         res.raise_for_status()
         return res.json().get("text", "")
