@@ -62,5 +62,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     try:
         raise RuntimeError(args.message)
-    except Exception as e:
+    except RuntimeError as e:
         log_failure(args.prompt, e)

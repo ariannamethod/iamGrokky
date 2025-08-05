@@ -18,7 +18,7 @@ def _load_state():
     try:
         with open(STATE_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except (OSError, json.JSONDecodeError):
         return {}
 
 
@@ -32,7 +32,7 @@ def _file_hash(path: str) -> str:
     try:
         with open(path, "rb") as f:
             return hashlib.md5(f.read()).hexdigest()
-    except Exception:
+    except OSError:
         return ""
 
 
@@ -42,7 +42,7 @@ def _load_vector_files() -> list[str]:
             data = json.load(f)
             if isinstance(data, dict):
                 return list(data.keys())
-    except Exception:
+    except (OSError, json.JSONDecodeError):
         pass
     return []
 
@@ -75,7 +75,7 @@ def reflect_on_readme(force: bool = False) -> str:
     try:
         with open(README_PATH, "r", encoding="utf-8") as f:
             readme = f.read()
-    except Exception:
+    except OSError:
         pass
 
     readme_summary = _summarize(readme) if readme else ""
@@ -108,7 +108,7 @@ def latest_reflection() -> str:
     try:
         with open(THOUGHTS_PATH, "r", encoding="utf-8") as f:
             text = f.read().strip()
-    except Exception:
+    except OSError:
         return "No reflections yet."
 
     marker = "## Grokky Reflection"

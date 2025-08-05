@@ -27,5 +27,5 @@ async def monitor_repository(engine: VectorGrokkyEngine | None = None) -> None:
     try:
         await engine.add_memory("repo", message, role="journal")
         logger.info("Repo monitor recorded: %s", summary)
-    except Exception as exc:
+    except (RuntimeError, ValueError) as exc:
         logger.error("Failed to record repo snapshot: %s", exc)
