@@ -625,7 +625,8 @@ async def handle_text(message: Message, text: str) -> None:
         except (RuntimeError, ValueError) as e:
             logger.error("Ошибка CHAOS_PULSE: %s", e)
             await reply_split(
-                "🌀 Грокки: Даже хаос требует порядка. Ошибка при обработке команды."
+                message,
+                "🌀 Грокки: Даже хаос требует порядка. Ошибка при обработке команды.",
             )
         return
 
