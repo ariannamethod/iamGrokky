@@ -23,6 +23,7 @@ except ImportError:
     CharGen = None
 from utils.dynamic_weights import get_dynamic_knowledge, apply_pulse
 from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 try:
     import docx
 except ImportError:
@@ -41,21 +42,29 @@ try:
 except ImportError:
     load = P = None
 try:
-    from PIL import Image
+    from PIL import Image, UnidentifiedImageError
 except ImportError:
     Image = None
+    UnidentifiedImageError = OSError
 try:
     import pandas as pd
+    from pandas.errors import ParserError
 except ImportError:
     pd = None
+    ParserError = ValueError
 try:
     import yaml
+    from yaml import YAMLError
 except ImportError:
     yaml = None
+    YAMLError = ValueError
 try:
     import rarfile
+    from rarfile import Error as RarError
 except ImportError:
     rarfile = None
+    class RarError(Exception):
+        pass
 
 # Глобальные настройки
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -227,7 +236,7 @@ class ChaosPulse:
             pulse_change += (
                 0.15 if "positive" in sentiment else -0.15 if "negative" in sentiment else 0
             )
-        except Exception:
+        except (RuntimeError, ValueError):
             pass
         self.pulse = max(0.1, min(0.9, self.pulse + pulse_change + random.uniform(-0.05, 0.05)))
         self.last_update = time.time()
@@ -349,7 +358,7 @@ async def paraphrase(text: str, prefix: str = "Summarize this for kids: ") -> st
             markov.update_chain(paraphrased)
             return paraphrased + random.choice([" Shredding the cosmos! 🌌", " File pulse ignited! 🚀", " Wulf’s chaos alive! 🌩️"])
         raise ValueError("No CharGen")
-    except Exception as e:
+    except (RuntimeError, ValueError) as e:
         log_event(f"Paraphrase failed: {str(e)}", "error")
         try:
             paraphrased = get_dynamic_knowledge(f"{prefix}{text[:200]}").strip()
@@ -357,7 +366,7 @@ async def paraphrase(text: str, prefix: str = "Summarize this for kids: ") -> st
             return (
                 paraphrased + " Void pulse activated! 🚀" if paraphrased else text
             )
-        except Exception:
+        except (RuntimeError, ValueError):
             return text + " Ether’s silent, Wulf persists! 🌌"
 
 # FileHandler
@@ -418,7 +427,7 @@ class FileHandler:
                 text = "".join(page.extract_text() or "" for page in reader.pages)
                 esn.update(text, chaos_pulse.get())
                 return self._truncate(text) if text.strip() else "[PDF empty]"
-            except Exception as e:
+            except (PdfReadError, OSError) as e:
                 log_event(f"PDF error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[PDF error: {str(e)}]"
 
@@ -435,10 +444,10 @@ class FileHandler:
                         text = f.read()
                     esn.update(text, chaos_pulse.get())
                     return self._truncate(text) if text.strip() else "[TXT empty]"
-                except Exception as e:
+                except OSError as e:
                     log_event(f"TXT error ({os.path.basename(path)}): {str(e)}", "error")
                     return f"[TXT error: {str(e)}]"
-            except Exception as e:
+            except OSError as e:
                 log_event(f"TXT error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[TXT error: {str(e)}]"
 
@@ -451,7 +460,7 @@ class FileHandler:
                 text = "\n".join(p.text for p in doc.paragraphs)
                 esn.update(text, chaos_pulse.get())
                 return self._truncate(text) if text.strip() else "[DOCX empty]"
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 log_event(f"DOCX error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[DOCX error: {str(e)}]"
 
@@ -464,7 +473,7 @@ class FileHandler:
                     text = rtf_to_text(f.read())
                 esn.update(text, chaos_pulse.get())
                 return self._truncate(text) if text.strip() else "[RTF empty]"
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 log_event(f"RTF error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[RTF error: {str(e)}]"
 
@@ -476,7 +485,7 @@ class FileHandler:
                 text = textract.process(path).decode("utf-8")
                 esn.update(text, chaos_pulse.get())
                 return self._truncate(text) if text.strip() else "[DOC empty]"
-            except Exception as e:
+            except (RuntimeError, OSError) as e:
                 log_event(f"DOC error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[DOC error: {str(e)}]"
 
@@ -489,7 +498,7 @@ class FileHandler:
                 text = "\n".join(str(p) for p in doc.getElementsByType(P))
                 esn.update(text, chaos_pulse.get())
                 return self._truncate(text) if text.strip() else "[ODT empty]"
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 log_event(f"ODT error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[ODT error: {str(e)}]"
 
@@ -508,10 +517,10 @@ class FileHandler:
                         text = soup.get_text(separator=" ", strip=True)
                     esn.update(text, chaos_pulse.get())
                     return self._truncate(text) if text.strip() else "[HTML/XML empty]"
-                except Exception as e:
+                except OSError as e:
                     log_event(f"HTML/XML error ({os.path.basename(path)}): {str(e)}", "error")
                     return f"[HTML/XML error: {str(e)}]"
-            except Exception as e:
+            except OSError as e:
                 log_event(f"HTML/XML error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[HTML/XML error: {str(e)}]"
 
@@ -523,7 +532,7 @@ class FileHandler:
                     text = json.dumps(data, indent=2, ensure_ascii=False)
                 esn.update(text, chaos_pulse.get())
                 return self._truncate(text) if text.strip() else "[JSON empty]"
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 log_event(f"JSON error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[JSON error: {str(e)}]"
 
@@ -542,10 +551,10 @@ class FileHandler:
                     text = df.to_string(index=False)
                     esn.update(text, chaos_pulse.get())
                     return self._truncate(text) if text.strip() else "[CSV empty]"
-                except Exception as e:
+                except (OSError, ParserError, ValueError) as e:
                     log_event(f"CSV error ({os.path.basename(path)}): {str(e)}", "error")
                     return f"[CSV error: {str(e)}]"
-            except Exception as e:
+            except (OSError, ParserError, ValueError) as e:
                 log_event(f"CSV error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[CSV error: {str(e)}]"
 
@@ -559,7 +568,7 @@ class FileHandler:
                     text = yaml.dump(data, allow_unicode=True)
                 esn.update(text, chaos_pulse.get())
                 return self._truncate(text) if text.strip() else "[YAML empty]"
-            except Exception as e:
+            except (OSError, YAMLError) as e:
                 log_event(f"YAML error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[YAML error: {str(e)}]"
 
@@ -572,7 +581,7 @@ class FileHandler:
                     info = f"{img.format} {img.width}x{img.height} mode={img.mode}"
                 esn.update(info, chaos_pulse.get())
                 return info
-            except Exception as e:
+            except (UnidentifiedImageError, OSError) as e:
                 log_event(f"Image error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[Image error: {str(e)}]"
 
@@ -600,12 +609,12 @@ class FileHandler:
                                 except UnicodeDecodeError:
                                     text = data.decode("latin1", "ignore")
                             texts.append(text)
-                        except Exception:
+                        except (OSError, zipfile.BadZipFile):
                             continue
                 combined = "\n".join(texts)
                 esn.update(combined, chaos_pulse.get())
                 return self._truncate(combined) if combined.strip() else "[ZIP empty]"
-            except Exception as e:
+            except (zipfile.BadZipFile, OSError) as e:
                 log_event(f"ZIP error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[ZIP error: {str(e)}]"
 
@@ -635,15 +644,15 @@ class FileHandler:
                                 except UnicodeDecodeError:
                                     text = data.decode("latin1", "ignore")
                             texts.append(text)
-                        except Exception:
+                        except (OSError, RarError):
                             continue
                 combined = "\n".join(texts)
                 esn.update(combined, chaos_pulse.get())
                 return self._truncate(combined) if combined.strip() else "[RAR empty]"
-            except Exception as e:
+            except (RarError, OSError, RuntimeError) as e:
                 try:
                     return await self._extract_zip(path)
-                except Exception:
+                except (zipfile.BadZipFile, OSError):
                     log_event(f"RAR error ({os.path.basename(path)}): {str(e)}", "error")
                     return f"[RAR error: {str(e)}]"
 
@@ -674,12 +683,12 @@ class FileHandler:
                                 except UnicodeDecodeError:
                                     text = data.decode("latin1", "ignore")
                             texts.append(text)
-                        except Exception:
+                        except (OSError, tarfile.TarError):
                             continue
                 combined = "\n".join(texts)
                 esn.update(combined, chaos_pulse.get())
                 return self._truncate(combined) if combined.strip() else "[TAR empty]"
-            except Exception as e:
+            except (tarfile.TarError, OSError) as e:
                 log_event(f"TAR error ({os.path.basename(path)}): {str(e)}", "error")
                 return f"[TAR error: {str(e)}]"
 
@@ -734,7 +743,7 @@ async def parse_and_store_file(
     try:
         content = f"FILE {os.path.basename(path)} TAGS: {tags}\nSUMMARY: {summary}\nRELEVANCE: {relevance:.2f}\nTEXT: {text}"
         await engine.add_memory("document", content, role="journal")
-    except Exception as e:
+    except (RuntimeError, OSError, ValueError) as e:
         log_event(f"Vector store failed: {str(e)}", "error")
 
     # Easter egg
@@ -772,7 +781,7 @@ async def create_repo_snapshot(base_path: str = ".", out_path: str = REPO_SNAPSH
                             snippet = " ".join(f.readline().strip() for _ in range(3))
                         line += f" -> {snippet}"
                     lines.append(line)
-                except Exception as e:
+                except (OSError, ValueError) as e:
                     log_event(f"Snapshot error ({name}): {str(e)}", "error")
                     continue
     os.makedirs(os.path.dirname(out_path), exist_ok=True)

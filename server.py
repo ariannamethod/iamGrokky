@@ -13,7 +13,8 @@ try:  # pragma: no cover - used only with aiogram installed
     from aiogram.enums import ChatAction
     from aiogram.filters import Command
     from aiogram.types import Message
-except Exception:  # pragma: no cover - fallback for tests
+    from aiogram.exceptions import TelegramAPIError
+except ImportError:  # pragma: no cover - fallback for tests
     class Bot:  # type: ignore
         def __init__(self, *args, **kwargs):
             pass
@@ -37,6 +38,9 @@ except Exception:  # pragma: no cover - fallback for tests
     class Command:  # type: ignore
         def __init__(self, *args, **kwargs):
             pass
+
+    class TelegramAPIError(Exception):
+        pass
 
     class Message:  # type: ignore
         async def reply(self, *args, **kwargs):  # pragma: no cover - stub
@@ -124,14 +128,14 @@ if os.getenv("ENABLE_VECTOR_ENGINE") == "1":
     try:
         engine = VectorGrokkyEngine()
         logger.info("VectorGrokkyEngine инициализирован успешно")
-    except Exception as e:  # pragma: no cover - network
+    except (RuntimeError, OSError, ValueError) as e:  # pragma: no cover - network
         logger.error(f"Ошибка при инициализации VectorGrokkyEngine: {e}")
         logger.error(traceback.format_exc())
 else:
     try:
         engine = HybridGrokkyEngine()
         logger.info("HybridGrokkyEngine инициализирован успешно")
-    except Exception as e:  # pragma: no cover - network
+    except (RuntimeError, OSError, ValueError) as e:  # pragma: no cover - network
         logger.error(f"Ошибка при инициализации HybridGrokkyEngine: {e}")
         logger.error(traceback.format_exc())
 
@@ -178,7 +182,7 @@ async def synth_voice(text: str, lang: str = "ru") -> bytes:
             )
             r.raise_for_status()
             return r.content
-        except Exception as e:
+        except httpx.HTTPError as e:
             logger.error("Ошибка синтеза речи: %s", e)
             return b""
 
@@ -204,7 +208,7 @@ async def transcribe_voice(file_id: str) -> str:
             )
             r.raise_for_status()
             return r.json().get("text", "")
-        except Exception as e:
+        except httpx.HTTPError as e:
             logger.error("Ошибка расшифровки голоса: %s", e)
             return ""
 
@@ -244,7 +248,7 @@ async def summarize_link(url: str, extra: int = 2) -> str:
             data = resp.json()
             message = data.get("choices", [{}])[0].get("message", {})
             return message.get("content", "").strip()
-        except Exception as e:
+        except (httpx.HTTPError, json.JSONDecodeError) as e:
             logger.error("Ошибка получения статьи: %s", e)
             return ""
 
@@ -348,7 +352,7 @@ async def cmd_status(message: Message):
             stats = engine.index.describe_index_stats()
             total_vectors = stats.get("total_vector_count", 0)
             status_text += f"Векторов в памяти: {total_vectors}"
-        except Exception:
+        except (RuntimeError, ValueError) as e:
             status_text += "Ошибка при получении статистики памяти"
 
     await reply_split(message, status_text)
@@ -373,8 +377,7 @@ async def cmd_clearmemory(message: Message):
             message,
             "🌀 Грокки стер твою память из своего хранилища! Начинаем с чистого листа.",
         )
-
-    except Exception as e:
+    except (RuntimeError, ValueError) as e:
         logger.error(f"Ошибка при очистке памяти: {e}")
         logger.error(traceback.format_exc())
         await reply_split(message, "🌀 Произошла ошибка при очистке памяти")
@@ -444,13 +447,13 @@ async def _process_document(message: Message, document):
             tmp_path = tmp.name
         result = await parse_and_store_file(tmp_path)
         await reply_split(message, result[:4000])
-    except Exception as e:
+    except (httpx.HTTPError, OSError) as e:
         await message.reply(f"File error: {e}")
     finally:
         if tmp_path:
             try:
                 os.unlink(tmp_path)
-            except Exception:
+            except OSError:
                 pass
 
 
@@ -466,7 +469,7 @@ async def handle_coder_prompt(message: Message, text: str) -> None:
     if engine:
         try:
             await engine.add_memory(memory_id, text, role="user")
-        except Exception:
+        except (RuntimeError, ValueError):
             pass
 
     result = await interpret_code(text)
@@ -474,7 +477,7 @@ async def handle_coder_prompt(message: Message, text: str) -> None:
     if engine:
         try:
             await engine.add_memory(memory_id, result, role="assistant")
-        except Exception:
+        except (RuntimeError, ValueError):
             pass
 
     if len(result) > 3500:
@@ -512,7 +515,7 @@ async def coder_choice(callback: types.CallbackQuery):
 async def handle_text(message: Message, text: str) -> None:
     try:
         await update_last_message_time()
-    except Exception as e:
+    except (RuntimeError, OSError) as e:
         logger.error("Ошибка при обновлении времени последнего сообщения: %s", e)
 
     lang = detect_language(text)
@@ -556,7 +559,7 @@ async def handle_text(message: Message, text: str) -> None:
 
     try:
         await engine.add_memory(memory_id, text, role="user")
-    except Exception as e:
+    except (RuntimeError, ValueError) as e:
         logger.error("Ошибка при сохранении сообщения: %s", e)
 
     lower_text = text.lower()
@@ -577,7 +580,7 @@ async def handle_text(message: Message, text: str) -> None:
                     f"IMAGE_PROMPT: {prompt}\nURL: {url}",
                     role="journal",
                 )
-            except Exception:
+            except (RuntimeError, ValueError):
                 pass
         return
 
@@ -600,7 +603,7 @@ async def handle_text(message: Message, text: str) -> None:
             answer = get_chaos_response()
             await reply_split(message, f"🌀 {answer}")
             await engine.add_memory(memory_id, answer, role="assistant")
-        except Exception as e:
+        except (RuntimeError, ValueError) as e:
             logger.error("Ошибка CHAOS_PULSE: %s", e)
             await reply_split(
                 "🌀 Грокки: Даже хаос требует порядка. Ошибка при обработке команды."
@@ -642,7 +645,7 @@ async def handle_text(message: Message, text: str) -> None:
             )
         else:
             await reply_split(message, final_reply)
-    except Exception as e:
+    except (RuntimeError, ValueError, httpx.HTTPError) as e:
         logger.error("Ошибка при обработке сообщения: %s", e)
         await reply_split(
             message,
@@ -666,7 +669,7 @@ async def handle_photo(message: Message) -> None:
         )
         await reply_split(message, description)
         await engine.add_memory(str(message.chat.id), description, role="assistant")
-    except Exception as e:
+    except (RuntimeError, ValueError, httpx.HTTPError, OSError) as e:
         logger.error("Ошибка обработки фото: %s", e)
         await reply_split(message, f"🌀 Грокки: {get_chaos_response()}")
 
@@ -684,12 +687,12 @@ async def message_handler(message: Message):
                 await handle_text(message, transcript)
         else:
             logger.info("Получено сообщение неподдерживаемого типа")
-    except Exception as e:
+    except (RuntimeError, ValueError, httpx.HTTPError, OSError) as e:
         logger.error(f"Глобальная ошибка при обработке сообщения: {e}")
         logger.error(traceback.format_exc())
         try:
             await message.reply(f"🌀 Грокки: {get_chaos_response()}")
-        except Exception as send_error:
+        except (RuntimeError, OSError) as send_error:
             logger.error(f"Не удалось отправить ответ об ошибке: {send_error}")
 
 
@@ -701,13 +704,13 @@ async def on_startup():
         BOT_ID = me.id
         BOT_USERNAME = (me.username or "").lower()
         logger.info(f"Бот: {BOT_USERNAME} ({BOT_ID})")
-    except Exception as e:
+    except (TelegramAPIError, RuntimeError) as e:
         logger.error(f"Не удалось получить информацию о боте: {e}")
 
     # Сканируем репозиторий и записываем результаты
     try:
         await monitor_repository(engine)
-    except Exception as e:
+    except (RuntimeError, OSError) as e:
         logger.error(f"Ошибка мониторинга репозитория: {e}")
 
     # Установка вебхука
@@ -718,7 +721,7 @@ async def on_startup():
         await asyncio.sleep(1)  # Даем время на обработку
         await bot.set_webhook(url=WEBHOOK_URL, secret_token=WEBHOOK_SECRET)
         logger.info(f"Установлен вебхук на {WEBHOOK_URL}")
-    except Exception as e:
+    except (TelegramAPIError, RuntimeError) as e:
         logger.error(f"Ошибка при установке вебхука: {e}")
         logger.error(traceback.format_exc())
 
@@ -742,7 +745,7 @@ async def on_startup():
             ]
         )
         await bot.set_chat_menu_button(menu_button=types.MenuButtonCommands())
-    except Exception as e:
+    except (TelegramAPIError, RuntimeError) as e:
         logger.error("Не удалось установить команды бота: %s", e)
 
     # Запуск фоновых задач
@@ -755,7 +758,7 @@ async def on_startup():
 
         asyncio.create_task(know_the_world_task(engine))
         logger.info("Фоновые задачи запущены")
-    except Exception as e:
+    except (RuntimeError, OSError) as e:
         logger.error(f"Ошибка при запуске фоновых задач: {e}")
         logger.error(traceback.format_exc())
 
@@ -782,7 +785,7 @@ async def handle_webhook(request: Request):
         logger.info(f"Получено обновление от Telegram: {data.get('update_id')}")
         await dp.feed_update(bot, types.Update(**data))
         return PlainTextResponse("OK")
-    except Exception as e:
+    except (json.JSONDecodeError, TelegramAPIError) as e:
         logger.error(f"Ошибка обработки вебхука: {e}")
         logger.error(traceback.format_exc())
         return PlainTextResponse(status_code=500, content="error")
@@ -802,7 +805,7 @@ async def root_index() -> PlainTextResponse:
 async def handle_42_api(request: Request):
     try:
         data = await request.json()
-    except Exception:
+    except json.JSONDecodeError:
         data = {}
     cmd = data.get("cmd") or request.query_params.get("cmd", "")
     if cmd not in {"when", "mars", "42", "whatsnew"}:

@@ -40,7 +40,7 @@ async def send_prompt(text):
         reply = await engine.generate_with_xai([
             {"role": "user", "content": text}
         ])
-    except Exception as e:
+    except (RuntimeError, ValueError) as e:
         print(f"Ошибка xAI check_silence: {e}")
         reply = "🌀 Грокки: Что-то пошло не так"
     await engine.add_memory(OLEG_CHAT_ID, reply, role="assistant")
