@@ -96,6 +96,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 NEWS_MODEL = os.getenv("NEWS_MODEL", "gpt-4o")
 URL_RE = re.compile(r"https?://\S+")
 MAX_URL_LENGTH = int(os.getenv("MAX_URL_LENGTH", "2048"))
+MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", "10485760"))
 BANNED_DOMAINS = {
     d.strip().lower()
     for d in os.getenv("BANNED_DOMAINS", "").split(",")
@@ -447,7 +448,12 @@ async def _process_document(message: Message, document):
         file = await bot.get_file(document.file_id)
         url = f"https://api.telegram.org/file/bot{TELEGRAM_BOT_TOKEN}/{file.file_path}"
         async with httpx.AsyncClient() as client:
-            resp = await client.get(url)
+            resp = await client.get(url, timeout=30.0)
+        if len(resp.content) > MAX_FILE_SIZE:
+            await message.reply(
+                f"File too large. Limit is {MAX_FILE_SIZE} bytes"
+            )
+            return
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             tmp.write(resp.content)
             tmp_path = tmp.name
