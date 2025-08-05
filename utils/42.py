@@ -41,7 +41,7 @@ from utils.dynamic_weights import get_dynamic_knowledge, apply_pulse
 import httpx
 
 
-def _translate(text: str, lang: str) -> str:
+async def _translate(text: str, lang: str) -> str:
     """Translate ``text`` to ``lang`` using Google Translate.
 
     ``lang`` expects a two-letter code (e.g. ``"ru"``). English returns the
@@ -59,11 +59,12 @@ def _translate(text: str, lang: str) -> str:
             "dt": "t",
             "q": text,
         }
-        resp = httpx.get(
-            "https://translate.googleapis.com/translate_a/single",
-            params=params,
-            timeout=10,
-        )
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://translate.googleapis.com/translate_a/single",
+                params=params,
+                timeout=10,
+            )
         resp.raise_for_status()
         data = resp.json()
         translated = "".join(part[0] for part in data[0])
@@ -301,7 +302,7 @@ def paraphrase(text: str, prefix: str = "Retell simply: ") -> str:
         return text + " Wulf holds the line! 🌌"
 
 # Команды
-def when(lang: str = "en") -> str:
+async def when(lang: str = "en") -> str:
     base = markov.generate(length=12, start="starship")
     paraphrased = paraphrase(base, "Answer like a decisive fixer: ")
     paraphrased = _append_links(WHEN_BASE, paraphrased)
@@ -312,7 +313,7 @@ def when(lang: str = "en") -> str:
     if random.random() < 0.01:  # 1% xAI easter egg
         paraphrased += "\nP.S. Grok 3 vibes with Mars! #xAI"
     result = paraphrased
-    return _translate(result, lang)
+    return await _translate(result, lang)
 
 async def mars(lang: str = "en") -> str:
     sources = [
@@ -343,9 +344,9 @@ async def mars(lang: str = "en") -> str:
         f"Served /mars: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
     )
     result = retell
-    return _translate(result, lang)
+    return await _translate(result, lang)
 
-def forty_two(lang: str = "en") -> str:
+async def forty_two(lang: str = "en") -> str:
     base_text = markov.generate(length=10, start="42")
     paraphrased = paraphrase(base_text, "Fun 42 fact with Wulf edge: ")
     if random.random() < 1 / 42:
@@ -358,14 +359,14 @@ def forty_two(lang: str = "en") -> str:
         f"Served /42: {paraphrased[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
     )
     result = paraphrased
-    return _translate(result, lang)
+    return await _translate(result, lang)
 
 async def whatsnew(lang: str = "en") -> str:
     init_cache_db()
     cached = load_cache()
     if cached:
         chaos_pulse.pulse = cached["pulse"]
-        return _translate(cached["summary"], lang)
+        return await _translate(cached["summary"], lang)
 
     urls = ["https://www.spacex.com/updates", "https://x.ai/blog"]
     articles: list[str] = []
@@ -401,7 +402,7 @@ async def whatsnew(lang: str = "en") -> str:
         log_event(
             f"Served /whatsnew: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
         )
-        return _translate(retell, lang)
+        return await _translate(retell, lang)
 
     try:
         tweet = get_dynamic_knowledge(
@@ -430,7 +431,7 @@ async def whatsnew(lang: str = "en") -> str:
     log_event(
         f"Served /whatsnew: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
     )
-    return _translate(retell, lang)
+    return await _translate(retell, lang)
 
 # Главный обработчик
 async def handle(cmd: str, lang: str = "en") -> Dict[str, str]:
@@ -451,11 +452,11 @@ async def handle(cmd: str, lang: str = "en") -> Dict[str, str]:
     cmd = cmd.strip().lower()
     try:
         if cmd == "when":
-            return {"response": when(lang), "pulse": chaos_pulse.get()}
+            return {"response": await when(lang), "pulse": chaos_pulse.get()}
         if cmd == "mars":
             return {"response": await mars(lang), "pulse": chaos_pulse.get()}
         if cmd == "42":
-            return {"response": forty_two(lang), "pulse": chaos_pulse.get()}
+            return {"response": await forty_two(lang), "pulse": chaos_pulse.get()}
         if cmd == "whatsnew":
             return {"response": await whatsnew(lang), "pulse": chaos_pulse.get()}
 
