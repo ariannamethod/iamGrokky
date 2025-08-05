@@ -6,6 +6,7 @@ import re
 import traceback
 from datetime import datetime
 import tempfile
+from urllib.parse import urlparse
 
 import httpx
 try:  # pragma: no cover - used only with aiogram installed
@@ -94,6 +95,12 @@ WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 NEWS_MODEL = os.getenv("NEWS_MODEL", "gpt-4o")
 URL_RE = re.compile(r"https?://\S+")
+MAX_URL_LENGTH = int(os.getenv("MAX_URL_LENGTH", "2048"))
+BANNED_DOMAINS = {
+    d.strip().lower()
+    for d in os.getenv("BANNED_DOMAINS", "").split(",")
+    if d.strip()
+}
 
 # Проверка ключей API
 XAI_API_KEY = os.getenv("XAI_API_KEY")
@@ -586,7 +593,16 @@ async def handle_text(message: Message, text: str) -> None:
 
     urls = URL_RE.findall(text)
     if urls:
-        url = urls[0]
+        raw_url = urls[0]
+        if len(raw_url) > MAX_URL_LENGTH:
+            await reply_split(message, "🚫 Некорректная ссылка.")
+            return
+        parsed = urlparse(raw_url)
+        domain = parsed.netloc.lower()
+        if parsed.scheme not in {"http", "https"} or domain in BANNED_DOMAINS:
+            await reply_split(message, "🚫 Некорректная ссылка.")
+            return
+        url = parsed.geturl()
         summary = await summarize_link(url)
         memory_context = await engine.search_memory(memory_id, summary or url)
         prompt = f"Ссылка: {url}\n{summary}"
