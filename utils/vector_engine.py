@@ -144,14 +144,12 @@ class VectorGrokkyEngine:
         hash_digest = hash_obj.digest()
 
         # Генерируем псевдо-вектор нужной размерности
-        vector = []
-        for i in range(self.vector_dimension):
-            byte_index = i % len(hash_digest)
-            vector.append(
-                (hash_digest[byte_index] / 255.0) * 2 - 1
-            )  # нормализуем в диапазоне [-1, 1]
+        hash_array = np.frombuffer(hash_digest, dtype=np.uint8)
+        repeats = (self.vector_dimension + len(hash_array) - 1) // len(hash_array)
+        vector = np.tile(hash_array, repeats)[: self.vector_dimension].astype(np.float32)
+        vector = (vector / 255.0) * 2 - 1  # нормализуем в диапазоне [-1, 1]
 
-        return vector
+        return vector.tolist()
 
     async def add_memory(self, user_id: str, content: str, role="user"):
         """Добавляет сообщение в векторную память"""
