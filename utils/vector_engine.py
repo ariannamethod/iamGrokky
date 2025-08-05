@@ -1,7 +1,5 @@
 import os
-import asyncio
 import httpx
-import json
 import traceback
 import logging
 import time
@@ -143,15 +141,13 @@ class VectorGrokkyEngine:
         hash_obj = hashlib.sha256(text.encode())
         hash_digest = hash_obj.digest()
 
-        # Генерируем псевдо-вектор нужной размерности
-        vector = []
-        for i in range(self.vector_dimension):
-            byte_index = i % len(hash_digest)
-            vector.append(
-                (hash_digest[byte_index] / 255.0) * 2 - 1
-            )  # нормализуем в диапазоне [-1, 1]
+        # Генерируем псевдо-вектор нужной размерности с помощью numpy
+        digest = np.frombuffer(hash_digest, dtype=np.uint8)
+        repeats = int(np.ceil(self.vector_dimension / digest.size))
+        vector = np.tile(digest, repeats)[: self.vector_dimension]
+        vector = (vector / 255.0) * 2 - 1  # нормализация в диапазон [-1, 1]
 
-        return vector
+        return vector.tolist()
 
     async def add_memory(self, user_id: str, content: str, role="user"):
         """Добавляет сообщение в векторную память"""
