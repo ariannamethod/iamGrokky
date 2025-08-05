@@ -69,6 +69,7 @@ except ImportError:
 # Глобальные настройки
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_MAX_TEXT_SIZE = 100_000
+DEFAULT_MAX_ARCHIVE_SIZE = 10_000_000  # 10 MB
 REPO_SNAPSHOT_PATH = BASE_DIR / "config/repo_snapshot.md"
 LOG_DIR = BASE_DIR / "logs/context_neural_processor"
 FAIL_DIR = BASE_DIR / "logs/failures"
@@ -371,8 +372,13 @@ async def paraphrase(text: str, prefix: str = "Summarize this for kids: ") -> st
 
 # FileHandler
 class FileHandler:
-    def __init__(self, max_text_size: int = DEFAULT_MAX_TEXT_SIZE) -> None:
+    def __init__(
+        self,
+        max_text_size: int = DEFAULT_MAX_TEXT_SIZE,
+        max_archive_size: int = DEFAULT_MAX_ARCHIVE_SIZE,
+    ) -> None:
         self.max_text_size = max_text_size
+        self.max_archive_size = max_archive_size
         self._extractors: Dict[str, Callable[[str], str]] = {}
         self._semaphore = asyncio.Semaphore(10)  # Ограничение на 10 задач
         self._register_defaults()
@@ -589,13 +595,22 @@ class FileHandler:
         async with self._semaphore:
             try:
                 texts = []
+                total_size = 0
                 with zipfile.ZipFile(path) as zf:
-                    for name in zf.namelist():
-                        if name.endswith("/"):
+                    for info in zf.infolist():
+                        if total_size >= self.max_archive_size:
+                            break
+                        if info.is_dir():
+                            continue
+                        if (
+                            info.file_size > self.max_text_size
+                            or total_size + info.file_size > self.max_archive_size
+                        ):
                             continue
                         try:
-                            data = zf.read(name)
-                            ext = await self._detect_extension(name)
+                            data = zf.read(info.filename)
+                            total_size += info.file_size
+                            ext = await self._detect_extension(info.filename)
                             extractor = self._extractors.get(ext)
                             if extractor and extractor not in {self._extract_zip, self._extract_tar}:
                                 with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
@@ -624,13 +639,22 @@ class FileHandler:
                 if not rarfile:
                     raise RuntimeError("rarfile not installed")
                 texts: List[str] = []
+                total_size = 0
                 with rarfile.RarFile(path) as rf:
-                    for name in rf.namelist():
-                        if name.endswith("/"):
+                    for info in rf.infolist():
+                        if total_size >= self.max_archive_size:
+                            break
+                        if info.isdir():
+                            continue
+                        if (
+                            info.file_size > self.max_text_size
+                            or total_size + info.file_size > self.max_archive_size
+                        ):
                             continue
                         try:
-                            data = rf.read(name)
-                            ext = await self._detect_extension(name)
+                            data = rf.read(info)
+                            total_size += info.file_size
+                            ext = await self._detect_extension(info.filename)
                             extractor = self._extractors.get(ext)
                             if extractor and extractor not in {self._extract_zip, self._extract_tar, self._extract_rar}:
                                 with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
@@ -660,15 +684,24 @@ class FileHandler:
         async with self._semaphore:
             try:
                 texts = []
+                total_size = 0
                 with tarfile.open(path, "r:*") as tf:
                     for member in tf.getmembers():
+                        if total_size >= self.max_archive_size:
+                            break
                         if member.isdir():
+                            continue
+                        if (
+                            member.size > self.max_text_size
+                            or total_size + member.size > self.max_archive_size
+                        ):
                             continue
                         try:
                             file_obj = tf.extractfile(member)
                             if not file_obj:
                                 continue
                             data = file_obj.read()
+                            total_size += member.size
                             ext = await self._detect_extension(member.name)
                             extractor = self._extractors.get(ext)
                             if extractor and extractor not in {self._extract_zip, self._extract_tar}:
