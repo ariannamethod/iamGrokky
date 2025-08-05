@@ -139,7 +139,7 @@ awareness across the session.
    python3 -m venv venv
    source venv/bin/activate
    ```
-4. Install the dependencies:
+4. Install the dependencies (all versions are pinned for repeatable installs, including FastAPI and Uvicorn):
    ```bash
    pip install -r requirements.txt
    ```
