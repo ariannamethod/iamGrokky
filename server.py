@@ -101,6 +101,7 @@ BANNED_DOMAINS = {
     for d in os.getenv("BANNED_DOMAINS", "").split(",")
     if d.strip()
 }
+MAX_WEBHOOK_BODY_SIZE = int(os.getenv("MAX_WEBHOOK_BODY_SIZE", "100000"))
 
 # Проверка ключей API
 XAI_API_KEY = os.getenv("XAI_API_KEY")
@@ -805,6 +806,13 @@ async def handle_webhook(request: Request):
             return PlainTextResponse(status_code=403, content="forbidden")
 
         request_body = await request.body()
+        if len(request_body) > MAX_WEBHOOK_BODY_SIZE:
+            logger.warning(
+                "Вебхук отклонен: размер %d байт превышает лимит %d",
+                len(request_body),
+                MAX_WEBHOOK_BODY_SIZE,
+            )
+            return PlainTextResponse(status_code=413, content="payload too large")
         logger.info(f"Получены данные вебхука длиной {len(request_body)} байт")
         data = json.loads(request_body)
         logger.info(f"Получено обновление от Telegram: {data.get('update_id')}")
