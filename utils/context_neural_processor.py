@@ -722,7 +722,8 @@ async def parse_and_store_file(
     engine = engine or VectorGrokkyEngine()
 
     # Кэш и релевантность
-    file_hash = hashlib.sha256(open(path, "rb").read()).hexdigest()[:8]
+    with open(path, "rb") as f:
+        file_hash = hashlib.sha256(f.read()).hexdigest()[:8]
     cached = load_cache(path)
     relevance = compute_relevance(text)
     if cached and cached["hash"] == file_hash:
