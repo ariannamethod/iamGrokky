@@ -47,8 +47,12 @@ except ImportError:  # pragma: no cover - fallback for tests
         async def reply(self, *args, **kwargs):  # pragma: no cover - stub
             pass
 
-from fastapi import FastAPI, Request, UploadFile, File
+from fastapi import FastAPI, Request, UploadFile, File, Depends, HTTPException
 from fastapi.responses import PlainTextResponse, JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 
 from utils.dayandnight import day_and_night_task
 from utils.howru import check_silence, update_last_message_time
@@ -106,6 +110,7 @@ BANNED_DOMAINS = {
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX = os.getenv("PINECONE_INDEX")
+API_KEY = os.getenv("API_KEY")
 
 logger.info(f"Запуск бота с webhook на {WEBHOOK_URL}")
 logger.info("Токен бота: [MASKED]")
@@ -116,6 +121,7 @@ logger.info(
     "Установлен" if PINECONE_API_KEY else "НЕ УСТАНОВЛЕН",
 )
 logger.info("Pinecone индекс: %s", PINECONE_INDEX or "НЕ УСТАНОВЛЕН")
+logger.info("API key auth: %s", "ENABLED" if API_KEY else "DISABLED")
 
 # Инициализация бота и диспетчера
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
@@ -155,6 +161,12 @@ CHAT_LANG: dict[int, str] = {}
 
 # Background tasks to be cancelled on shutdown
 background_tasks: list[asyncio.Task] = []
+
+
+async def verify_api_key(request: Request) -> None:
+    """FastAPI dependency to validate the API key header."""
+    if API_KEY and request.headers.get("X-API-Key") != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 def detect_language(text: str) -> str:
@@ -794,7 +806,11 @@ async def on_shutdown():
 
 
 # Создание приложения FastAPI и маршруты
+limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 
 @app.post(WEBHOOK_PATH)
@@ -827,7 +843,7 @@ async def root_index() -> PlainTextResponse:
 
 
 @app.post("/42")
-async def handle_42_api(request: Request):
+async def handle_42_api(request: Request, _=Depends(verify_api_key)):
     try:
         data = await request.json()
     except json.JSONDecodeError:
@@ -840,7 +856,7 @@ async def handle_42_api(request: Request):
 
 
 @app.post("/file")
-async def handle_file_api(file: UploadFile = File(...)):
+async def handle_file_api(request: Request, file: UploadFile = File(...), _=Depends(verify_api_key)):
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name

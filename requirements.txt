@@ -20,3 +20,4 @@ PyYAML==6.0.2
 rarfile==4.2
 fastapi==0.116.1
 uvicorn==0.35.0
+slowapi==0.1.9
