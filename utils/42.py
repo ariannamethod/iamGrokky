@@ -1,6 +1,6 @@
 """Playful mini neural network for Grokky's special commands.
 
-The module powers the `/when`, `/mars`, `/42` and `/whatsnew` commands.
+The module powers the `/when`, `/mars`, and `/42` commands.
 It mixes a tiny Markov chain with a couple of bio-inspired helpers to
 produce whimsical text and fetch small pieces of news.  The goal of this
 patch is not only to integrate the module into the main server but also
@@ -12,7 +12,6 @@ import asyncio
 import json
 import random
 import re
-import sqlite3
 import time
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -83,9 +82,7 @@ def _append_links(base: str, text: str) -> str:
     return text
 
 LOG_DIR = Path("logs/42")
-CACHE_DB = Path("cache/cache.db")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-CACHE_DB.parent.mkdir(parents=True, exist_ok=True)
 FROM_CLI_SEED: Optional[int] = None
 
 _SEED_CORPUS = """
@@ -243,35 +240,6 @@ def log_event(msg: str, log_type: str = "info") -> None:
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-# SQLite кэш для /whatsnew
-def init_cache_db():
-    with sqlite3.connect(CACHE_DB) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS whatsnew (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                summary TEXT,
-                timestamp REAL,
-                pulse REAL
-            )
-        """)
-
-def save_cache(summary: str, pulse: float):
-    with sqlite3.connect(CACHE_DB) as conn:
-        conn.execute("INSERT INTO whatsnew (summary, timestamp, pulse) VALUES (?, ?, ?)",
-                     (summary, time.time(), pulse))
-        conn.commit()
-
-def load_cache(max_age: float = 43200) -> Optional[Dict]:
-    """Load cached news summary if it is still fresh."""
-    with sqlite3.connect(CACHE_DB) as conn:
-        cursor = conn.execute(
-            "SELECT summary, pulse, timestamp FROM whatsnew ORDER BY timestamp DESC LIMIT 1"
-        )
-        result = cursor.fetchone()
-        if result and (time.time() - result[2]) < max_age:
-            return {"summary": result[0], "pulse": result[1]}
-        return None
-
 # Асинхронный fetch
 async def fetch_url(url: str, timeout: int = 10) -> Optional[str]:
     try:
@@ -361,77 +329,6 @@ async def forty_two(lang: str = "en") -> str:
     result = paraphrased
     return await _translate(result, lang)
 
-async def whatsnew(lang: str = "en") -> str:
-    init_cache_db()
-    cached = load_cache()
-    if cached:
-        chaos_pulse.pulse = cached["pulse"]
-        return await _translate(cached["summary"], lang)
-
-    urls = ["https://www.spacex.com/updates", "https://x.ai/blog"]
-    articles: list[str] = []
-    links: list[str] = []
-    for url in urls:
-        html = await fetch_url(url)
-        if not html or BeautifulSoup is None:
-            continue
-        try:
-            soup = BeautifulSoup(html, "html.parser")  # type: ignore[misc]
-            updates = soup.find_all("article", limit=3)
-            for article in updates:
-                title = article.find("h2").text.strip() if article.find("h2") else "Update"
-                date = article.find("time").text.strip() if article.find("time") else datetime.now().strftime("%B %Y")
-                link = urljoin(url, article.find("a")["href"]) if article.find("a") else url
-                summary = article.find("p").text.strip()[:150] + "..." if article.find("p") else "See link"
-                paraphrased = paraphrase(summary, "Retell this news for kids: ")
-                articles.append(f"{title} ({date}): {paraphrased}")
-                links.append(link)
-            break
-        except Exception as e:
-            log_event(f"Parse {url} failed: {str(e)}", "error")
-            continue
-
-    if articles:
-        retell = "Latest news:\n" + "\n".join(f"- {a}" for a in articles)
-        if links:
-            retell += "\nLinks:\n" + "\n".join(links)
-        chaos_pulse.update(retell)
-        markov.update_chain(retell)
-        pulse, quiver, sense = bio.enhance(len(retell) / 100)
-        save_cache(retell, chaos_pulse.get())
-        log_event(
-            f"Served /whatsnew: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
-        )
-        return await _translate(retell, lang)
-
-    try:
-        tweet = get_dynamic_knowledge(
-            "Latest x.com/SpaceX Mars/Starship tweet, summarize in 100 chars",
-        ).strip()
-        if any(kw in tweet.lower() for kw in ["mars", "starship"]):
-            paraphrased = paraphrase(tweet, "Retell this tweet simply: ")
-            retell = f"Latest SpaceX tweet: {paraphrased}"
-            links = ["https://x.com/SpaceX"]
-            chaos_pulse.update(retell)
-            markov.update_chain(retell)
-        else:
-            retell = "No Mars/Starship tweets. Last: Starship Flight 6 (July 2025)."
-            links = ["https://www.spacex.com/updates/starship-flight-6"]
-    except Exception as e:
-        log_event(f"X search failed: {str(e)}", "error")
-        retell = (
-            "News fetch failed, Wulf stands ready! Last: Starship Flight 6 (July 2025)."
-        )
-        links = ["https://www.spacex.com/updates/starship-flight-6"]
-
-    if links:
-        retell += "\nLinks:\n" + "\n".join(links)
-    pulse, quiver, sense = bio.enhance(len(retell) / 100)
-    save_cache(retell, chaos_pulse.get())
-    log_event(
-        f"Served /whatsnew: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
-    )
-    return await _translate(retell, lang)
 
 # Главный обработчик
 async def handle(cmd: str, lang: str = "en") -> Dict[str, str]:
@@ -441,7 +338,7 @@ async def handle(cmd: str, lang: str = "en") -> Dict[str, str]:
     ----------
     cmd:
         Command name without the leading slash.  Supported values are
-        ``"when"``, ``"mars"``, ``"42"`` and ``"whatsnew"``.
+        ``"when"``, ``"mars"`` and ``"42"``.
 
     Returns
     -------
@@ -457,12 +354,10 @@ async def handle(cmd: str, lang: str = "en") -> Dict[str, str]:
             return {"response": await mars(lang), "pulse": chaos_pulse.get()}
         if cmd == "42":
             return {"response": await forty_two(lang), "pulse": chaos_pulse.get()}
-        if cmd == "whatsnew":
-            return {"response": await whatsnew(lang), "pulse": chaos_pulse.get()}
 
         log_event(f"Unknown cmd: {cmd}", "error")
         return {
-            "response": "Unknown command! Try /when, /mars, /42, /whatsnew.",
+            "response": "Unknown command! Try /when, /mars, /42.",
             "pulse": chaos_pulse.get(),
         }
     except Exception as e:  # pragma: no cover - best effort
@@ -472,7 +367,7 @@ async def handle(cmd: str, lang: str = "en") -> Dict[str, str]:
 # CLI для теста
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Grokky 42: Mars chaos & 42 fire! #AriannaMethod")
-    parser.add_argument("--cmd", choices=["when", "mars", "42", "whatsnew"], help="Command to run")
+    parser.add_argument("--cmd", choices=["when", "mars", "42"], help="Command to run")
     parser.add_argument("--seed", type=int, default=None, help="Deterministic seed")
     args = parser.parse_args()
     if args.cmd:

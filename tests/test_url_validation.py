@@ -90,7 +90,6 @@ def _add_stub(module_name, **attrs):
     sys.modules[module_name] = mod
 
 _add_stub("utils.dayandnight", day_and_night_task=_stub_async())
-_add_stub("utils.howru", check_silence=_stub_async(), update_last_message_time=_stub_async())
 _add_stub("utils.mirror", mirror_task=_stub_async())
 _add_stub("utils.prompt", get_chaos_response=lambda: "")
 _add_stub("utils.repo_monitor", monitor_repository=_stub_async())

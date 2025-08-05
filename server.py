@@ -56,7 +56,6 @@ from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
 from utils.dayandnight import day_and_night_task
-from utils.howru import check_silence, update_last_message_time
 from utils.mirror import mirror_task
 from utils.prompt import get_chaos_response
 from utils.repo_monitor import monitor_repository
@@ -428,14 +427,6 @@ async def cmd_42(message: Message):
     await reply_split(message, result["response"])
 
 
-@dp.message(Command("whatsnew"))
-async def cmd_whatsnew(message: Message):
-    """Handle /whatsnew command via the 42 utility."""
-    lang = CHAT_LANG.get(message.chat.id, detect_language(message.text or ""))
-    result = await handle("whatsnew", lang)
-    await reply_split(message, result["response"])
-
-
 @dp.message(Command("file"))
 async def cmd_file(message: Message):
     """Process an attached file through the file handler."""
@@ -539,11 +530,6 @@ async def coder_choice(callback: types.CallbackQuery):
 
 
 async def handle_text(message: Message, text: str) -> None:
-    try:
-        await update_last_message_time()
-    except (RuntimeError, OSError) as e:
-        logger.error("Ошибка при обновлении времени последнего сообщения: %s", e)
-
     lang = detect_language(text)
     CHAT_LANG[message.chat.id] = lang
 
@@ -789,7 +775,6 @@ async def on_startup():
                 types.BotCommand(command="when", description="when"),
                 types.BotCommand(command="mars", description="why Mars?"),
                 types.BotCommand(command="42", description="why 42?"),
-                types.BotCommand(command="whatsnew", description="what's going on with Earth"),
             ]
         )
         await bot.set_chat_menu_button(menu_button=types.MenuButtonCommands())
@@ -799,7 +784,6 @@ async def on_startup():
     # Запуск фоновых задач
     try:
         # Исправляем ошибку с аргументами
-        background_tasks.append(asyncio.create_task(check_silence()))
         background_tasks.append(asyncio.create_task(mirror_task()))
         background_tasks.append(asyncio.create_task(day_and_night_task(engine)))
         from utils.knowtheworld import know_the_world_task
@@ -876,7 +860,7 @@ async def handle_42_api(request: Request, _=Depends(verify_api_key)):
     except json.JSONDecodeError:
         data = {}
     cmd = data.get("cmd") or request.query_params.get("cmd", "")
-    if cmd not in {"when", "mars", "42", "whatsnew"}:
+    if cmd not in {"when", "mars", "42"}:
         return JSONResponse({"error": "Unsupported command"}, status_code=400)
     result = await handle(cmd)
     return JSONResponse(result)

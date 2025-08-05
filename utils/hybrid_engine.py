@@ -39,7 +39,7 @@ class HybridGrokkyEngine:
             # Память через OpenAI не используется
             return None
 
-        if user_id not in self.threads or self.threads[user_id] is None:
+        if user_id not in self.threads:
             try:
                 async with httpx.AsyncClient() as client:
                     res = await client.post(
@@ -51,9 +51,7 @@ class HybridGrokkyEngine:
                     res.raise_for_status()
                     self.threads[user_id] = res.json().get("id")
             except Exception as exc:  # pragma: no cover - network
-                # Сохраняем None, чтобы больше не пытаться создавать поток
                 self.threads[user_id] = None
-                # Логируем ошибку но не поднимаем её наверх
                 print(f"OpenAI thread creation failed: {exc}")
         return self.threads.get(user_id)
 
