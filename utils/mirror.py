@@ -27,7 +27,7 @@ async def mirror_task():
                 resp = await client.get(REPO_URL, timeout=10)
                 resp.raise_for_status()
                 code = resp.text
-            current_hash = hashlib.md5(code.encode()).hexdigest()
+            current_hash = hashlib.sha256(code.encode()).hexdigest()
 
             if current_hash != last_hash:
                 async with httpx.AsyncClient() as client:
