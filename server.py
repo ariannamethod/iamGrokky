@@ -150,6 +150,9 @@ CODER_OUTPUT: dict[tuple[int, int], str] = {}
 # Preferred language per chat
 CHAT_LANG: dict[int, str] = {}
 
+# Background tasks to be cancelled on shutdown
+background_tasks: list[asyncio.Task] = []
+
 
 def detect_language(text: str) -> str:
     """Very small heuristic language detector."""
@@ -751,12 +754,11 @@ async def on_startup():
     # Запуск фоновых задач
     try:
         # Исправляем ошибку с аргументами
-        asyncio.create_task(check_silence())
-        asyncio.create_task(mirror_task())
-        asyncio.create_task(day_and_night_task(engine))
+        background_tasks.append(asyncio.create_task(check_silence()))
+        background_tasks.append(asyncio.create_task(mirror_task()))
+        background_tasks.append(asyncio.create_task(day_and_night_task(engine)))
         from utils.knowtheworld import know_the_world_task
-
-        asyncio.create_task(know_the_world_task(engine))
+        background_tasks.append(asyncio.create_task(know_the_world_task(engine)))
         logger.info("Фоновые задачи запущены")
     except (RuntimeError, OSError) as e:
         logger.error(f"Ошибка при запуске фоновых задач: {e}")
@@ -764,6 +766,16 @@ async def on_startup():
 
 
 async def on_shutdown():
+    for task in background_tasks:
+        task.cancel()
+    for task in background_tasks:
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error("Ошибка при завершении фоновой задачи: %s", e)
+    background_tasks.clear()
     await bot.delete_webhook()
     logger.info("Удален вебхук")
 
