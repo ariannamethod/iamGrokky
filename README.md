@@ -42,7 +42,7 @@ independently.
 ### The 42 Utility
 
 The script hiding at `utils/42.py` animates Grokky's playful side. It
-keeps the `/when`, `/mars`, `/42` and `/whatsnew` commands buzzing with
+keeps the `/when`, `/mars`, and `/42` commands buzzing with
 life by spinning a tiny network each time the user calls for cosmic
 wisdom or fresh headlines.
 

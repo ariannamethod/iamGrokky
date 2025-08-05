@@ -424,6 +424,22 @@ class FileHandler:
         for ext in self._extractors:
             if path_lower.endswith(ext):
                 return ext
+        try:
+            with open(path, "rb") as f:
+                header = f.read(4)
+            if header.startswith(b"%PDF"):
+                return ".pdf"
+            if header.startswith(b"PK\x03\x04"):
+                try:
+                    with zipfile.ZipFile(path) as zf:
+                        names = zf.namelist()
+                        if "word/document.xml" in names:
+                            return ".docx"
+                except zipfile.BadZipFile:
+                    pass
+                return ".zip"
+        except OSError:
+            pass
         return ".unknown"
 
     async def _extract_pdf(self, path: str) -> str:

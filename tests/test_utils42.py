@@ -19,12 +19,3 @@ async def test_42_easter_egg(monkeypatch):
     assert 'wikipedia.org/wiki/42' in result['response']
 
 
-@pytest.mark.asyncio
-async def test_whatsnew_parsing(monkeypatch):
-    async def fake_fetch(url, timeout=10):
-        return '<article><h2>Test Update</h2><time>2025</time><a href="/test"></a><p>Starship chaos</p></article>'
-    monkeypatch.setattr(mod, 'fetch_url', fake_fetch)
-    monkeypatch.setattr(mod, 'paraphrase', lambda text, prefix='': text)
-    result = await mod.handle('whatsnew')
-    assert 'Test Update' in result['response']
-    assert 'Starship chaos' in result['response']

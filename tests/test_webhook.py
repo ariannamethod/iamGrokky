@@ -22,13 +22,6 @@ def app(monkeypatch):
         setattr(utils_pkg, name, mod)
 
     add_utils_submodule("dayandnight", {"day_and_night_task": lambda *a, **k: None})
-    add_utils_submodule(
-        "howru",
-        {
-            "check_silence": lambda *a, **k: None,
-            "update_last_message_time": lambda *a, **k: None,
-        },
-    )
     add_utils_submodule("mirror", {"mirror_task": lambda *a, **k: None})
     add_utils_submodule("prompt", {"get_chaos_response": lambda *a, **k: None})
     add_utils_submodule("repo_monitor", {"monitor_repository": lambda *a, **k: None})
