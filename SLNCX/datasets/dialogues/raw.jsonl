@@ -1,0 +1,6 @@
+{"role": "user", "content": "Hello!"}
+{"role": "assistant", "content": "Hi, how can I help?"}
+{"role": "user", "content": "Привет, как дела?"}
+{"role": "assistant", "content": "Отлично, чем могу помочь?"}
+{"role": "user", "content": "¿Cómo estás?"}
+{"role": "assistant", "content": "Estoy bien, gracias."}

@@ -67,6 +67,23 @@ The `models/` package groups reusable parts of the network:
 
 Run `pytest` to execute the test suite. Run `ruff .` to lint the code.
 
+## Fine-tuning
+
+1. Prepare a dialogue dataset in JSONL format with `role` and `content` fields.
+   Use the helper script to clean and split the data:
+
+   ```bash
+   python scripts/prepare_dataset.py SLNCX/datasets/dialogues/raw.jsonl SLNCX/datasets/dialogues
+   ```
+
+2. Fine-tune the model on the prepared dataset:
+
+   ```bash
+   python SLNCX/fine_tune.py --config config/ft.yaml --dataset SLNCX/datasets/dialogues
+   ```
+
+   The `nanogpt_runner.py` module updates the checkpoint in `out/ckpt.pt`.
+
 ## Deployment on Railway
 
 1. Create a new Railway project and point it at this repository.
