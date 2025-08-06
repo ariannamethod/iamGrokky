@@ -22,6 +22,7 @@ try:
 except ImportError:
     CharGen = None
 from utils.dynamic_weights import get_dynamic_knowledge, apply_pulse
+from utils.language import detect_language
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 try:
@@ -350,6 +351,14 @@ def load_cache(path: str, max_age: float = 43200) -> Optional[Dict]:
 
 # Async paraphrase
 async def paraphrase(text: str, prefix: str = "Summarize this for kids: ") -> str:
+    lang = detect_language(text)
+    if prefix == "Summarize this for kids: ":
+        prefix = (
+            "Summarize this for kids: "
+            if lang == "en"
+            else "Кратко перескажи для детей: "
+        )
+
     temp = 0.7 + chaos_pulse.get() * 0.3
     try:
         if cg:
@@ -357,7 +366,9 @@ async def paraphrase(text: str, prefix: str = "Summarize this for kids: ") -> st
             if not paraphrased or len(paraphrased) < 50:
                 raise ValueError("Paraphrase too short")
             markov.update_chain(paraphrased)
-            return paraphrased + random.choice([" Shredding the cosmos! 🌌", " File pulse ignited! 🚀", " Wulf’s chaos alive! 🌩️"])
+            return paraphrased + random.choice(
+                [" Shredding the cosmos! 🌌", " File pulse ignited! 🚀", " Wulf’s chaos alive! 🌩️"]
+            )
         raise ValueError("No CharGen")
     except (RuntimeError, ValueError) as e:
         log_event(f"Paraphrase failed: {str(e)}", "error")

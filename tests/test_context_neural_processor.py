@@ -120,3 +120,19 @@ async def test_paraphrase_uses_dynamic_knowledge(monkeypatch):
     result = await cnp.paraphrase("hello world")
     assert "dynamic" in result
     assert called
+
+
+@pytest.mark.asyncio
+async def test_paraphrase_detects_language(monkeypatch):
+    captured = {}
+
+    def fake_get(prompt):
+        captured["prompt"] = prompt
+        return "ok"
+
+    monkeypatch.setattr(cnp, "cg", None, raising=False)
+    monkeypatch.setattr(cnp, "get_dynamic_knowledge", fake_get, raising=False)
+
+    await cnp.paraphrase("привет мир")
+    assert captured["prompt"].startswith("Кратко перескажи для детей: ")
+
