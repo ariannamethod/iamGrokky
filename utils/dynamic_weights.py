@@ -1,6 +1,7 @@
 import os
 import time
 import math
+import json
 from typing import Optional, Sequence, List
 
 import httpx
@@ -97,6 +98,30 @@ def apply_pulse(weights: Sequence[float], pulse: float) -> List[float]:
     return [e / total for e in exps]
 
 
+def _log_feedback(
+    prompt: str, reward: float, weights: Sequence[float]
+) -> None:
+    """Append feedback info to ``data/feedback/log.jsonl``."""
+
+    try:
+        os.makedirs("data/feedback", exist_ok=True)
+        with open(
+            "data/feedback/log.jsonl", "a", encoding="utf-8"
+        ) as f:
+            entry = {
+                "timestamp": time.time(),
+                "prompt": prompt,
+                "reward": reward,
+                "weights": list(weights),
+            }
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:  # pragma: no cover - best effort
+        pass
+
+
+_GLOBAL_BASE: List[float] = [1.0]
+
+
 class DynamicWeights:
     """Utility for producing fluid, context-aware weight coefficients.
 
@@ -107,7 +132,10 @@ class DynamicWeights:
     """
 
     def __init__(self, base: Optional[Sequence[float]] = None) -> None:
-        self.base = list(base or [1.0])
+        global _GLOBAL_BASE
+        if base is not None:
+            _GLOBAL_BASE = list(base)
+        self.base = _GLOBAL_BASE
 
     def pulse_from_prompt(
         self, prompt: str, api_key: Optional[str] = None
@@ -123,16 +151,26 @@ class DynamicWeights:
         return max(pulse, 0.0)
 
     def weights_for_prompt(
-        self, prompt: str, api_key: Optional[str] = None
+        self,
+        prompt: str,
+        reward: Optional[float] = None,
+        api_key: Optional[str] = None,
     ) -> List[float]:
-        """Return softmax-normalised weights for ``prompt``."""
+        """Return softmax-normalised weights for ``prompt``.
+
+        If ``reward`` is provided, the pair is logged to
+        ``data/feedback/log.jsonl`` together with the computed weights.
+        """
 
         pulse = self.pulse_from_prompt(prompt, api_key)
         n = len(self.base)
         if n == 0:
             return []
         if n == 1:
-            return [1.0]
+            weights = [1.0]
+            if reward is not None:
+                _log_feedback(prompt, reward, weights)
+            return weights
 
         # Distribute weight mass across ``self.base`` depending on how strong
         # the pulse is.  For ``n`` responses, we treat their indices as evenly
@@ -145,7 +183,10 @@ class DynamicWeights:
             self.base[i] * max(1.0 - abs(pulse - pos) * 2, 0.0)
             for i, pos in enumerate(positions)
         ]
-        return apply_pulse(shaped, pulse)
+        weights = apply_pulse(shaped, pulse)
+        if reward is not None:
+            _log_feedback(prompt, reward, weights)
+        return weights
 
     def generate_response(
         self, prompt: str, api_key: Optional[str] = None

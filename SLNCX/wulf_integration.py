@@ -59,7 +59,7 @@ def generate_response(
     try:
         if mode == "wulf":
             dw = DynamicWeights()
-            log_entry["weights"] = dw.weights_for_prompt(prompt, api_key)
+            log_entry["weights"] = dw.weights_for_prompt(prompt, api_key=api_key)
             response = run_wulf(prompt, ckpt_path, api_key)
             log_entry["response"] = response
         else:
@@ -67,7 +67,7 @@ def generate_response(
             raw_response = get_dynamic_knowledge(full_prompt, api_key)
             response = _extract_text(raw_response)
             dw = DynamicWeights()
-            log_entry["weights"] = dw.weights_for_prompt(full_prompt, api_key)
+            log_entry["weights"] = dw.weights_for_prompt(full_prompt, api_key=api_key)
             log_entry["response"] = response
         os.makedirs("logs/wulf", exist_ok=True)
         with open(

@@ -48,7 +48,7 @@ except ImportError:  # pragma: no cover - fallback for tests
         async def reply(self, *args, **kwargs):  # pragma: no cover - stub
             pass
 
-from fastapi import FastAPI, Request, UploadFile, File, Depends, HTTPException
+from fastapi import FastAPI, Request, UploadFile, File, Depends, HTTPException, Body
 from fastapi.responses import PlainTextResponse, JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -63,6 +63,8 @@ from utils.imagine import imagine
 from utils.vision import analyze_image
 from utils.coder import interpret_code
 from SLNCX.wulf_integration import generate_response
+from utils.dynamic_weights import DynamicWeights
+from utils.rl_trainer import RLTrainer
 
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
@@ -788,6 +790,8 @@ async def on_startup():
         background_tasks.append(asyncio.create_task(day_and_night_task(engine)))
         from utils.knowtheworld import know_the_world_task
         background_tasks.append(asyncio.create_task(know_the_world_task(engine)))
+        rl_trainer = RLTrainer(DynamicWeights())
+        background_tasks.append(asyncio.create_task(rl_trainer.run()))
         logger.info("Фоновые задачи запущены")
     except (RuntimeError, OSError) as e:
         logger.error(f"Ошибка при запуске фоновых задач: {e}")
@@ -876,6 +880,17 @@ async def handle_file_api(request: Request, file: UploadFile = File(...), _=Depe
         return JSONResponse({"result": result})
     finally:
         os.unlink(tmp_path)
+
+
+@app.post("/feedback")
+async def handle_feedback(
+    payload: dict = Body(...), _=Depends(verify_api_key)
+) -> JSONResponse:
+    prompt = payload.get("prompt", "")
+    reward = float(payload.get("reward", 0.0))
+    dw = DynamicWeights()
+    dw.weights_for_prompt(prompt, reward=reward)
+    return JSONResponse({"status": "logged"})
 
 
 @app.on_event("startup")
