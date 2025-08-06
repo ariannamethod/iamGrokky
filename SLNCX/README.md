@@ -22,6 +22,11 @@ The CLI loads a quantized checkpoint and prints the answer. Keep it simple: `pyt
 
 The API sits behind a single `/generate` endpoint. Send JSON with your prompt and optional user tag. You get JSON back—no ceremony.
 
+`generate_response` also supports optional `image_url` and `audio_bytes`
+parameters. Images are described via the OpenAI vision API and folded into
+the system context, while raw audio is transcribed with Whisper before being
+appended to the prompt.
+
 Every call drops a log entry in `logs/wulf`. Time-stamped, complete. If something fails, `failures` catches the traceback so you know where it went sideways.
 
 Inference stays light. Two-bit weights mean the model lives happily on a standard CPU. It spins up quickly and gets straight to work.

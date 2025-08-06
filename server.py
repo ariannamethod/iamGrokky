@@ -9,6 +9,7 @@ import tempfile
 from urllib.parse import urlparse
 from ipaddress import ip_address
 import time
+import base64
 
 import httpx
 try:  # pragma: no cover - used only with aiogram installed
@@ -921,6 +922,23 @@ async def handle_file_api(request: Request, file: UploadFile = File(...), _=Depe
         return JSONResponse({"result": result})
     finally:
         os.unlink(tmp_path)
+
+
+@app.post("/wulf/vision")
+async def wulf_vision_endpoint(
+    url: str | None = None,
+    file: UploadFile | None = File(None),
+    _=Depends(verify_api_key),
+):
+    if not url and not file:
+        raise HTTPException(status_code=400, detail="no image provided")
+    if not url and file:
+        content = await file.read()
+        b64 = base64.b64encode(content).decode()
+        mime = file.content_type or "image/png"
+        url = f"data:{mime};base64,{b64}"
+    desc = analyze_image(url)
+    return JSONResponse({"description": desc})
 
 
 @app.on_event("startup")

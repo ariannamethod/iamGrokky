@@ -72,3 +72,41 @@ def test_memory_affects_prompt(monkeypatch):
         "next", "wulf", user_id="u1", engine=engine
     )
     assert any("hello" in p for p in prompts[1:])
+
+
+def test_generate_response_with_image(monkeypatch):
+    called: dict[str, str] = {}
+
+    def fake_analyze(url):
+        called["url"] = url
+        return "a cat"
+
+    def fake_get_dynamic(prompt, api_key=None):
+        called["prompt"] = prompt
+        return "resp"
+
+    monkeypatch.setattr(wulf_integration, "analyze_image", fake_analyze)
+    monkeypatch.setattr(wulf_integration, "get_dynamic_knowledge", fake_get_dynamic)
+
+    wulf_integration.generate_response("hi", image_url="http://img")
+    assert "a cat" in called["prompt"]
+    assert called["url"] == "http://img"
+
+
+def test_generate_response_with_audio(monkeypatch):
+    called: dict[str, str] = {}
+
+    def fake_transcribe(data):
+        called["audio"] = data
+        return "voice"
+
+    def fake_run(prompt, ckpt_path="out/ckpt.pt", api_key=None):
+        called["prompt"] = prompt
+        return "wolf"
+
+    monkeypatch.setattr(wulf_integration, "transcribe_audio", fake_transcribe)
+    monkeypatch.setattr(wulf_integration, "run_wulf", fake_run)
+
+    wulf_integration.generate_response("hi", "wulf", audio_bytes=b"abc")
+    assert "voice" in called["prompt"]
+    assert called["audio"] == b"abc"

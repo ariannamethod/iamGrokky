@@ -28,6 +28,10 @@ A number of tools ship with the repository:
 - **Voice control** – `/voiceon` and `/voiceoff` switch spoken replies using
   OpenAI's text-to-speech.
 - **Image generation** – `/imagine <prompt>` asks DALL·E for a picture.
+- **Vision analysis** – POST an image or URL to `/wulf/vision` for a short
+  description via the OpenAI vision API.
+- **Audio input** – raw audio bytes are transcribed with Whisper before being
+  fed into the core logic.
 - **Coder mode** – `/coder` enables code interpretation, `/coderoff` disables it.
 - **SLNX mode** – `/slncx` routes messages to Wulf until `/slncxoff`.
 - **Dynamic weights** – Wulf dives into `utils/dynamic_weights.py` for fresh intel,

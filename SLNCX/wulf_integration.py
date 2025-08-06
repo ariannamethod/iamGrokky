@@ -5,6 +5,8 @@ import asyncio
 from typing import Optional, Any
 
 from utils.dynamic_weights import DynamicWeights, get_dynamic_knowledge
+from utils.vision import analyze_image
+from utils.audio import transcribe_audio
 from .wulf_inference import generate as run_wulf
 
 # System prompt for Wulf mode
@@ -56,6 +58,8 @@ def generate_response(
     *,
     user_id: Optional[str] = None,
     engine: Optional[Any] = None,
+    image_url: Optional[str] = None,
+    audio_bytes: Optional[bytes] = None,
 ) -> str:
     """Generate a response using either SLNCX or external models.
 
@@ -63,6 +67,12 @@ def generate_response(
     user's memory for additional context and store the prompt/response pair
     after generation.
     """
+
+    if audio_bytes:
+        audio_text = transcribe_audio(audio_bytes)
+        prompt = f"{prompt}\n{audio_text}" if prompt else audio_text
+
+    image_desc = analyze_image(image_url) if image_url else ""
 
     log_entry = {"prompt": prompt, "timestamp": time.time()}
 
@@ -74,7 +84,11 @@ def generate_response(
         except Exception:  # pragma: no cover - best effort
             context = ""
 
-    prompt_with_context = prompt if not context else f"{context}\n\n{prompt}"
+    base_prompt = prompt
+    if image_desc:
+        base_prompt += f"\n[Image: {image_desc}]"
+
+    prompt_with_context = base_prompt if not context else f"{context}\n\n{base_prompt}"
 
     try:
         if mode == "wulf":
@@ -86,6 +100,8 @@ def generate_response(
             full_prompt = WULF_PROMPT
             if context:
                 full_prompt += f"\nContext: {context}"
+            if image_desc:
+                full_prompt += f"\nImage: {image_desc}"
             full_prompt += "\nUser: " + prompt
             raw_response = get_dynamic_knowledge(full_prompt, api_key)
             response = _extract_text(raw_response)
