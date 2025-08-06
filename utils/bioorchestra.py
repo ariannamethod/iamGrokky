@@ -46,7 +46,8 @@ class BioOrchestra:
             old_snapshot = {}
 
         changes = self._diff(old_snapshot, new_snapshot)
-        os.makedirs(os.path.dirname(self.snapshot_file), exist_ok=True)
+        dirpath = os.path.dirname(self.snapshot_file) or "."
+        os.makedirs(dirpath, exist_ok=True)
         with open(self.snapshot_file, "w", encoding="utf-8") as f:
             json.dump(new_snapshot, f, indent=2, ensure_ascii=False)
         return changes
