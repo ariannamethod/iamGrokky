@@ -1,7 +1,7 @@
 import os
 import json
 import time
-from typing import Optional, Any
+from typing import Optional, Any, AsyncGenerator
 
 from utils.dynamic_weights import DynamicWeights, get_dynamic_knowledge
 from .wulf_inference import generate as run_wulf
@@ -47,20 +47,24 @@ def _extract_text(resp: Any) -> str:
     return str(resp)
 
 
-def generate_response(
+async def generate_response(
     prompt: str,
     mode: str = "grok3",
     ckpt_path: str = "out/ckpt.pt",  # retained for compatibility
     api_key: Optional[str] = None,
-) -> str:
-    """Generate a response using either SLNCX or external models."""
+) -> AsyncGenerator[str, None]:
+    """Generate a streamed response using either SLNCX or external models."""
 
     log_entry = {"prompt": prompt, "timestamp": time.time()}
     try:
         if mode == "wulf":
             dw = DynamicWeights()
             log_entry["weights"] = dw.weights_for_prompt(prompt, api_key)
-            response = run_wulf(prompt, ckpt_path, api_key)
+            parts: list[str] = []
+            async for token in run_wulf(prompt, ckpt_path, api_key):
+                parts.append(token)
+                yield token
+            response = "".join(parts).strip()
             log_entry["response"] = response
         else:
             full_prompt = WULF_PROMPT + "\nUser: " + prompt
@@ -69,12 +73,12 @@ def generate_response(
             dw = DynamicWeights()
             log_entry["weights"] = dw.weights_for_prompt(full_prompt, api_key)
             log_entry["response"] = response
+            yield response
         os.makedirs("logs/wulf", exist_ok=True)
         with open(
             f"logs/wulf/{time.strftime('%Y-%m-%d')}.jsonl", "a", encoding="utf-8"
         ) as f:
             f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
-        return response
     except Exception as exc:  # pragma: no cover - runtime
         log_entry["error"] = str(exc)
         os.makedirs("failures", exist_ok=True)
@@ -82,4 +86,4 @@ def generate_response(
             f"failures/{time.strftime('%Y-%m-%d')}.log", "a", encoding="utf-8"
         ) as f:
             f.write(json.dumps(log_entry) + "\n")
-        return f"Error: {exc}"
+        yield f"Error: {exc}"

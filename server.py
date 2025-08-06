@@ -27,6 +27,12 @@ except ImportError:  # pragma: no cover - fallback for tests
         async def get_file(self, *args, **kwargs):  # pragma: no cover - stub
             pass
 
+        async def send_chat_action(self, *args, **kwargs):  # pragma: no cover - stub
+            pass
+
+        async def edit_message_text(self, *args, **kwargs):  # pragma: no cover - stub
+            pass
+
     class Dispatcher:  # type: ignore
         def __init__(self, *args, **kwargs):
             pass
@@ -35,7 +41,7 @@ except ImportError:  # pragma: no cover - fallback for tests
         pass
 
     class ChatAction:  # type: ignore
-        pass
+        TYPING = "typing"
 
     class Command:  # type: ignore
         def __init__(self, *args, **kwargs):
@@ -301,6 +307,21 @@ async def reply_split(message: Message, text: str) -> None:
             await bot.send_message(message.chat.id, full_text)
 
 
+async def stream_wulf_response(message: Message, prompt: str) -> None:
+    """Stream Wulf model tokens to Telegram."""
+
+    chat_id = message.chat.id
+    accumulated = ""
+    sent = None
+    async for token in generate_response(prompt, "wulf"):
+        await bot.send_chat_action(chat_id, ChatAction.TYPING)
+        accumulated += token
+        if sent is None:
+            sent = await message.reply(accumulated)
+        else:
+            await bot.edit_message_text(accumulated, chat_id, sent.message_id)
+
+
 @dp.message(Command("voiceon"))
 async def cmd_voiceon(message: Message):
     VOICE_ENABLED[message.chat.id] = True
@@ -348,8 +369,7 @@ async def cmd_slncx(message: Message):
         await message.reply("SLNCX mode on. /slncxoff to exit.")
     else:
         prompt = parts[1]
-        reply = await asyncio.to_thread(generate_response, prompt, "wulf")
-        await reply_split(message, reply)
+        await stream_wulf_response(message, prompt)
 
 
 @dp.message(Command("slncxoff"))
@@ -372,7 +392,7 @@ async def cmd_status(message: Message):
             stats = engine.index.describe_index_stats()
             total_vectors = stats.get("total_vector_count", 0)
             status_text += f"Векторов в памяти: {total_vectors}"
-        except (RuntimeError, ValueError) as e:
+        except (RuntimeError, ValueError):
             status_text += "Ошибка при получении статистики памяти"
 
     await reply_split(message, status_text)
@@ -538,8 +558,7 @@ async def handle_text(message: Message, text: str) -> None:
         return
 
     if SLNCX_MODE.get(message.chat.id):
-        reply = await asyncio.to_thread(generate_response, text, "wulf")
-        await reply_split(message, reply)
+        await stream_wulf_response(message, text)
         return
 
     if not engine:
