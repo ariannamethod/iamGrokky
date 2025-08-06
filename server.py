@@ -366,7 +366,13 @@ async def cmd_slncx(message: Message):
         await message.reply("SLNCX mode on. /slncxoff to exit.")
     else:
         prompt = parts[1]
-        reply = await asyncio.to_thread(generate_response, prompt, "wulf")
+        reply = await asyncio.to_thread(
+            generate_response,
+            prompt,
+            "wulf",
+            user_id=str(chat_id),
+            engine=engine,
+        )
         await reply_split(message, reply)
 
 
@@ -556,7 +562,13 @@ async def handle_text(message: Message, text: str) -> None:
         return
 
     if SLNCX_MODE.get(message.chat.id):
-        reply = await asyncio.to_thread(generate_response, text, "wulf")
+        reply = await asyncio.to_thread(
+            generate_response,
+            text,
+            "wulf",
+            user_id=str(message.chat.id),
+            engine=engine,
+        )
         await reply_split(message, reply)
         return
 
