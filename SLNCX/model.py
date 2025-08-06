@@ -82,7 +82,13 @@ def generate(prompt: str, ckpt_path: str = "out/ckpt.pt", api_key: Optional[str]
     full_prompt = f"{WULF_PROMPT}\nUser: {prompt}"
     return controller.generate_response(full_prompt, api_key)
 
-config.update("jax_spmd_mode", "allow_all")
+# ``jax_spmd_mode`` was removed in newer releases of JAX. Guard the update so
+# older versions that still support the flag continue to work without raising an
+# exception on modern versions.
+try:  # pragma: no cover - behavior depends on installed JAX
+    config.update("jax_spmd_mode", "allow_all")
+except AttributeError:  # JAX >= 0.7 removed this flag
+    pass
 
 logger = logging.getLogger(__name__)
 rank_logger = logging.getLogger("rank")
