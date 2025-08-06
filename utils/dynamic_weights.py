@@ -108,7 +108,10 @@ class DynamicWeights:
 
         knowledge = get_dynamic_knowledge(prompt, api_key)
         # Simple heuristic: longer knowledge implies a stronger pulse.
-        pulse = min(len(knowledge) / 1000.0, 1.0)
+        # The denominator is tuned to 300 so that relatively small snippets of
+        # knowledge can already yield noticeable pulse values, enabling the
+        # lightweight SLNCX model to vary its responses.
+        pulse = min(len(knowledge) / 300.0, 1.0)
         return max(pulse, 0.0)
 
     def weights_for_prompt(
@@ -117,4 +120,21 @@ class DynamicWeights:
         """Return softmax-normalised weights for ``prompt``."""
 
         pulse = self.pulse_from_prompt(prompt, api_key)
-        return apply_pulse(self.base, pulse)
+        n = len(self.base)
+        if n == 0:
+            return []
+        if n == 1:
+            return [1.0]
+
+        # Distribute weight mass across ``self.base`` depending on how strong
+        # the pulse is.  For ``n`` responses, we treat their indices as evenly
+        # spaced points in ``[0, 1]`` and assign each response a triangular
+        # weighting centred on its position.  This makes the first response
+        # dominate when the pulse is low and gradually shifts preference toward
+        # later responses as the pulse grows.
+        positions = [i / (n - 1) for i in range(n)]
+        shaped = [
+            self.base[i] * max(1.0 - abs(pulse - pos) * 2, 0.0)
+            for i, pos in enumerate(positions)
+        ]
+        return apply_pulse(shaped, pulse)
