@@ -24,7 +24,9 @@ def query_grok3(prompt: str, api_key: Optional[str] = None) -> str:
         try:
             os.makedirs("failures", exist_ok=True)
             with open(
-                f"failures/{time.strftime('%Y-%m-%d')}.log", "a", encoding="utf-8"
+                f"failures/{time.strftime('%Y-%m-%d')}.log",
+                "a",
+                encoding="utf-8",
             ) as f:
                 f.write(f"{time.time()}: Grok-3 API failed - {exc}\n")
         except OSError:
@@ -32,7 +34,9 @@ def query_grok3(prompt: str, api_key: Optional[str] = None) -> str:
         return "Grok-3 offline"
 
 
-def query_gpt4(prompt: str, api_key: Optional[str] = None, model: str = "gpt-4.1") -> str:
+def query_gpt4(
+    prompt: str, api_key: Optional[str] = None, model: str = "gpt-4.1"
+) -> str:
     """Call the GPT-4 API as a secondary knowledge base.
 
     The default model is set to ``gpt-4.1`` to align with SLNCX's requirement
@@ -57,7 +61,9 @@ def query_gpt4(prompt: str, api_key: Optional[str] = None, model: str = "gpt-4.1
         try:
             os.makedirs("failures", exist_ok=True)
             with open(
-                f"failures/{time.strftime('%Y-%m-%d')}.log", "a", encoding="utf-8"
+                f"failures/{time.strftime('%Y-%m-%d')}.log",
+                "a",
+                encoding="utf-8",
             ) as f:
                 f.write(f"{time.time()}: GPT-4 API failed - {exc}\n")
         except OSError:
@@ -103,7 +109,9 @@ class DynamicWeights:
     def __init__(self, base: Optional[Sequence[float]] = None) -> None:
         self.base = list(base or [1.0])
 
-    def pulse_from_prompt(self, prompt: str, api_key: Optional[str] = None) -> float:
+    def pulse_from_prompt(
+        self, prompt: str, api_key: Optional[str] = None
+    ) -> float:
         """Derive a pulse value from external knowledge."""
 
         knowledge = get_dynamic_knowledge(prompt, api_key)
@@ -138,3 +146,25 @@ class DynamicWeights:
             for i, pos in enumerate(positions)
         ]
         return apply_pulse(shaped, pulse)
+
+    def generate_response(
+        self, prompt: str, api_key: Optional[str] = None
+    ) -> str:
+        """Return text influenced by dynamic weighting.
+
+        The method derives a ``pulse`` from ``prompt`` and appends a style hint
+        before querying :func:`get_dynamic_knowledge` again. Low pulse values
+        yield terse answers while higher pulses encourage more elaborate
+        replies. This enables SLNCX to "speak" without relying on static
+        templates.
+        """
+
+        pulse = self.pulse_from_prompt(prompt, api_key)
+        if pulse < 0.3:
+            style = "Answer briefly."
+        elif pulse < 0.7:
+            style = "Respond in a balanced tone."
+        else:
+            style = "Provide a detailed, expressive answer."
+        enriched = f"{prompt}\n\n{style}"
+        return get_dynamic_knowledge(enriched, api_key)
