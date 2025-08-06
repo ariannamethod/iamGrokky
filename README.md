@@ -39,6 +39,32 @@ Background jobs handle daily reflections, world news digests, repository
 monitoring and more. Each utility lives under `utils/` and can be invoked
 independently.
 
+### Plugin API
+
+Grokky can be extended through drop-in plugins. Place a module in
+`utils/plugins/` with a subclass of `BasePlugin` and a mapping of command
+names to async handlers. On startup, the server discovers these modules and
+registers their commands with the dispatcher.
+
+Quick start:
+
+```python
+# utils/plugins/hello.py
+from utils.plugins import BasePlugin
+
+class Hello(BasePlugin):
+    def __init__(self) -> None:
+        super().__init__()
+        self.commands["hello"] = self.handle
+
+    async def handle(self, message):
+        await message.reply("Hello from a plugin!")
+```
+
+Run the server and send `/hello` to see the plugin in action. The
+repository includes an example `/search` command in
+`utils/plugins/web_search.py`.
+
 ### The 42 Utility
 
 The script hiding at `utils/42.py` animates Grokky's playful side. It

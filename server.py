@@ -67,6 +67,7 @@ from SLNCX.wulf_integration import generate_response
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
 from utils.hybrid_engine import HybridGrokkyEngine
+from utils.plugins import iter_plugins
 
 # Special command handler from the playful 42 utility
 from utils import handle  # utils/42.py
@@ -128,6 +129,10 @@ logger.info("API key auth: %s", "ENABLED" if API_KEY else "DISABLED")
 # Инициализация бота и диспетчера
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
+
+# Plugin registration
+for _plugin in iter_plugins():
+    _plugin.register(dp)
 
 # Переменные с информацией о боте, заполняются при старте
 BOT_ID = None
