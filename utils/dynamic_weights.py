@@ -73,10 +73,10 @@ def get_dynamic_knowledge(prompt: str, api_key: Optional[str] = None) -> str:
 def apply_pulse(weights: Sequence[float], pulse: float) -> List[float]:
     """Scale ``weights`` by ``pulse`` using a softmax normalisation.
 
-    ``pulse`` is expected to be between ``0`` and ``1``.  The function first
+    ``pulse`` is expected to be between ``0`` and ``1``. The function first
     scales the weights by ``1 + pulse * 0.7`` and then applies a numerically
-    stable softmax.  The returned list sums to ``1`` and can be used directly
-    as probabilities.
+    stable softmax. The returned list sums to ``1`` and can be used directly as
+    probabilities.
     """
 
     scaled = [w * (1 + pulse * 0.7) for w in weights]
@@ -86,3 +86,32 @@ def apply_pulse(weights: Sequence[float], pulse: float) -> List[float]:
     exps = [math.exp(w - max_w) for w in scaled]
     total = sum(exps) or 1.0
     return [e / total for e in exps]
+
+
+class DynamicWeights:
+    """Utility for producing fluid, context-aware weight coefficients.
+
+    The class fetches dynamic knowledge for a given ``prompt`` and converts the
+    amount of retrieved information into a ``pulse`` value between ``0`` and
+    ``1``. The ``pulse`` then modulates a base sequence of weights via
+    :func:`apply_pulse` to yield a normalised list of coefficients.
+    """
+
+    def __init__(self, base: Optional[Sequence[float]] = None) -> None:
+        self.base = list(base or [1.0])
+
+    def pulse_from_prompt(self, prompt: str, api_key: Optional[str] = None) -> float:
+        """Derive a pulse value from external knowledge."""
+
+        knowledge = get_dynamic_knowledge(prompt, api_key)
+        # Simple heuristic: longer knowledge implies a stronger pulse.
+        pulse = min(len(knowledge) / 1000.0, 1.0)
+        return max(pulse, 0.0)
+
+    def weights_for_prompt(
+        self, prompt: str, api_key: Optional[str] = None
+    ) -> List[float]:
+        """Return softmax-normalised weights for ``prompt``."""
+
+        pulse = self.pulse_from_prompt(prompt, api_key)
+        return apply_pulse(self.base, pulse)
