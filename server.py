@@ -8,6 +8,7 @@ from datetime import datetime
 import tempfile
 from urllib.parse import urlparse
 from ipaddress import ip_address
+import time
 
 import httpx
 try:  # pragma: no cover - used only with aiogram installed
@@ -49,11 +50,14 @@ except ImportError:  # pragma: no cover - fallback for tests
             pass
 
 from fastapi import FastAPI, Request, UploadFile, File, Depends, HTTPException
-from fastapi.responses import PlainTextResponse, JSONResponse
+from fastapi.responses import PlainTextResponse, JSONResponse, Response
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
+
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from utils.metrics import REQUEST_LATENCY, record_tokens
 
 from utils.dayandnight import day_and_night_task
 from utils.mirror import mirror_task
@@ -817,6 +821,15 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
 
+@app.middleware("http")
+async def _metrics_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration = time.perf_counter() - start
+    REQUEST_LATENCY.labels(endpoint=request.url.path).observe(duration)
+    return response
+
+
 @app.post(WEBHOOK_PATH)
 async def handle_webhook(request: Request):
     try:
@@ -853,6 +866,11 @@ async def root_index() -> PlainTextResponse:
     return PlainTextResponse("Грокки жив и работает!")
 
 
+@app.get("/metrics")
+async def metrics() -> Response:
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 @app.post("/42")
 async def handle_42_api(request: Request, _=Depends(verify_api_key)):
     try:
@@ -863,6 +881,7 @@ async def handle_42_api(request: Request, _=Depends(verify_api_key)):
     if cmd not in {"when", "mars", "42"}:
         return JSONResponse({"error": "Unsupported command"}, status_code=400)
     result = await handle(cmd)
+    record_tokens("42", len(str(result)))
     return JSONResponse(result)
 
 

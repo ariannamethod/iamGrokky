@@ -1414,3 +1414,6 @@ yarl==1.20.1 \
     --hash=sha256:fe41919b9d899661c5c28a8b4b0acf704510b88f27f0934ac7a7bebdd8938d5e \
     --hash=sha256:ff70f32aa316393eaf8222d518ce9118148eddb8a53073c2403863b41033eed5
     # via aiohttp
+prometheus-client==0.20.0 \
+    --hash=sha256:cde524a85bce83ca359cc837f28b8c0db5cac7aa653a588fd7e84ba061c329e7 \
+    --hash=sha256:287629d00b147a32dcb2be0b9df905da599b2d82f80377083ec8463309a4bb89
