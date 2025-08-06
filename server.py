@@ -175,6 +175,12 @@ def detect_language(text: str) -> str:
     """Very small heuristic language detector."""
     if re.search("[а-яА-Я]", text):
         return "ru"
+    if re.search("[äöüßÄÖÜ]", text):
+        return "de"
+    if re.search("[ñáéíóúÑÁÉÍÓÚ]", text):
+        return "es"
+    if re.search("[éàèùâêîôûçœÉÀÈÙÂÊÎÔÛÇŒ]", text):
+        return "fr"
     if re.search("[a-zA-Z]", text):
         return "en"
     return "en"
@@ -185,10 +191,18 @@ async def synth_voice(text: str, lang: str = "ru") -> bytes:
     if not OPENAI_API_KEY:
         return b""
 
+    voice_map = {
+        "ru": "onyx",
+        "en": "alloy",
+        "es": "coral",
+        "de": "marco",
+        "fr": "fable",
+    }
+
     payload = {
         "model": "tts-1",
         "input": text,
-        "voice": "onyx",
+        "voice": voice_map.get(lang, "alloy"),
     }
     headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
 
@@ -372,7 +386,7 @@ async def cmd_status(message: Message):
             stats = engine.index.describe_index_stats()
             total_vectors = stats.get("total_vector_count", 0)
             status_text += f"Векторов в памяти: {total_vectors}"
-        except (RuntimeError, ValueError) as e:
+        except (RuntimeError, ValueError):
             status_text += "Ошибка при получении статистики памяти"
 
     await reply_split(message, status_text)
