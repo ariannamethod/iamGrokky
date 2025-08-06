@@ -5,6 +5,7 @@ import asyncio
 from typing import Optional, Any
 
 from utils.dynamic_weights import DynamicWeights, get_dynamic_knowledge
+from utils.vector_engine import VectorGrokkyEngine
 import importlib
 
 
@@ -85,9 +86,30 @@ def generate_response(
 
     try:
         if mode == "wulf":
+            snippet_limit = int(os.getenv("WULF_SNIPPET_LIMIT", "3"))
+            snippets = ""
+            if snippet_limit > 0:
+                try:
+                    snippet_engine = engine or VectorGrokkyEngine()
+                    snippets = (
+                        asyncio.run(
+                            snippet_engine.search_memory(
+                                user_id or "", prompt, limit=snippet_limit
+                            )
+                        )
+                        or ""
+                    )
+                except Exception:  # pragma: no cover - best effort
+                    snippets = ""
+
+            full_prompt = (
+                prompt_with_context
+                if not snippets
+                else f"{snippets}\n\n{prompt_with_context}"
+            )
             dw = DynamicWeights()
-            log_entry["weights"] = dw.weights_for_prompt(prompt_with_context, api_key)
-            response = run_wulf(prompt_with_context, ckpt_path, api_key)
+            log_entry["weights"] = dw.weights_for_prompt(full_prompt, api_key)
+            response = run_wulf(full_prompt, ckpt_path, api_key)
             log_entry["response"] = response
         else:
             full_prompt = WULF_PROMPT
