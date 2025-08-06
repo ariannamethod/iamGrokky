@@ -32,8 +32,11 @@ def query_grok3(prompt: str, api_key: Optional[str] = None) -> str:
         return "Grok-3 offline"
 
 
-def query_gpt4(prompt: str, api_key: Optional[str] = None, model: str = "gpt-4o") -> str:
-    """Call the GPT-4 API as a secondary knowledge base."""
+def query_gpt4(prompt: str, api_key: Optional[str] = None, model: str = "gpt-4.1") -> str:
+    """Call the GPT-4 API as a secondary knowledge base.
+
+    The default model is set to ``gpt-4.1`` to align with SLNCX's requirement
+    for dynamic weighting based on the latest GPT-4 series."""
     api_key = api_key or os.getenv("OPENAI_API_KEY")
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     payload = {

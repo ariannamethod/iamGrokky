@@ -4,6 +4,7 @@ import time
 from typing import Optional, Any
 
 from utils.dynamic_weights import DynamicWeights, get_dynamic_knowledge
+from .wulf_inference import generate as run_wulf
 
 # System prompt for Wulf mode
 WULF_PROMPT = (
@@ -52,18 +53,22 @@ def generate_response(
     ckpt_path: str = "out/ckpt.pt",  # retained for compatibility
     api_key: Optional[str] = None,
 ) -> str:
-    """Generate a response using external knowledge sources."""
+    """Generate a response using either SLNCX or external models."""
 
     log_entry = {"prompt": prompt, "timestamp": time.time()}
     try:
-        full_prompt = WULF_PROMPT + "\nUser: " + prompt
-        raw_response = get_dynamic_knowledge(full_prompt, api_key)
-        response = _extract_text(raw_response)
-
-        # Derive dynamic weights for logging/experimentation.
-        dw = DynamicWeights()
-        log_entry["weights"] = dw.weights_for_prompt(full_prompt, api_key)
-        log_entry["response"] = response
+        if mode == "wulf":
+            dw = DynamicWeights()
+            log_entry["weights"] = dw.weights_for_prompt(prompt, api_key)
+            response = run_wulf(prompt, ckpt_path, api_key)
+            log_entry["response"] = response
+        else:
+            full_prompt = WULF_PROMPT + "\nUser: " + prompt
+            raw_response = get_dynamic_knowledge(full_prompt, api_key)
+            response = _extract_text(raw_response)
+            dw = DynamicWeights()
+            log_entry["weights"] = dw.weights_for_prompt(full_prompt, api_key)
+            log_entry["response"] = response
         os.makedirs("logs/wulf", exist_ok=True)
         with open(
             f"logs/wulf/{time.strftime('%Y-%m-%d')}.jsonl", "a", encoding="utf-8"
