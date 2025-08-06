@@ -46,6 +46,7 @@ from pydantic import BaseModel
 from scripts.fail_log import log_failure
 from scripts.session_logger import log_session
 from wulf_inference import generate
+from utils.dynamic_weights import DynamicWeights
 
 config.update("jax_spmd_mode", "allow_all")
 
@@ -196,6 +197,22 @@ LM_PARTITION_RULES = [
     (("language_model", "rms_norm"), P(None)),
 ]
 TOP_K = 8
+
+
+def apply_dynamic_weights(
+    params: hk.Params, prompt: str, api_key: Optional[str] = None
+) -> hk.Params:
+    """Return ``params`` scaled by a pulse derived from ``prompt``.
+
+    The pulse is computed via :class:`DynamicWeights` and uniformly scales the
+    model parameters, enabling "fluid" behaviour influenced by external
+    knowledge sources.
+    """
+
+    controller = DynamicWeights()
+    pulse = controller.pulse_from_prompt(prompt, api_key)
+    scale = 1.0 + pulse * 0.1
+    return jax.tree_map(lambda w: w * scale, params)
 
 
 class KVMemory(NamedTuple):
