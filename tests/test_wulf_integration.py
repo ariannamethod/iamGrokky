@@ -36,3 +36,39 @@ def test_generate_response_uses_wulf_model(monkeypatch):
 
     monkeypatch.setattr(wulf_integration, "run_wulf", fake_generate)
     assert wulf_integration.generate_response("hi", "wulf") == "wolf"
+
+
+class MemoryEngine:
+    """Simple in-memory engine for testing memory integration."""
+
+    def __init__(self):
+        self.mem: list[tuple[str, str]] = []
+
+    async def search_memory(self, user_id, query, limit=5):  # pragma: no cover - simple
+        return "\n".join(m for m, _ in self.mem)
+
+    async def add_memory(self, user_id, content, role="user"):
+        self.mem.append((content, role))
+
+
+def test_memory_affects_prompt(monkeypatch):
+    engine = MemoryEngine()
+    prompts: list[str] = []
+
+    def fake_run_wulf(prompt, ckpt_path="out/ckpt.pt", api_key=None):
+        prompts.append(prompt)
+        return "resp"
+
+    monkeypatch.setattr(wulf_integration, "run_wulf", fake_run_wulf)
+
+    # First call populates memory
+    wulf_integration.generate_response(
+        "hello", "wulf", user_id="u1", engine=engine
+    )
+    assert engine.mem == [("hello", "user"), ("resp", "assistant")]
+
+    # Second call should include previous memory in the prompt
+    wulf_integration.generate_response(
+        "next", "wulf", user_id="u1", engine=engine
+    )
+    assert any("hello" in p for p in prompts[1:])

@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import asyncio
 from typing import Optional, Any
 
 from utils.dynamic_weights import DynamicWeights, get_dynamic_knowledge
@@ -52,23 +53,53 @@ def generate_response(
     mode: str = "grok3",
     ckpt_path: str = "out/ckpt.pt",  # retained for compatibility
     api_key: Optional[str] = None,
+    *,
+    user_id: Optional[str] = None,
+    engine: Optional[Any] = None,
 ) -> str:
-    """Generate a response using either SLNCX or external models."""
+    """Generate a response using either SLNCX or external models.
+
+    If an ``engine`` and ``user_id`` are provided, the function will search the
+    user's memory for additional context and store the prompt/response pair
+    after generation.
+    """
 
     log_entry = {"prompt": prompt, "timestamp": time.time()}
+
+    # Retrieve contextual memory if possible
+    context = ""
+    if engine and user_id:
+        try:
+            context = asyncio.run(engine.search_memory(user_id, prompt)) or ""
+        except Exception:  # pragma: no cover - best effort
+            context = ""
+
+    prompt_with_context = prompt if not context else f"{context}\n\n{prompt}"
+
     try:
         if mode == "wulf":
             dw = DynamicWeights()
-            log_entry["weights"] = dw.weights_for_prompt(prompt, api_key)
-            response = run_wulf(prompt, ckpt_path, api_key)
+            log_entry["weights"] = dw.weights_for_prompt(prompt_with_context, api_key)
+            response = run_wulf(prompt_with_context, ckpt_path, api_key)
             log_entry["response"] = response
         else:
-            full_prompt = WULF_PROMPT + "\nUser: " + prompt
+            full_prompt = WULF_PROMPT
+            if context:
+                full_prompt += f"\nContext: {context}"
+            full_prompt += "\nUser: " + prompt
             raw_response = get_dynamic_knowledge(full_prompt, api_key)
             response = _extract_text(raw_response)
             dw = DynamicWeights()
             log_entry["weights"] = dw.weights_for_prompt(full_prompt, api_key)
             log_entry["response"] = response
+
+        if engine and user_id:
+            try:
+                asyncio.run(engine.add_memory(user_id, prompt))
+                asyncio.run(engine.add_memory(user_id, response, role="assistant"))
+            except Exception:  # pragma: no cover - best effort
+                pass
+
         os.makedirs("logs/wulf", exist_ok=True)
         with open(
             f"logs/wulf/{time.strftime('%Y-%m-%d')}.jsonl", "a", encoding="utf-8"

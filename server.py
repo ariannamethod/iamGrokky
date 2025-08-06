@@ -348,7 +348,13 @@ async def cmd_slncx(message: Message):
         await message.reply("SLNCX mode on. /slncxoff to exit.")
     else:
         prompt = parts[1]
-        reply = await asyncio.to_thread(generate_response, prompt, "wulf")
+        reply = await asyncio.to_thread(
+            generate_response,
+            prompt,
+            "wulf",
+            user_id=str(chat_id),
+            engine=engine,
+        )
         await reply_split(message, reply)
 
 
@@ -372,7 +378,7 @@ async def cmd_status(message: Message):
             stats = engine.index.describe_index_stats()
             total_vectors = stats.get("total_vector_count", 0)
             status_text += f"Векторов в памяти: {total_vectors}"
-        except (RuntimeError, ValueError) as e:
+        except (RuntimeError, ValueError):
             status_text += "Ошибка при получении статистики памяти"
 
     await reply_split(message, status_text)
@@ -538,7 +544,13 @@ async def handle_text(message: Message, text: str) -> None:
         return
 
     if SLNCX_MODE.get(message.chat.id):
-        reply = await asyncio.to_thread(generate_response, text, "wulf")
+        reply = await asyncio.to_thread(
+            generate_response,
+            text,
+            "wulf",
+            user_id=str(message.chat.id),
+            engine=engine,
+        )
         await reply_split(message, reply)
         return
 
