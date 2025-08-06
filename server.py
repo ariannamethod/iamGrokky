@@ -7,7 +7,7 @@ import traceback
 from datetime import datetime
 import tempfile
 from urllib.parse import urlparse
-from ipaddress import ip_address
+from ipaddress import ip_address, ip_network
 
 import httpx
 try:  # pragma: no cover - used only with aiogram installed
@@ -107,6 +107,11 @@ BANNED_DOMAINS = {
     if d.strip()
 }
 MAX_WEBHOOK_BODY_SIZE = int(os.getenv("MAX_WEBHOOK_BODY_SIZE", "100000"))
+WEBHOOK_ALLOWED_CIDRS = [
+    ip_network(cidr.strip())
+    for cidr in os.getenv("WEBHOOK_ALLOWED_CIDRS", "").split(",")
+    if cidr.strip()
+]
 
 # Проверка ключей API
 XAI_API_KEY = os.getenv("XAI_API_KEY")
@@ -837,6 +842,24 @@ async def handle_webhook(request: Request):
         secret_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
         if WEBHOOK_SECRET and secret_header != WEBHOOK_SECRET:
             return PlainTextResponse(status_code=403, content="forbidden")
+
+        client_ip = (
+            request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            or request.headers.get("X-Real-IP")
+            or (request.client.host if request.client else None)
+        )
+        if WEBHOOK_ALLOWED_CIDRS:
+            if not client_ip:
+                logger.warning("Webhook request missing client IP")
+                return PlainTextResponse(status_code=403, content="forbidden")
+            try:
+                ip = ip_address(client_ip)
+            except ValueError:
+                logger.warning("Webhook request with invalid IP %s", client_ip)
+                return PlainTextResponse(status_code=403, content="forbidden")
+            if not any(ip in net for net in WEBHOOK_ALLOWED_CIDRS):
+                logger.warning("Webhook request from disallowed IP %s", client_ip)
+                return PlainTextResponse(status_code=403, content="forbidden")
 
         request_body = await request.body()
         if len(request_body) > MAX_WEBHOOK_BODY_SIZE:

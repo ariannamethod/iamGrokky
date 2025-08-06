@@ -262,6 +262,12 @@ The webhook URL **must** point to `/webhook` on your domain without the token ap
 `server.py` will try to fix the webhook on startup, and you can also run `python fix_webhook.py` manually.
 See [WEBHOOK_FIX_INSTRUCTIONS.md](WEBHOOK_FIX_INSTRUCTIONS.md) for step-by-step instructions.
 
+For additional security, restrict who can call the webhook by setting
+`WEBHOOK_ALLOWED_CIDRS` to a comma-separated list of allowed CIDR ranges
+such as `149.154.160.0/20,91.108.4.0/22`. Incoming requests are checked
+against these ranges using the `X-Forwarded-For` or connection address and
+receive **403 Forbidden** if the IP is outside the allowed networks.
+
 This hybrid of engines and a custom lightweight network feels like a new step for AI.
 It keeps power close at hand without relying entirely on the cloud, giving the architect room to experiment.
 
