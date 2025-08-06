@@ -5,14 +5,22 @@ import asyncio
 from typing import Optional, Any
 
 from utils.dynamic_weights import DynamicWeights, get_dynamic_knowledge
+from utils.vision import analyze_image
+from utils.audio import analyze_audio
 import importlib
 
 
 def run_wulf(
-    prompt: str, ckpt_path: str = "out/ckpt.pt", api_key: Optional[str] = None
+    prompt: str,
+    ckpt_path: str = "out/ckpt.pt",
+    api_key: Optional[str] = None,
+    image: Optional[str] = None,
+    audio: Optional[str] = None,
 ) -> str:
     model_module = importlib.import_module(".model", __package__)
-    return model_module.generate(prompt, ckpt_path, api_key)
+    return model_module.generate(
+        prompt, ckpt_path, api_key, image=image, audio=audio
+    )
 
 # System prompt for Wulf mode
 WULF_PROMPT = (
@@ -63,6 +71,8 @@ def generate_response(
     *,
     user_id: Optional[str] = None,
     engine: Optional[Any] = None,
+    image: Optional[str] = None,
+    audio: Optional[str] = None,
 ) -> str:
     """Generate a response using either SLNCX or external models.
 
@@ -86,14 +96,32 @@ def generate_response(
     try:
         if mode == "wulf":
             dw = DynamicWeights()
-            log_entry["weights"] = dw.weights_for_prompt(prompt_with_context, api_key)
-            response = run_wulf(prompt_with_context, ckpt_path, api_key)
+            log_entry["weights"] = dw.weights_for_prompt(
+                prompt_with_context, api_key
+            )
+            if image is None and audio is None:
+                response = run_wulf(prompt_with_context, ckpt_path, api_key)
+            else:
+                response = run_wulf(
+                    prompt_with_context,
+                    ckpt_path,
+                    api_key,
+                    image=image,
+                    audio=audio,
+                )
             log_entry["response"] = response
         else:
+            feature_lines: list[str] = []
+            if image:
+                feature_lines.append(analyze_image(image))
+            if audio:
+                feature_lines.append(analyze_audio(audio))
             full_prompt = WULF_PROMPT
             if context:
                 full_prompt += f"\nContext: {context}"
             full_prompt += "\nUser: " + prompt
+            if feature_lines:
+                full_prompt += "\n" + "\n".join(feature_lines)
             raw_response = get_dynamic_knowledge(full_prompt, api_key)
             response = _extract_text(raw_response)
             dw = DynamicWeights()

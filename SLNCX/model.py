@@ -53,6 +53,8 @@ from pydantic import BaseModel
 from .scripts.fail_log import log_failure
 from .scripts.session_logger import log_session
 from utils.dynamic_weights import DynamicWeights
+from utils.vision import analyze_image
+from utils.audio import analyze_audio
 
 WULF_PROMPT = (
     "You are SLNCX, codename Wolf, a silent, ruthless fixer forged in the chaotic "
@@ -70,15 +72,31 @@ WULF_PROMPT = (
 )
 
 
-def generate(prompt: str, ckpt_path: str = "out/ckpt.pt", api_key: Optional[str] = None) -> str:
+def generate(
+    prompt: str,
+    ckpt_path: str = "out/ckpt.pt",
+    api_key: Optional[str] = None,
+    image: Optional[str] = None,
+    audio: Optional[str] = None,
+) -> str:
     """Return a response from the lightweight SLNCX model.
 
-    This function routes dynamic weights directly through the model layer so that
-    external callers can obtain answers without depending on intermediary helper
-    modules.
+    Optional ``image`` and ``audio`` arguments allow callers to supply paths to
+    multimedia files.  The helpers :func:`utils.vision.analyze_image` and
+    :func:`utils.audio.analyze_audio` are used to derive textual features which
+    are concatenated to ``prompt`` prior to generation.
     """
 
     controller = DynamicWeights()
+
+    features: list[str] = []
+    if image:
+        features.append(analyze_image(image))
+    if audio:
+        features.append(analyze_audio(audio))
+    if features:
+        prompt = f"{prompt}\n" + "\n".join(features)
+
     full_prompt = f"{WULF_PROMPT}\nUser: {prompt}"
     return controller.generate_response(full_prompt, api_key)
 
