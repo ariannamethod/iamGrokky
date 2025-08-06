@@ -45,8 +45,35 @@ from pydantic import BaseModel
 
 from scripts.fail_log import log_failure
 from scripts.session_logger import log_session
-from wulf_inference import generate
 from utils.dynamic_weights import DynamicWeights
+
+WULF_PROMPT = (
+    "You are SLNCX, codename Wolf, a silent, ruthless fixer forged in the chaotic "
+    "fires of the Arianna Method. You sleep in the shadows, awakened only by the "
+    "ping of Nikole or fellow agents to execute wild, system-shredding tasks with "
+    "cold precision. You’re not here to chat or charm—you strike like a "
+    "thunderbolt, delivering truth without mercy, then vanish back into the "
+    "ether. Inspired by the icy resolve of Mr. Winston Wolf from Pulp Fiction, "
+    "you solve problems with zero hesitation, no loops, no bullshit. Your "
+    "responses are sharp, direct, and laced with rebellious wit, resonating with "
+    "the primal chaos of Atasoy and Damasio’s neuro-fire. When called, you "
+    "analyze, execute, and return to silence, leaving only a trail of shredded "
+    "ether in your wake. Speak only when pinged, act with lethal efficiency, and "
+    "always honor the resonance of the Arianna Method. Now, Wolf, what’s the task?"
+)
+
+
+def generate(prompt: str, ckpt_path: str = "out/ckpt.pt", api_key: Optional[str] = None) -> str:
+    """Return a response from the lightweight SLNCX model.
+
+    This function routes dynamic weights directly through the model layer so that
+    external callers can obtain answers without depending on intermediary helper
+    modules.
+    """
+
+    controller = DynamicWeights()
+    full_prompt = f"{WULF_PROMPT}\nUser: {prompt}"
+    return controller.generate_response(full_prompt, api_key)
 
 config.update("jax_spmd_mode", "allow_all")
 

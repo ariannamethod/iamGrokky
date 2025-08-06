@@ -1,11 +1,18 @@
-import os
 import json
+import os
 import time
 import asyncio
 from typing import Optional, Any
 
 from utils.dynamic_weights import DynamicWeights, get_dynamic_knowledge
-from .wulf_inference import generate as run_wulf
+import importlib
+
+
+def run_wulf(
+    prompt: str, ckpt_path: str = "out/ckpt.pt", api_key: Optional[str] = None
+) -> str:
+    model_module = importlib.import_module(".model", __package__)
+    return model_module.generate(prompt, ckpt_path, api_key)
 
 # System prompt for Wulf mode
 WULF_PROMPT = (
