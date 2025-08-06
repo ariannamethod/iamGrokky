@@ -27,8 +27,15 @@ from typing import (
 
 import haiku as hk
 import jax
-import jax.experimental.maps
 import jax.experimental.pjit as pjit
+
+# `jax.experimental.maps` was removed in JAX 0.7.
+# Prefer the new internal location of `thread_resources` and fall back to the
+# old module for compatibility with older versions.
+try:  # JAX >= 0.4
+    from jax._src.mesh import thread_resources
+except ModuleNotFoundError:  # pragma: no cover - legacy JAX
+    from jax.experimental.maps import thread_resources
 import jax.numpy as jnp
 import numpy as np
 import sentencepiece
@@ -116,7 +123,16 @@ def _match(qs, ks):
 
 
 def with_sharding_constraint(x, constraint):
-    if jax.experimental.maps.thread_resources.env.physical_mesh.empty:
+    """Apply a sharding constraint if a mesh is defined.
+
+    In newer versions of JAX the `thread_resources` helper lives in
+    ``jax._src.mesh``. Older versions exposed it via ``jax.experimental.maps``.
+    This wrapper checks the mesh presence and only applies the sharding
+    constraint when a non-empty mesh exists, mimicking the original behavior
+    across JAX versions.
+    """
+
+    if thread_resources.env.physical_mesh.empty:
         return x
     else:
         return pjit_sharding_constraint(x, constraint)
