@@ -22,3 +22,8 @@ fastapi==0.116.1
 uvicorn==0.35.0
 slowapi==0.1.9
 python-multipart==0.0.20
+jax==0.7.0
+jaxlib==0.7.0
+dm-haiku==0.0.14
+sentencepiece==0.2.0
+reportlab==4.4.3
