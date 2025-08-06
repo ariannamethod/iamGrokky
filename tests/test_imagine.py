@@ -1,9 +1,14 @@
 import sys
+import importlib
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from utils.imagine import enhance_prompt
+sys.modules.pop("utils", None)
+importlib.invalidate_caches()
+sys.modules.pop("utils.plugins.imagine", None)
+
+from utils.plugins.imagine import enhance_prompt  # noqa: E402
 
 
 def test_enhance_prompt_short():

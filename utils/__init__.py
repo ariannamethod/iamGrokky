@@ -14,7 +14,7 @@ from importlib import import_module
 # ``42.py`` cannot be imported using a normal statement because the
 # module name starts with a digit.  ``import_module`` allows us to load it
 # dynamically and re-export the ``handle`` coroutine.
-_module_42 = import_module(".42", package=__name__)
+_module_42 = import_module(".plugins.42", package=__name__)
 handle = _module_42.handle  # type: ignore[attr-defined]
 
 __all__ = ["handle"]

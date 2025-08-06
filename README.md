@@ -39,35 +39,29 @@ Background jobs handle daily reflections, world news digests, repository
 monitoring and more. Each utility lives under `utils/` and can be invoked
 independently.
 
-### Plugin API
+### Plugins
 
-Grokky can be extended through drop-in plugins. Place a module in
-`utils/plugins/` with a subclass of `BasePlugin` and a mapping of command
-names to async handlers. On startup, the server discovers these modules and
-registers their commands with the dispatcher.
+Grokky can be extended through drop-in plugins. Each plugin lives in `utils/plugins/` and subclasses `BasePlugin` from `utils/plugins/base.py`. A plugin defines a command `name`, a short `description` and an async `run(args)` method returning text.
 
-Quick start:
+Example:
 
 ```python
 # utils/plugins/hello.py
-from utils.plugins import BasePlugin
+from utils.plugins.base import BasePlugin
 
-class Hello(BasePlugin):
-    def __init__(self) -> None:
-        super().__init__()
-        self.commands["hello"] = self.handle
+class HelloPlugin(BasePlugin):
+    name = "hello"
+    description = "simple greeting"
 
-    async def handle(self, message):
-        await message.reply("Hello from a plugin!")
+    async def run(self, args: str) -> str:
+        return f"Hello {args or 'world'}!"
 ```
 
-Run the server and send `/hello` to see the plugin in action. The
-repository includes an example `/search` command in
-`utils/plugins/web_search.py`.
+After saving the file, restart the server and send `/hello` in Telegram or Wulf. Built-in plugins include `/imagine`, `/coder` and the playful `/when`, `/mars` and `/42`.
 
 ### The 42 Utility
 
-The script hiding at `utils/42.py` animates Grokky's playful side. It
+The script hiding at `utils/plugins/42.py` animates Grokky's playful side. It
 keeps the `/when`, `/mars`, and `/42` commands buzzing with
 life by spinning a tiny network each time the user calls for cosmic
 wisdom or fresh headlines.

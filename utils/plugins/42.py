@@ -17,7 +17,6 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Tuple
-from urllib.parse import urljoin
 
 import aiohttp
 
@@ -38,6 +37,8 @@ except Exception:  # pragma: no cover - optional dependency
 
 from utils.dynamic_weights import get_dynamic_knowledge, apply_pulse
 import httpx
+
+from .base import BasePlugin
 
 
 async def _translate(text: str, lang: str) -> str:
@@ -363,6 +364,35 @@ async def handle(cmd: str, lang: str = "en") -> Dict[str, str]:
     except Exception as e:  # pragma: no cover - best effort
         log_event(f"Handle {cmd} failed: {str(e)}", "error")
         return {"response": f"Error: {str(e)}. Wulf persists!", "pulse": chaos_pulse.get()}
+
+
+
+class WhenPlugin(BasePlugin):
+    name = "when"
+    description = "when"
+
+    async def run(self, args: str) -> str:
+        result = await handle("when")
+        return result["response"]
+
+
+class MarsPlugin(BasePlugin):
+    name = "mars"
+    description = "why Mars?"
+
+    async def run(self, args: str) -> str:
+        result = await handle("mars")
+        return result["response"]
+
+
+class FortyTwoPlugin(BasePlugin):
+    name = "42"
+    description = "answer"
+
+    async def run(self, args: str) -> str:
+        result = await handle("42")
+        return result["response"]
+
 
 # CLI для теста
 if __name__ == "__main__":

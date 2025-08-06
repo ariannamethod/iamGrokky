@@ -1,42 +1,25 @@
+import importlib
+import sys
 import pytest
 
-from utils.plugins import iter_plugins
 
-
-class MockMessage:
-    def __init__(self, text: str) -> None:
-        self.text = text
-        self.replies: list[str] = []
-
-    async def reply(self, text: str) -> None:  # pragma: no cover - simple storage
-        self.replies.append(text)
-
-
-class MockMessageRouter:
-    def __init__(self) -> None:
-        self.handlers: dict[str, callable] = {}
-
-    def register(self, handler, command_filter) -> None:  # pragma: no cover - simple storage
-        self.handlers[command_filter.commands[0]] = handler
-
-
-class MockDispatcher:
-    def __init__(self) -> None:
-        self.message = MockMessageRouter()
+def _load() -> dict:
+    sys.modules.pop("utils", None)
+    for name in list(sys.modules):
+        if name.startswith("utils.plugins"):
+            sys.modules.pop(name)
+    importlib.invalidate_caches()
+    plugins_pkg = importlib.import_module("utils.plugins")
+    return plugins_pkg.load_plugins()
 
 
 def test_plugin_discovery() -> None:
-    names = {plugin.__class__.__name__ for plugin in iter_plugins()}
-    assert "WebSearch" in names
+    plugins = _load()
+    assert "search" in plugins
 
 
 @pytest.mark.asyncio
-async def test_command_routing() -> None:
-    dp = MockDispatcher()
-    for plugin in iter_plugins():
-        plugin.register(dp)
-    assert "search" in dp.message.handlers
-    handler = dp.message.handlers["search"]
-    msg = MockMessage("/search grokky")
-    await handler(msg)
-    assert msg.replies == ["Searching the web for: grokky"]
+async def test_plugin_run() -> None:
+    plugins = _load()
+    result = await plugins["search"].run("grokky")
+    assert result == "Searching the web for: grokky"
