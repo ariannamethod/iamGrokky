@@ -1,0 +1,2 @@
+dataset: SLNCX/datasets/pulp_fiction_dialogue.csv
+out_dir: out
