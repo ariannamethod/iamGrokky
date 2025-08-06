@@ -72,3 +72,27 @@ def test_memory_affects_prompt(monkeypatch):
         "next", "wulf", user_id="u1", engine=engine
     )
     assert any("hello" in p for p in prompts[1:])
+
+
+def test_retrieved_context_alters_answer(monkeypatch):
+    class EngineStub:
+        async def search_memory(self, user_id, query, limit=5):
+            return "snippet"
+
+        async def add_memory(self, user_id, content, role="user"):
+            pass
+
+    def fake_run_wulf(prompt, ckpt_path="out/ckpt.pt", api_key=None):
+        return "used snippet" if "snippet" in prompt else "no snippet"
+
+    monkeypatch.setattr(wulf_integration, "VectorGrokkyEngine", lambda: EngineStub())
+    monkeypatch.setattr(wulf_integration, "run_wulf", fake_run_wulf)
+
+    monkeypatch.setenv("WULF_SNIPPET_LIMIT", "1")
+    with_snippet = wulf_integration.generate_response("hi", "wulf")
+
+    monkeypatch.setenv("WULF_SNIPPET_LIMIT", "0")
+    without_snippet = wulf_integration.generate_response("hi", "wulf")
+
+    assert with_snippet == "used snippet"
+    assert without_snippet == "no snippet"
