@@ -1,23 +1,24 @@
 import os
 import time
 import math
+import asyncio
 from typing import Optional, Sequence, List
 
 import httpx
 
 
-def query_grok3(prompt: str, api_key: Optional[str] = None) -> str:
+async def query_grok3(prompt: str, api_key: Optional[str] = None) -> str:
     """Call the Grok-3 API as a dynamic knowledge base."""
     api_key = api_key or os.getenv("XAI_API_KEY")
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     payload = {"prompt": prompt, "max_tokens": 500}
     try:
-        res = httpx.post(
-            "https://api.xai.org/grok-3/generate",
-            json=payload,
-            headers=headers,
-            timeout=30,
-        )
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(
+                "https://api.xai.org/grok-3/generate",
+                json=payload,
+                headers=headers,
+            )
         res.raise_for_status()
         return res.json().get("text", "")
     except Exception as exc:  # pragma: no cover - network
@@ -34,7 +35,7 @@ def query_grok3(prompt: str, api_key: Optional[str] = None) -> str:
         return "Grok-3 offline"
 
 
-def query_gpt4(
+async def query_gpt4(
     prompt: str, api_key: Optional[str] = None, model: str = "gpt-4.1"
 ) -> str:
     """Call the GPT-4 API as a secondary knowledge base.
@@ -49,12 +50,12 @@ def query_gpt4(
         "temperature": 0.8,
     }
     try:
-        res = httpx.post(
-            "https://api.openai.com/v1/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=30,
-        )
+        async with httpx.AsyncClient(timeout=30) as client:
+            res = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                json=payload,
+                headers=headers,
+            )
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
     except Exception as exc:  # pragma: no cover - network
@@ -71,12 +72,17 @@ def query_gpt4(
         return "GPT-4 offline"
 
 
+async def aget_dynamic_knowledge(prompt: str, api_key: Optional[str] = None) -> str:
+    """Fetch knowledge from Grok-3 with GPT-4 fallback asynchronously."""
+    grok_task = query_grok3(prompt, api_key)
+    gpt_task = query_gpt4(prompt, api_key)
+    grok_res, gpt_res = await asyncio.gather(grok_task, gpt_task)
+    return grok_res if not grok_res.startswith("Grok-3 offline") else gpt_res
+
+
 def get_dynamic_knowledge(prompt: str, api_key: Optional[str] = None) -> str:
-    """Fetch knowledge from Grok-3 with GPT-4 fallback."""
-    knowledge = query_grok3(prompt, api_key)
-    if knowledge.startswith("Grok-3 offline"):
-        knowledge = query_gpt4(prompt, api_key)
-    return knowledge
+    """Synchronous wrapper for :func:`aget_dynamic_knowledge`."""
+    return asyncio.run(aget_dynamic_knowledge(prompt, api_key))
 
 
 def apply_pulse(weights: Sequence[float], pulse: float) -> List[float]:
