@@ -50,8 +50,8 @@ from jax.sharding import PartitionSpec as P
 from jax.typing import ArrayLike
 from pydantic import BaseModel
 
-from scripts.fail_log import log_failure
-from scripts.session_logger import log_session
+from .scripts.fail_log import log_failure
+from .scripts.session_logger import log_session
 from utils.dynamic_weights import DynamicWeights
 
 WULF_PROMPT = (
