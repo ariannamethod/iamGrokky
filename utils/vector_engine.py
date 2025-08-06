@@ -25,7 +25,8 @@ class VectorGrokkyEngine:
         self.pinecone_index = os.getenv("PINECONE_INDEX")
         # Дополнительная переменная для указания облака и региона Pinecone
         self.pinecone_environment = os.getenv("PINECONE_ENVIRONMENT", "us-west1-gcp")
-        self.vector_dimension = 1536  # Размерность вектора, стандартная для OpenAI
+        # Размерность вектора для локальной модели эмбеддингов
+        self.vector_dimension = 128
         self.pc = None
         self.index = None
 
@@ -133,22 +134,33 @@ class VectorGrokkyEngine:
             logger.error(f"Ошибка при создании снепшота памяти: {e}")
             logger.error(traceback.format_exc())
 
-    async def generate_embedding(self, text):
-        """Генерирует векторный эмбеддинг для текста"""
-        # В идеале здесь должен быть вызов модели для генерации эмбеддинга
-        # Пока реализуем через хеш-функцию для демо
+    async def generate_embedding(self, text: str):
+        """Генерирует векторный эмбеддинг для текста.
 
-        # Создаем детерминированный хеш текста
-        hash_obj = hashlib.sha256(text.encode())
-        hash_digest = hash_obj.digest()
+        Для локальной модели мы используем детерминированные случайные вектора
+        для каждого токена. Это простой и лёгкий способ получения
+        эмбеддингов без обращения к внешним API.
+        """
 
-        # Генерируем псевдо-вектор нужной размерности с помощью numpy
-        digest = np.frombuffer(hash_digest, dtype=np.uint8)
-        repeats = int(np.ceil(self.vector_dimension / digest.size))
-        vector = np.tile(digest, repeats)[: self.vector_dimension]
-        vector = (vector / 255.0) * 2 - 1  # нормализация в диапазон [-1, 1]
+        def _embed() -> list[float]:
+            tokens = text.lower().split()
+            if not tokens:
+                return [0.0] * self.vector_dimension
 
-        return vector.tolist()
+            vec = np.zeros(self.vector_dimension, dtype=np.float32)
+            for tok in tokens:
+                # Для каждого токена создаём детерминированное случайное представление
+                seed = int(hashlib.sha256(tok.encode()).hexdigest(), 16) % (2**32)
+                rng = np.random.default_rng(seed)
+                vec += rng.standard_normal(self.vector_dimension)
+
+            vec /= len(tokens)
+            norm = np.linalg.norm(vec)
+            if norm > 0:
+                vec /= norm
+            return vec.tolist()
+
+        return await asyncio.to_thread(_embed)
 
     async def add_memory(self, user_id: str, content: str, role="user"):
         """Добавляет сообщение в векторную память"""
@@ -194,8 +206,9 @@ class VectorGrokkyEngine:
             # Генерируем эмбеддинг для запроса
             query_embedding = await self.generate_embedding(query)
 
-            # Ищем похожие записи для данного пользователя
-            results = self.index.query(
+            # Ищем похожие записи для данного пользователя без блокировки event loop
+            results = await asyncio.to_thread(
+                self.index.query,
                 vector=query_embedding,
                 filter={"user_id": user_id},
                 top_k=limit,
