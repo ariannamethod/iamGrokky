@@ -8,6 +8,7 @@ import time
 from typing import Iterable
 
 from openai import OpenAI
+from .base import BasePlugin
 
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -56,5 +57,13 @@ def imagine(prompt: str, size: str = "1024x1024") -> str:
             time.sleep(2)
 
 
-__all__ = ["imagine", "enhance_prompt"]
+__all__ = ["imagine", "enhance_prompt", "ImaginePlugin"]
 
+
+
+class ImaginePlugin(BasePlugin):
+    name = "imagine"
+    description = "draw me"
+
+    async def run(self, args: str) -> str:
+        return imagine(args)

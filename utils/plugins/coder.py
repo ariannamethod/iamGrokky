@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from openai import OpenAI
+from .base import BasePlugin
 
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -98,5 +99,13 @@ async def generate_code(request: str) -> DraftResponse:
     return await CODER_SESSION.draft(request)
 
 
-__all__ = ["interpret_code", "generate_code", "GrokkyCoder", "DraftResponse"]
+__all__ = ["interpret_code", "generate_code", "GrokkyCoder", "DraftResponse", "CoderPlugin"]
 
+
+
+class CoderPlugin(BasePlugin):
+    name = "coder"
+    description = "show me your code"
+
+    async def run(self, args: str) -> str:
+        return await interpret_code(args)

@@ -80,6 +80,14 @@ def _stub_async(*args, **kwargs):
         return None
     return _inner
 
+sys.modules["utils"] = utils_pkg
+
+plugins_pkg = types.ModuleType("utils.plugins")
+plugins_pkg.__path__ = []
+plugins_pkg.load_plugins = lambda: {}
+# keep stubs
+sys.modules["utils.plugins"] = plugins_pkg
+
 utils_pkg.handle = _stub_async()
 sys.modules["utils"] = utils_pkg
 
@@ -93,9 +101,9 @@ _add_stub("utils.dayandnight", day_and_night_task=_stub_async())
 _add_stub("utils.mirror", mirror_task=_stub_async())
 _add_stub("utils.prompt", get_chaos_response=lambda: "")
 _add_stub("utils.repo_monitor", monitor_repository=_stub_async())
-_add_stub("utils.imagine", imagine=lambda prompt: "")
+_add_stub("utils.plugins.imagine", imagine=lambda prompt: "")
 _add_stub("utils.vision", analyze_image=_stub_async())
-_add_stub("utils.coder", interpret_code=_stub_async())
+_add_stub("utils.plugins.coder", interpret_code=_stub_async())
 
 eng_stub = type("Engine", (), {})
 _add_stub("utils.vector_engine", VectorGrokkyEngine=eng_stub)
@@ -103,7 +111,11 @@ _add_stub("utils.hybrid_engine", HybridGrokkyEngine=eng_stub)
 _add_stub("utils.context_neural_processor", parse_and_store_file=_stub_async())
 _add_stub("SLNCX.wulf_integration", generate_response=_stub_async())
 
-import server
+import server  # noqa: E402
+sys.modules.pop("utils.plugins", None)
+sys.modules.pop("utils", None)
+import importlib  # noqa: E402
+importlib.invalidate_caches()
 
 
 class DummyMessage:

@@ -1,58 +1,31 @@
-"""Plugin system for Grokky."""
+"""Plugin discovery utilities."""
 from __future__ import annotations
 
 from importlib import import_module
-import pkgutil
-from typing import Any, Awaitable, Callable, Dict, Iterable, List, Type
+from pathlib import Path
+from typing import Dict
 
-try:  # pragma: no cover - used only with aiogram installed
-    from aiogram.filters import Command  # type: ignore
-except Exception:  # pragma: no cover - fallback for tests
-    class Command:  # type: ignore
-        """Minimal stand-in for aiogram's Command filter."""
-
-        def __init__(self, command: str):
-            self.commands = [command]
+from .base import BasePlugin
 
 
-Handler = Callable[[Any], Awaitable[None]]
-
-
-class BasePlugin:
-    """Base class for Grokky plugins.
-
-    Subclasses should populate :pyattr:`commands` with a mapping from command
-    names to async handler callables. The :py:meth:`register` method wires the
-    handlers into an aiogram :class:`Dispatcher`.
-    """
-
-    commands: Dict[str, Handler]
-
-    def __init__(self) -> None:
-        if not hasattr(self, "commands"):
-            self.commands = {}
-
-    def register(self, dispatcher: Any) -> None:
-        """Register handlers with the provided dispatcher."""
-        message_router = getattr(dispatcher, "message", None)
-        if message_router is None:
-            return
-        register = getattr(message_router, "register", None)
-        if register is None:
-            return
-        for command, handler in self.commands.items():
-            register(handler, Command(command))
-
-
-def iter_plugins() -> Iterable[BasePlugin]:
-    """Yield plugin instances discovered in this package."""
+def load_plugins() -> Dict[str, BasePlugin]:
+    """Discover and instantiate available plugins."""
+    plugins: Dict[str, BasePlugin] = {}
     package = __name__
-    for module_info in pkgutil.iter_modules(__path__):  # type: ignore[name-defined]
-        name = module_info.name
-        if name.startswith("_"):
+    base_path = Path(__file__).resolve().parent
+    for path in base_path.glob("[!_]*.py"):
+        name = path.stem
+        if name == "base":
             continue
         module = import_module(f"{package}.{name}")
-        for attr in dir(module):
-            obj = getattr(module, attr)
-            if isinstance(obj, type) and issubclass(obj, BasePlugin) and obj is not BasePlugin:
-                yield obj()
+        for obj in vars(module).values():
+            if (
+                isinstance(obj, type)
+                and issubclass(obj, BasePlugin)
+                and obj is not BasePlugin
+            ):
+                instance = obj()
+                plugins[instance.name] = instance
+    return plugins
+
+__all__ = ["BasePlugin", "load_plugins"]

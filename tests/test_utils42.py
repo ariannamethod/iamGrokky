@@ -1,7 +1,14 @@
 import importlib
+import sys
 import pytest
 
-mod = importlib.import_module('utils.42')
+sys.modules.pop("utils", None)
+importlib.invalidate_caches()
+for name in list(sys.modules):
+    if name.startswith("utils.plugins"):
+        sys.modules.pop(name)
+
+mod = importlib.import_module('utils.plugins.42')
 
 
 @pytest.mark.asyncio
@@ -44,5 +51,3 @@ def test_paraphrase_uses_dynamic_knowledge(monkeypatch):
     result = mod.paraphrase('hello world')
     assert 'dynamic' in result
     assert called
-
-

@@ -63,18 +63,17 @@ from utils.dayandnight import day_and_night_task
 from utils.mirror import mirror_task
 from utils.prompt import get_chaos_response
 from utils.repo_monitor import monitor_repository
-from utils.imagine import imagine
 from utils.vision import analyze_image
-from utils.coder import interpret_code
+from utils.plugins.coder import interpret_code
+from importlib import import_module
 from SLNCX.wulf_integration import generate_response
 
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
 from utils.hybrid_engine import HybridGrokkyEngine
-from utils.plugins import iter_plugins
+from utils.plugins import load_plugins
 
 # Special command handler from the playful 42 utility
-from utils import handle  # utils/42.py
 from utils.context_neural_processor import parse_and_store_file
 
 # Настройки логирования
@@ -134,9 +133,9 @@ logger.info("API key auth: %s", "ENABLED" if API_KEY else "DISABLED")
 bot = Bot(token=TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
 
-# Plugin registration
-for _plugin in iter_plugins():
-    _plugin.register(dp)
+# Plugin registry
+PLUGINS = load_plugins()
+handle = import_module("utils.plugins.42").handle
 
 # Переменные с информацией о боте, заполняются при старте
 BOT_ID = None
@@ -432,28 +431,7 @@ async def cmd_clearmemory(message: Message):
         await reply_split(message, "🌀 Произошла ошибка при очистке памяти")
 
 
-@dp.message(Command("when"))
-async def cmd_when(message: Message):
-    """Handle /when command via the 42 utility."""
-    lang = CHAT_LANG.get(message.chat.id, detect_language(message.text or ""))
-    result = await handle("when", lang)
-    await reply_split(message, result["response"])
 
-
-@dp.message(Command("mars"))
-async def cmd_mars(message: Message):
-    """Handle /mars command via the 42 utility."""
-    lang = CHAT_LANG.get(message.chat.id, detect_language(message.text or ""))
-    result = await handle("mars", lang)
-    await reply_split(message, result["response"])
-
-
-@dp.message(Command("42"))
-async def cmd_42(message: Message):
-    """Handle /42 command via the 42 utility."""
-    lang = CHAT_LANG.get(message.chat.id, detect_language(message.text or ""))
-    result = await handle("42", lang)
-    await reply_split(message, result["response"])
 
 
 @dp.message(Command("file"))
@@ -562,6 +540,14 @@ async def handle_text(message: Message, text: str) -> None:
     lang = detect_language(text)
     CHAT_LANG[message.chat.id] = lang
 
+    if text.startswith("/"):
+        cmd, _, args = text[1:].partition(" ")
+        plugin = PLUGINS.get(cmd.lower())
+        if plugin:
+            result = await plugin.run(args)
+            await reply_split(message, result)
+            return
+
     if CODER_MODE.get(message.chat.id):
         await handle_coder_prompt(message, text)
         return
@@ -608,28 +594,6 @@ async def handle_text(message: Message, text: str) -> None:
         await engine.add_memory(memory_id, text, role="user")
     except (RuntimeError, ValueError) as e:
         logger.error("Ошибка при сохранении сообщения: %s", e)
-
-    lower_text = text.lower()
-    if (
-        lower_text.startswith("/imagine")
-        or lower_text.startswith("нарисуй")
-        or lower_text.startswith("draw")
-    ):
-        prompt = text.split(maxsplit=1)[1] if len(text.split()) > 1 else ""
-        if not prompt:
-            await reply_split(message, "🌀 Format: /imagine <description>")
-        else:
-            url = imagine(prompt)
-            await reply_split(message, url)
-            try:
-                await engine.add_memory(
-                    memory_id,
-                    f"IMAGE_PROMPT: {prompt}\nURL: {url}",
-                    role="journal",
-                )
-            except (RuntimeError, ValueError):
-                pass
-        return
 
     urls = URL_RE.findall(text)
     if urls:
@@ -795,23 +759,19 @@ async def on_startup():
         logger.error(traceback.format_exc())
 
     try:
-        await bot.set_my_commands(
-            [
-                types.BotCommand(command="voiceon", description="speak"),
-                types.BotCommand(command="voiceoff", description="mute"),
-                types.BotCommand(command="imagine", description="draw me"),
-                types.BotCommand(command="coder", description="show me your code"),
-                types.BotCommand(command="coderoff", description="coder mode off"),
-                types.BotCommand(command="slncx", description="SLNCX (Grok 1 Rebirth)"),
-                types.BotCommand(command="slncxoff", description="SLNCX-off"),
-                types.BotCommand(command="status", description="status"),
-                types.BotCommand(command="clearmemory", description="clear memory"),
-                types.BotCommand(command="file", description="process file"),
-                types.BotCommand(command="when", description="when"),
-                types.BotCommand(command="mars", description="why Mars?"),
-                types.BotCommand(command="42", description="why 42?"),
-            ]
-        )
+        command_list = [
+            types.BotCommand(command="voiceon", description="speak"),
+            types.BotCommand(command="voiceoff", description="mute"),
+            types.BotCommand(command="coderoff", description="coder mode off"),
+            types.BotCommand(command="slncx", description="SLNCX (Grok 1 Rebirth)"),
+            types.BotCommand(command="slncxoff", description="SLNCX-off"),
+            types.BotCommand(command="status", description="status"),
+            types.BotCommand(command="clearmemory", description="clear memory"),
+            types.BotCommand(command="file", description="process file"),
+        ]
+        for _p in PLUGINS.values():
+            command_list.append(types.BotCommand(command=_p.name, description=_p.description))
+        await bot.set_my_commands(command_list)
         await bot.set_chat_menu_button(menu_button=types.MenuButtonCommands())
     except (TelegramAPIError, RuntimeError) as e:
         logger.error("Не удалось установить команды бота: %s", e)
@@ -909,11 +869,12 @@ async def handle_42_api(request: Request, _=Depends(verify_api_key)):
     except json.JSONDecodeError:
         data = {}
     cmd = data.get("cmd") or request.query_params.get("cmd", "")
-    if cmd not in {"when", "mars", "42"}:
+    plugin = PLUGINS.get(cmd)
+    if not plugin:
         return JSONResponse({"error": "Unsupported command"}, status_code=400)
-    result = await handle(cmd)
+    result = await plugin.run("")
     record_tokens("42", len(str(result)))
-    return JSONResponse(result)
+    return JSONResponse({"response": result})
 
 
 @app.post("/file")
