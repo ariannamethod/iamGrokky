@@ -1,6 +1,10 @@
 import os
 import asyncio
+import logging
 import httpx
+
+
+logger = logging.getLogger(__name__)
 
 
 class HybridGrokkyEngine:
@@ -52,7 +56,7 @@ class HybridGrokkyEngine:
                     self.threads[user_id] = res.json().get("id")
             except Exception as exc:  # pragma: no cover - network
                 self.threads[user_id] = None
-                print(f"OpenAI thread creation failed: {exc}")
+                logger.error("OpenAI thread creation failed: %s", exc, exc_info=True)
         return self.threads.get(user_id)
 
     async def add_memory(self, user_id: str, content: str, role="user"):
@@ -69,7 +73,7 @@ class HybridGrokkyEngine:
                     timeout=15,
                 )
             except Exception as exc:  # pragma: no cover - network
-                print(f"OpenAI add_memory failed: {exc}")
+                logger.warning("OpenAI add_memory failed: %s", exc, exc_info=True)
 
     async def search_memory(self, user_id: str, query: str, limit: int = 5) -> str:
         """Выполняет поиск в памяти через GPT-4o mini Assistant.
@@ -127,7 +131,7 @@ class HybridGrokkyEngine:
                 if data:
                     return data[0]["content"][0]["text"]["value"]
             except Exception as exc:  # pragma: no cover - network
-                print(f"OpenAI search_memory failed: {exc}")
+                logger.error("OpenAI search_memory failed: %s", exc, exc_info=True)
         return ""
 
     async def get_recent_memory(self, user_id: str, limit: int = 10) -> str:
@@ -159,7 +163,7 @@ class HybridGrokkyEngine:
                 if context_parts:
                     return "\n".join(context_parts)
             except Exception as exc:  # pragma: no cover - network
-                print(f"OpenAI get_recent_memory failed: {exc}")
+                logger.warning("OpenAI get_recent_memory failed: %s", exc, exc_info=True)
         return ""
 
     async def generate_with_xai(
