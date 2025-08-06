@@ -63,12 +63,35 @@ def test_memory_affects_prompt(monkeypatch):
 
     # First call populates memory
     wulf_integration.generate_response(
-        "hello", "wulf", user_id="u1", engine=engine
+        "hello", "wulf", chat_id="c1", user_id="u1", engine=engine
     )
     assert engine.mem == [("hello", "user"), ("resp", "assistant")]
 
     # Second call should include previous memory in the prompt
     wulf_integration.generate_response(
-        "next", "wulf", user_id="u1", engine=engine
+        "next", "wulf", chat_id="c1", user_id="u1", engine=engine
     )
     assert any("hello" in p for p in prompts[1:])
+
+
+def test_history_trimming(monkeypatch):
+    prompts: list[str] = []
+
+    def fake_run_wulf(prompt, ckpt_path="out/ckpt.pt", api_key=None):
+        prompts.append(prompt)
+        return f"resp{len(prompts)}"
+
+    monkeypatch.setattr(wulf_integration, "run_wulf", fake_run_wulf)
+    monkeypatch.setattr(wulf_integration, "MAX_HISTORY_TURNS", 2)
+    monkeypatch.setattr(wulf_integration, "HISTORY", {})
+
+    chat = "chat42"
+    wulf_integration.generate_response("p1", "wulf", chat_id=chat)
+    wulf_integration.generate_response("p2", "wulf", chat_id=chat)
+    wulf_integration.generate_response("p3", "wulf", chat_id=chat)
+    wulf_integration.generate_response("p4", "wulf", chat_id=chat)
+
+    # Second call should include p1
+    assert "p1" in prompts[1]
+    # Fourth call should drop p1 due to trimming
+    assert "p1" not in prompts[3]

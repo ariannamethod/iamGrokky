@@ -31,6 +31,17 @@ WULF_PROMPT = (
 )
 
 
+# Simple in-memory history store
+HISTORY: dict[str, list[tuple[str, str]]] = {}
+# Number of previous turns to prepend
+MAX_HISTORY_TURNS = 5
+
+
+def clear_history(chat_id: str) -> None:
+    """Remove stored history for the given chat."""
+    HISTORY.pop(chat_id, None)
+
+
 def _extract_text(resp: Any) -> str:
     """Extract plain text from various response object formats."""
     if isinstance(resp, str):
@@ -61,6 +72,7 @@ def generate_response(
     ckpt_path: str = "out/ckpt.pt",  # retained for compatibility
     api_key: Optional[str] = None,
     *,
+    chat_id: Optional[str] = None,
     user_id: Optional[str] = None,
     engine: Optional[Any] = None,
 ) -> str:
@@ -81,7 +93,19 @@ def generate_response(
         except Exception:  # pragma: no cover - best effort
             context = ""
 
-    prompt_with_context = prompt if not context else f"{context}\n\n{prompt}"
+    # Build history block
+    history_pairs = HISTORY.get(chat_id or "", []) if chat_id else []
+    history_lines = []
+    for u, a in history_pairs[-MAX_HISTORY_TURNS:]:
+        history_lines.append(f"User: {u}")
+        history_lines.append(f"Assistant: {a}")
+    history_block = "\n".join(history_lines)
+
+    prompt_with_context = prompt
+    if context:
+        prompt_with_context = f"{context}\n\n{prompt_with_context}"
+    if history_block:
+        prompt_with_context = f"{history_block}\n{prompt_with_context}"
 
     try:
         if mode == "wulf":
@@ -93,6 +117,8 @@ def generate_response(
             full_prompt = WULF_PROMPT
             if context:
                 full_prompt += f"\nContext: {context}"
+            if history_block:
+                full_prompt += "\n" + history_block
             full_prompt += "\nUser: " + prompt
             raw_response = get_dynamic_knowledge(full_prompt, api_key)
             response = _extract_text(raw_response)
@@ -106,6 +132,12 @@ def generate_response(
                 asyncio.run(engine.add_memory(user_id, response, role="assistant"))
             except Exception:  # pragma: no cover - best effort
                 pass
+
+        if chat_id:
+            history = HISTORY.setdefault(chat_id, [])
+            history.append((prompt, response))
+            if len(history) > MAX_HISTORY_TURNS:
+                del history[:-MAX_HISTORY_TURNS]
 
         os.makedirs("logs/wulf", exist_ok=True)
         with open(

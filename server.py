@@ -66,7 +66,7 @@ from utils.repo_monitor import monitor_repository
 from utils.imagine import imagine
 from utils.vision import analyze_image
 from utils.coder import interpret_code
-from SLNCX.wulf_integration import generate_response
+from SLNCX.wulf_integration import generate_response, clear_history
 
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
@@ -368,6 +368,7 @@ async def cmd_slncx(message: Message):
     chat_id = message.chat.id
     if len(parts) == 1:
         SLNCX_MODE[chat_id] = True
+        clear_history(str(chat_id))
         await message.reply("SLNCX mode on. /slncxoff to exit.")
     else:
         prompt = parts[1]
@@ -375,6 +376,7 @@ async def cmd_slncx(message: Message):
             generate_response,
             prompt,
             "wulf",
+            chat_id=str(chat_id),
             user_id=str(chat_id),
             engine=engine,
         )
@@ -384,7 +386,9 @@ async def cmd_slncx(message: Message):
 @dp.message(Command("slncxoff"))
 async def cmd_slncxoff(message: Message):
     """Disable SLNCX mode."""
-    SLNCX_MODE[message.chat.id] = False
+    chat_id = message.chat.id
+    SLNCX_MODE[chat_id] = False
+    clear_history(str(chat_id))
     await message.reply("SLNCX mode off.")
 
 
@@ -571,6 +575,7 @@ async def handle_text(message: Message, text: str) -> None:
             generate_response,
             text,
             "wulf",
+            chat_id=str(message.chat.id),
             user_id=str(message.chat.id),
             engine=engine,
         )
