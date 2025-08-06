@@ -55,7 +55,7 @@ def _extract_text(resp: Any) -> str:
     return str(resp)
 
 
-def generate_response(
+async def generate_response(
     prompt: str,
     mode: str = "grok3",
     ckpt_path: str = "out/ckpt.pt",  # retained for compatibility
@@ -63,12 +63,12 @@ def generate_response(
     *,
     user_id: Optional[str] = None,
     engine: Optional[Any] = None,
-) -> str:
-    """Generate a response using either SLNCX or external models.
+):
+    """Asynchronously generate a response and yield it token by token.
 
-    If an ``engine`` and ``user_id`` are provided, the function will search the
-    user's memory for additional context and store the prompt/response pair
-    after generation.
+    If an ``engine`` and ``user_id`` are provided, additional context will be
+    retrieved from memory and the prompt/response pair stored after
+    generation.
     """
 
     log_entry = {"prompt": prompt, "timestamp": time.time()}
@@ -77,7 +77,7 @@ def generate_response(
     context = ""
     if engine and user_id:
         try:
-            context = asyncio.run(engine.search_memory(user_id, prompt)) or ""
+            context = await engine.search_memory(user_id, prompt) or ""
         except Exception:  # pragma: no cover - best effort
             context = ""
 
@@ -86,15 +86,21 @@ def generate_response(
     try:
         if mode == "wulf":
             dw = DynamicWeights()
-            log_entry["weights"] = dw.weights_for_prompt(prompt_with_context, api_key)
-            response = run_wulf(prompt_with_context, ckpt_path, api_key)
+            log_entry["weights"] = dw.weights_for_prompt(
+                prompt_with_context, api_key
+            )
+            response = await asyncio.to_thread(
+                run_wulf, prompt_with_context, ckpt_path, api_key
+            )
             log_entry["response"] = response
         else:
             full_prompt = WULF_PROMPT
             if context:
                 full_prompt += f"\nContext: {context}"
             full_prompt += "\nUser: " + prompt
-            raw_response = get_dynamic_knowledge(full_prompt, api_key)
+            raw_response = await asyncio.to_thread(
+                get_dynamic_knowledge, full_prompt, api_key
+            )
             response = _extract_text(raw_response)
             dw = DynamicWeights()
             log_entry["weights"] = dw.weights_for_prompt(full_prompt, api_key)
@@ -102,8 +108,8 @@ def generate_response(
 
         if engine and user_id:
             try:
-                asyncio.run(engine.add_memory(user_id, prompt))
-                asyncio.run(engine.add_memory(user_id, response, role="assistant"))
+                await engine.add_memory(user_id, prompt)
+                await engine.add_memory(user_id, response, role="assistant")
             except Exception:  # pragma: no cover - best effort
                 pass
 
@@ -112,7 +118,9 @@ def generate_response(
             f"logs/wulf/{time.strftime('%Y-%m-%d')}.jsonl", "a", encoding="utf-8"
         ) as f:
             f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
-        return response
+
+        for char in response:
+            yield char
     except Exception as exc:  # pragma: no cover - runtime
         log_entry["error"] = str(exc)
         os.makedirs("failures", exist_ok=True)
@@ -120,4 +128,5 @@ def generate_response(
             f"failures/{time.strftime('%Y-%m-%d')}.log", "a", encoding="utf-8"
         ) as f:
             f.write(json.dumps(log_entry) + "\n")
-        return f"Error: {exc}"
+        for ch in f"Error: {exc}":
+            yield ch

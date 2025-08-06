@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from SLNCX import wulf_integration
+import asyncio
 
 
 class FakePiece:
@@ -22,12 +23,17 @@ class FakeResponse:
         self.output = [FakeMessage(text)]
 
 
+async def _collect(gen):
+    return "".join([token async for token in gen])
+
+
 def test_generate_response_handles_response_objects(monkeypatch):
     def fake_get_dynamic(prompt, api_key=None):
         return FakeResponse("ok")
 
     monkeypatch.setattr(wulf_integration, "get_dynamic_knowledge", fake_get_dynamic)
-    assert wulf_integration.generate_response("hi", "grok3") == "ok"
+    result = asyncio.run(_collect(wulf_integration.generate_response("hi", "grok3")))
+    assert result == "ok"
 
 
 def test_generate_response_uses_wulf_model(monkeypatch):
@@ -35,7 +41,8 @@ def test_generate_response_uses_wulf_model(monkeypatch):
         return "wolf"
 
     monkeypatch.setattr(wulf_integration, "run_wulf", fake_generate)
-    assert wulf_integration.generate_response("hi", "wulf") == "wolf"
+    result = asyncio.run(_collect(wulf_integration.generate_response("hi", "wulf")))
+    assert result == "wolf"
 
 
 class MemoryEngine:
@@ -62,13 +69,21 @@ def test_memory_affects_prompt(monkeypatch):
     monkeypatch.setattr(wulf_integration, "run_wulf", fake_run_wulf)
 
     # First call populates memory
-    wulf_integration.generate_response(
-        "hello", "wulf", user_id="u1", engine=engine
+    asyncio.run(
+        _collect(
+            wulf_integration.generate_response(
+                "hello", "wulf", user_id="u1", engine=engine
+            )
+        )
     )
     assert engine.mem == [("hello", "user"), ("resp", "assistant")]
 
     # Second call should include previous memory in the prompt
-    wulf_integration.generate_response(
-        "next", "wulf", user_id="u1", engine=engine
+    asyncio.run(
+        _collect(
+            wulf_integration.generate_response(
+                "next", "wulf", user_id="u1", engine=engine
+            )
+        )
     )
     assert any("hello" in p for p in prompts[1:])

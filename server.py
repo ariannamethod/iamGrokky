@@ -50,7 +50,7 @@ except ImportError:  # pragma: no cover - fallback for tests
             pass
 
 from fastapi import FastAPI, Request, UploadFile, File, Depends, HTTPException
-from fastapi.responses import PlainTextResponse, JSONResponse, Response
+from fastapi.responses import PlainTextResponse, JSONResponse, Response, StreamingResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -371,13 +371,16 @@ async def cmd_slncx(message: Message):
         await message.reply("SLNCX mode on. /slncxoff to exit.")
     else:
         prompt = parts[1]
-        reply = await asyncio.to_thread(
-            generate_response,
+        gen = generate_response(
             prompt,
             "wulf",
             user_id=str(chat_id),
             engine=engine,
         )
+        if hasattr(gen, "__aiter__"):
+            reply = "".join([token async for token in gen])
+        else:
+            reply = await gen
         await reply_split(message, reply)
 
 
@@ -567,13 +570,16 @@ async def handle_text(message: Message, text: str) -> None:
         return
 
     if SLNCX_MODE.get(message.chat.id):
-        reply = await asyncio.to_thread(
-            generate_response,
+        gen = generate_response(
             text,
             "wulf",
             user_id=str(message.chat.id),
             engine=engine,
         )
+        if hasattr(gen, "__aiter__"):
+            reply = "".join([token async for token in gen])
+        else:
+            reply = await gen
         await reply_split(message, reply)
         return
 
@@ -900,6 +906,33 @@ async def root_index() -> PlainTextResponse:
 @app.get("/metrics")
 async def metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.post("/generate")
+async def generate_api(request: Request, _=Depends(verify_api_key)):
+    try:
+        data = await request.json()
+    except json.JSONDecodeError:
+        data = {}
+    prompt = data.get("prompt", "")
+    stream = data.get("stream", False)
+    user_id = data.get("user_id")
+    gen = generate_response(prompt, user_id=user_id, engine=engine)
+    if stream:
+        async def event_stream():
+            if hasattr(gen, "__aiter__"):
+                async for token in gen:
+                    yield f"data: {token}\n\n"
+            else:
+                result = await gen
+                for ch in result:
+                    yield f"data: {ch}\n\n"
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+    if hasattr(gen, "__aiter__"):
+        response_text = "".join([t async for t in gen])
+    else:
+        response_text = await gen
+    return JSONResponse({"response": response_text})
 
 
 @app.post("/42")
