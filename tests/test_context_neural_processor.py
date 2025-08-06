@@ -7,7 +7,12 @@ import pytest
 from PIL import Image
 from reportlab.pdfgen import canvas
 
-from utils.context_neural_processor import FileHandler, compute_relevance, create_repo_snapshot
+import utils.context_neural_processor as cnp
+from utils.context_neural_processor import (
+    FileHandler,
+    compute_relevance,
+    create_repo_snapshot,
+)
 
 
 @pytest.mark.asyncio
@@ -86,3 +91,32 @@ async def test_zip_and_rar(tmp_path):
     rar_text = await handler.extract_async(str(rar_path))
     assert "mars" in zip_text.lower()
     assert "mars" in rar_text.lower()
+
+
+def test_markov_uses_apply_pulse(monkeypatch):
+    calls = []
+
+    def fake_apply(weights, pulse):
+        calls.append((weights, pulse))
+        return [1 / len(weights) for _ in weights]
+
+    monkeypatch.setattr(cnp, "apply_pulse", fake_apply, raising=False)
+    mm = cnp.MiniMarkov("mars starship chaos", n=1)
+    mm.generate(5, start="mars")
+    assert calls
+
+
+@pytest.mark.asyncio
+async def test_paraphrase_uses_dynamic_knowledge(monkeypatch):
+    called = {}
+
+    def fake_get(prompt):
+        called["prompt"] = prompt
+        return "dynamic"
+
+    monkeypatch.setattr(cnp, "cg", None, raising=False)
+    monkeypatch.setattr(cnp, "get_dynamic_knowledge", fake_get, raising=False)
+
+    result = await cnp.paraphrase("hello world")
+    assert "dynamic" in result
+    assert called
