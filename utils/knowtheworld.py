@@ -55,7 +55,7 @@ async def fetch_news(topic: str) -> str:
             message = data.get("choices", [{}])[0].get("message", {})
             return message.get("content", "").strip()
         except Exception as e:
-            logger.error("Не удалось получить новости: %s", e)
+            logger.warning("Не удалось получить новости: %s", e, exc_info=True)
             return ""
 
 async def know_the_world_task(
@@ -93,8 +93,8 @@ async def know_the_world_task(
             entry = f"#knowtheworld {datetime.now().isoformat()}: {summary}"
             await engine.add_memory("journal", entry, role="journal")
             logger.info("know_the_world entry recorded")
-        except Exception as e:
-            logger.error("Ошибка know_the_world_task: %s", e)
+        except Exception:
+            logger.exception("Ошибка know_the_world_task")
         count += 1
         if iterations is not None and count >= iterations:
             break
