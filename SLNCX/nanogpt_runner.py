@@ -1,8 +1,11 @@
+import json
 import os
 import pickle
 from contextlib import nullcontext
+
 import torch
 import tiktoken
+
 from nanogpt_model import GPTConfig, GPT
 
 # -----------------------------------------------------------------------------
@@ -41,10 +44,9 @@ elif init_from.startswith('gpt2'):
     # init from a given GPT-2 model
     model = GPT.from_pretrained(init_from, dict(dropout=0.0))
 
-model.eval()
 model.to(device)
 if compile:
-    model = torch.compile(model) # requires PyTorch 2.0 (optional)
+    model = torch.compile(model)  # requires PyTorch 2.0 (optional)
 
 # look for the meta pickle in case it is available in the dataset folder
 load_meta = False
@@ -57,26 +59,73 @@ if load_meta:
         meta = pickle.load(f)
     # TODO want to make this more general to arbitrary encoder/decoder schemes
     stoi, itos = meta['stoi'], meta['itos']
-    encode = lambda s: [stoi[c] for c in s]
-    decode = lambda l: ''.join([itos[i] for i in l])
+
+    def encode(s: str) -> list[int]:
+        return [stoi[c] for c in s]
+
+    def decode(ids: list[int]) -> str:
+        return ''.join([itos[i] for i in ids])
 else:
     # ok let's assume gpt-2 encodings by default
     print("No meta.pkl found, assuming GPT-2 encodings...")
     enc = tiktoken.get_encoding("gpt2")
-    encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
-    decode = lambda l: enc.decode(l)
 
-# encode the beginning of the prompt
-if start.startswith('FILE:'):
-    with open(start[5:], 'r', encoding='utf-8') as f:
-        start = f.read()
-start_ids = encode(start)
-x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
+    def encode(s: str) -> list[int]:
+        return enc.encode(s, allowed_special={"<|endoftext|>"})
 
-# run generation
-with torch.no_grad():
-    with ctx:
-        for k in range(num_samples):
-            y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
-            print(decode(y[0].tolist()))
-            print('---------------')
+    def decode(ids: list[int]) -> str:
+        return enc.decode(ids)
+
+def _load_tokens(path: str) -> torch.Tensor:
+    tokens = []
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            obj = json.loads(line)
+            tokens.extend(encode(obj["content"]))
+    return torch.tensor(tokens, dtype=torch.long)
+
+
+def fine_tune(dataset_dir: str, steps: int = 100, lr: float = 3e-4) -> None:
+    train_path = os.path.join(dataset_dir, "train.jsonl")
+    tokens = _load_tokens(train_path)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+    block_size = getattr(gptconf, "block_size", 128)
+    model.train()
+    for _ in range(steps):
+        ix = torch.randint(0, len(tokens) - block_size - 1, (1,))
+        x = tokens[ix : ix + block_size].to(device)[None, ...]
+        y = tokens[ix + 1 : ix + 1 + block_size].to(device)[None, ...]
+        optimizer.zero_grad()
+        _, loss = model(x, y)
+        loss.backward()
+        optimizer.step()
+    os.makedirs(out_dir, exist_ok=True)
+    torch.save({
+        "model": model.state_dict(),
+        "model_args": gptconf.__dict__,
+        "config": {"dataset": dataset_dir},
+    }, os.path.join(out_dir, "ckpt.pt"))
+
+
+def generate_text() -> None:
+    model.eval()
+    # encode the beginning of the prompt
+    prompt = start
+    if prompt.startswith('FILE:'):
+        with open(prompt[5:], 'r', encoding='utf-8') as f:
+            prompt = f.read()
+    start_ids = encode(prompt)
+    x = torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...]
+    with torch.no_grad():
+        with ctx:
+            for _ in range(num_samples):
+                y = model.generate(x, max_new_tokens, temperature=temperature, top_k=top_k)
+                print(decode(y[0].tolist()))
+                print('---------------')
+
+
+dataset = globals().get('dataset')
+if dataset:
+    fine_tune(dataset)
+else:
+    generate_text()
