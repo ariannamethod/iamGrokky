@@ -1,23 +1,31 @@
-"""Plugin discovery utilities."""
+"""Plugin system base and discovery."""
 from __future__ import annotations
 
 from importlib import import_module
 from pathlib import Path
-from typing import Dict
+from typing import Awaitable, Callable, Dict, List
 
-from .base import BasePlugin
+CommandHandler = Callable[[str], Awaitable[str]]
 
 
-def load_plugins() -> Dict[str, BasePlugin]:
-    """Discover and instantiate available plugins."""
-    plugins: Dict[str, BasePlugin] = {}
+class BasePlugin:
+    """Base class for plugins providing command handlers."""
+
+    commands: Dict[str, CommandHandler]
+
+    def __init__(self) -> None:
+        self.commands = {}
+
+
+def load_plugins() -> List[BasePlugin]:
+    """Discover plugin classes and instantiate them."""
+    plugins: List[BasePlugin] = []
     package = __name__
     base_path = Path(__file__).resolve().parent
     for path in base_path.glob("[!_]*.py"):
-        name = path.stem
-        if name == "base":
+        if path.name == "__init__.py":
             continue
-        module = import_module(f"{package}.{name}")
+        module = import_module(f"{package}.{path.stem}")
         for obj in vars(module).values():
             if (
                 isinstance(obj, type)
@@ -25,7 +33,9 @@ def load_plugins() -> Dict[str, BasePlugin]:
                 and obj is not BasePlugin
             ):
                 instance = obj()
-                plugins[instance.name] = instance
+                if instance.commands:
+                    plugins.append(instance)
     return plugins
 
-__all__ = ["BasePlugin", "load_plugins"]
+
+__all__ = ["BasePlugin", "load_plugins", "CommandHandler"]

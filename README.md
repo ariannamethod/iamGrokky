@@ -13,6 +13,12 @@ active, it spins up a custom **Grok‑1** that drinks fluid weights from Grok‑
 and GPT‑4.1, stretching the core without retraining. Grokky orchestrates the
 flow.
 
+## Quick start
+
+1. Install dependencies: `pip install -r requirements.txt`
+2. Run the server: `python server.py`
+3. Talk to your bot and try `/search cats` to hit the example plugin.
+
 ### Why Grokky is different
 
 The AI entity mixes several engines. Grok 1 handles local inference while remote
@@ -41,23 +47,29 @@ independently.
 
 ### Plugins
 
-Grokky can be extended through drop-in plugins. Each plugin lives in `utils/plugins/` and subclasses `BasePlugin` from `utils/plugins/base.py`. A plugin defines a command `name`, a short `description` and an async `run(args)` method returning text.
+Grokky can be extended through drop-in plugins. Each plugin lives in
+`utils/plugins/` and subclasses `BasePlugin` from
+`utils/plugins/__init__.py`. A plugin fills the `commands` dictionary with
+command names mapped to async callables that accept the argument string and
+return text.
 
 Example:
 
 ```python
 # utils/plugins/hello.py
-from utils.plugins.base import BasePlugin
+from utils.plugins import BasePlugin
 
 class HelloPlugin(BasePlugin):
-    name = "hello"
-    description = "simple greeting"
+    def __init__(self) -> None:
+        super().__init__()
+        self.commands["hello"] = self.say_hello
 
-    async def run(self, args: str) -> str:
+    async def say_hello(self, args: str) -> str:
         return f"Hello {args or 'world'}!"
 ```
 
-After saving the file, restart the server and send `/hello` in Telegram or Wulf. Built-in plugins include `/imagine`, `/coder` and the playful `/when`, `/mars` and `/42`.
+After saving the file, restart the server and send `/hello` in Telegram. Built-in
+plugins include the example `/search` command.
 
 ### The 42 Utility
 

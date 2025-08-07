@@ -8,7 +8,7 @@ import time
 from typing import Iterable
 
 from openai import OpenAI
-from .base import BasePlugin
+from . import BasePlugin
 
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))

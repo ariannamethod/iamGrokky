@@ -135,6 +135,13 @@ dp = Dispatcher()
 
 # Plugin registry
 PLUGINS = load_plugins()
+for _plugin in PLUGINS:
+    for _cmd, _func in _plugin.commands.items():
+        async def _wrapper(message: Message, _func=_func):
+            args = message.text.split(" ", 1)[1] if message.text and " " in message.text else ""
+            result = await _func(args)
+            await reply_split(message, result)
+        dp.message.register(_wrapper, Command(_cmd))
 handle = import_module("utils.plugins.42").handle
 
 # Переменные с информацией о боте, заполняются при старте
@@ -540,14 +547,6 @@ async def handle_text(message: Message, text: str) -> None:
     lang = detect_language(text)
     CHAT_LANG[message.chat.id] = lang
 
-    if text.startswith("/"):
-        cmd, _, args = text[1:].partition(" ")
-        plugin = PLUGINS.get(cmd.lower())
-        if plugin:
-            result = await plugin.run(args)
-            await reply_split(message, result)
-            return
-
     if CODER_MODE.get(message.chat.id):
         await handle_coder_prompt(message, text)
         return
@@ -769,8 +768,9 @@ async def on_startup():
             types.BotCommand(command="clearmemory", description="clear memory"),
             types.BotCommand(command="file", description="process file"),
         ]
-        for _p in PLUGINS.values():
-            command_list.append(types.BotCommand(command=_p.name, description=_p.description))
+        for _p in PLUGINS:
+            for _cmd in _p.commands:
+                command_list.append(types.BotCommand(command=_cmd, description=_cmd))
         await bot.set_my_commands(command_list)
         await bot.set_chat_menu_button(menu_button=types.MenuButtonCommands())
     except (TelegramAPIError, RuntimeError) as e:
@@ -869,12 +869,11 @@ async def handle_42_api(request: Request, _=Depends(verify_api_key)):
     except json.JSONDecodeError:
         data = {}
     cmd = data.get("cmd") or request.query_params.get("cmd", "")
-    plugin = PLUGINS.get(cmd)
-    if not plugin:
+    if cmd not in {"when", "mars", "42"}:
         return JSONResponse({"error": "Unsupported command"}, status_code=400)
-    result = await plugin.run("")
+    result = await handle(cmd)
     record_tokens("42", len(str(result)))
-    return JSONResponse({"response": result})
+    return JSONResponse({"response": result["response"]})
 
 
 @app.post("/file")
