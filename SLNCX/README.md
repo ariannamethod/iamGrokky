@@ -42,6 +42,22 @@ Wulf speaks when spoken to and then returns to silence. That's the core philosop
 4. `uvicorn app:app --host 0.0.0.0 --port 8000` to start the API server.
 
 No HuggingFace, no extra services. The quantized weights fit in memory and run on a standard CPU.
+## Training
+
+A lightweight training helper lives in `train.py`. It provides utilities to
+prepare data, run a simple JAX loop and write checkpoints.
+
+```python
+from SLNCX.train import prepare_data, train, save_checkpoint
+
+data = prepare_data("data/my_text.txt")
+params = train(init_fn, apply_fn, data)
+save_checkpoint(params, "out/ckpt.pkl")
+```
+
+The `init_fn` and `apply_fn` arguments follow the Haiku conventions used by
+the model.
+
 
 ## Logging and Memory
 
