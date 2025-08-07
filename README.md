@@ -39,6 +39,17 @@ Background jobs handle daily reflections, world news digests, repository
 monitoring and more. Each utility lives under `utils/` and can be invoked
 independently.
 
+### Development
+
+Run the quality benchmarks to measure Wulf's responses:
+
+```bash
+python scripts/evaluate_wulf.py
+```
+
+The script evaluates a small prompt set and reports BLEU and ROUGE-L scores. It
+saves the latest metrics and warns if they regress compared to a previous run.
+
 ### Plugin API
 
 Grokky can be extended through drop-in plugins. Place a module in
