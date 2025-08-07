@@ -129,11 +129,22 @@ class DynamicWeights:
         return max(pulse, 0.0)
 
     def weights_for_prompt(
-        self, prompt: str, api_key: Optional[str] = None
+        self,
+        prompt: str,
+        api_key: Optional[str] = None,
+        reward: float = 0.0,
     ) -> List[float]:
-        """Return softmax-normalised weights for ``prompt``."""
+        """Return softmax-normalised weights for ``prompt``.
+
+        ``reward`` is a feedback signal in ``[-1, 1]`` that nudges the
+        resulting ``pulse`` up or down before weights are calculated.  A
+        positive reward strengthens later responses while a negative value
+        shifts preference toward earlier ones.  The value is clamped to keep
+        the effective pulse within ``[0, 1]``.
+        """
 
         pulse = self.pulse_from_prompt(prompt, api_key)
+        pulse = max(0.0, min(1.0, pulse + reward))
         n = len(self.base)
         if n == 0:
             return []

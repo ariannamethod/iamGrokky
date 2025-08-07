@@ -69,7 +69,12 @@ def generate(
     allow deterministic outputs in tests.
     """
 
-    model = _load_model(ckpt_path)
+    try:
+        model = _load_model(ckpt_path)
+    except FileNotFoundError:
+        dw = DynamicWeights()
+        return dw.generate_response(prompt, api_key)
+
     dw = DynamicWeights()
     pulse = dw.pulse_from_prompt(prompt, api_key)
     temperature = 0.8 + 0.2 * pulse
