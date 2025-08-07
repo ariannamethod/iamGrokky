@@ -69,6 +69,10 @@ def generate(
     allow deterministic outputs in tests.
     """
 
+    if not Path(ckpt_path).exists():
+        dw = DynamicWeights()
+        return dw.generate_response(prompt, api_key)
+
     model = _load_model(ckpt_path)
     dw = DynamicWeights()
     pulse = dw.pulse_from_prompt(prompt, api_key)

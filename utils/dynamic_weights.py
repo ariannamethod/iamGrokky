@@ -36,12 +36,12 @@ async def query_grok3(prompt: str, api_key: Optional[str] = None) -> str:
 
 
 async def query_gpt4(
-    prompt: str, api_key: Optional[str] = None, model: str = "gpt-4.1"
+    prompt: str, api_key: Optional[str] = None, model: str = "gpt-3.5-turbo"
 ) -> str:
-    """Call the GPT-4 API as a secondary knowledge base.
+    """Call the GPT-3.5 API as a secondary knowledge base.
 
-    The default model is set to ``gpt-4.1`` to align with SLNCX's requirement
-    for dynamic weighting based on the latest GPT-4 series."""
+    The default model is set to ``gpt-3.5-turbo`` to provide a lighter
+    fallback engine for dynamic weighting."""
     api_key = api_key or os.getenv("OPENAI_API_KEY")
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     payload = {
@@ -66,14 +66,14 @@ async def query_gpt4(
                 "a",
                 encoding="utf-8",
             ) as f:
-                f.write(f"{time.time()}: GPT-4 API failed - {exc}\n")
+                f.write(f"{time.time()}: GPT-3.5 API failed - {exc}\n")
         except OSError:
             pass
-        return "GPT-4 offline"
+        return "GPT-3.5 offline"
 
 
 async def aget_dynamic_knowledge(prompt: str, api_key: Optional[str] = None) -> str:
-    """Fetch knowledge from Grok-3 with GPT-4 fallback asynchronously."""
+    """Fetch knowledge from Grok-3 with GPT-3.5 fallback asynchronously."""
     grok_task = query_grok3(prompt, api_key)
     gpt_task = query_gpt4(prompt, api_key)
     grok_res, gpt_res = await asyncio.gather(grok_task, gpt_task)
