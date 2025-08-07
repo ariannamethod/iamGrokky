@@ -1,15 +1,16 @@
 """Example plugin providing a /search command."""
 from __future__ import annotations
 
-from .base import BasePlugin
+from . import BasePlugin
 
 
 class WebSearch(BasePlugin):
     """Simple example plugin that echoes search queries."""
 
-    name = "search"
-    description = "search the web"
+    def __init__(self) -> None:
+        super().__init__()
+        self.commands["search"] = self.search
 
-    async def run(self, args: str) -> str:
+    async def search(self, args: str) -> str:
         query = args.strip()
         return f"Searching the web for: {query}"

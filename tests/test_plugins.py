@@ -3,7 +3,7 @@ import sys
 import pytest
 
 
-def _load() -> dict:
+def _load():
     sys.modules.pop("utils", None)
     for name in list(sys.modules):
         if name.startswith("utils.plugins"):
@@ -15,11 +15,25 @@ def _load() -> dict:
 
 def test_plugin_discovery() -> None:
     plugins = _load()
-    assert "search" in plugins
+    assert any("search" in p.commands for p in plugins)
 
 
 @pytest.mark.asyncio
-async def test_plugin_run() -> None:
-    plugins = _load()
-    result = await plugins["search"].run("grokky")
-    assert result == "Searching the web for: grokky"
+async def test_command_routing(monkeypatch) -> None:
+    import server
+    importlib.reload(server)
+    outputs = []
+
+    async def fake_reply_split(message, text):
+        outputs.append(text)
+
+    monkeypatch.setattr(server, "reply_split", fake_reply_split)
+    msg = type("Msg", (), {"text": "/search grokky"})()
+    for handler in server.dp.message.handlers:
+        for f in handler.filters:
+            commands = getattr(f.callback, "commands", [])
+            if "search" in commands:
+                await handler.callback(msg)
+                assert outputs == ["Searching the web for: grokky"]
+                return
+    pytest.fail("search handler not registered")

@@ -38,7 +38,7 @@ except Exception:  # pragma: no cover - optional dependency
 from utils.dynamic_weights import get_dynamic_knowledge, apply_pulse
 import httpx
 
-from .base import BasePlugin
+from . import BasePlugin
 
 
 async def _translate(text: str, lang: str) -> str:
