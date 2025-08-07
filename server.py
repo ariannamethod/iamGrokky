@@ -565,7 +565,7 @@ async def handle_text(message: Message, text: str) -> None:
         reply = await asyncio.to_thread(
             generate_response,
             text,
-            "wulf",
+            "slncx",
             user_id=str(message.chat.id),
             engine=engine,
         )

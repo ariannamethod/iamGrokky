@@ -67,9 +67,11 @@ def generate_response(
 ) -> str:
     """Generate a response using either SLNCX or external models.
 
-    If an ``engine`` and ``user_id`` are provided, the function will search the
-    user's memory for additional context and store the prompt/response pair
-    after generation.
+    ``mode`` accepts ``"slncx"`` (or ``"wulf"`` for backwards compatibility)
+    to query the local SLNCX core. Any other value falls back to the external
+    dynamic-knowledge path. If an ``engine`` and ``user_id`` are provided, the
+    function will search the user's memory for additional context and store the
+    prompt/response pair after generation.
     """
 
     log_entry = {"prompt": prompt, "timestamp": time.time()}
@@ -85,7 +87,7 @@ def generate_response(
     prompt_with_context = prompt if not context else f"{context}\n\n{prompt}"
 
     try:
-        if mode == "wulf":
+        if mode in {"wulf", "slncx"}:
             snippet_limit = int(os.getenv("WULF_SNIPPET_LIMIT", "3"))
             snippets = ""
             if snippet_limit > 0:
