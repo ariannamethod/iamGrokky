@@ -72,6 +72,8 @@ from SLNCX.wulf_integration import generate_response
 from utils.vector_engine import VectorGrokkyEngine
 from utils.hybrid_engine import HybridGrokkyEngine
 from utils.plugins import load_plugins
+from utils.dynamic_weights import DynamicWeights
+from utils.rl_trainer import RLTrainer, log_feedback
 
 # Special command handler from the playful 42 utility
 from utils.context_neural_processor import parse_and_store_file
@@ -157,6 +159,14 @@ else:
     except (RuntimeError, OSError, ValueError) as e:  # pragma: no cover - network
         logger.error(f"Ошибка при инициализации HybridGrokkyEngine: {e}")
         logger.error(traceback.format_exc())
+
+dynamic_weights = DynamicWeights([0.5, 0.5])
+rl_trainer = RLTrainer(dynamic_weights)
+
+async def rl_trainer_task() -> None:
+    while True:
+        rl_trainer.train()
+        await asyncio.sleep(60)
 
 # Обработка голосовых сообщений
 VOICE_ENABLED = {}
@@ -783,6 +793,7 @@ async def on_startup():
         background_tasks.append(asyncio.create_task(day_and_night_task(engine)))
         from utils.knowtheworld import know_the_world_task
         background_tasks.append(asyncio.create_task(know_the_world_task(engine)))
+        background_tasks.append(asyncio.create_task(rl_trainer_task()))
         logger.info("Фоновые задачи запущены")
     except (RuntimeError, OSError) as e:
         logger.error(f"Ошибка при запуске фоновых задач: {e}")
@@ -887,6 +898,17 @@ async def handle_file_api(request: Request, file: UploadFile = File(...), _=Depe
         return JSONResponse({"result": result})
     finally:
         os.unlink(tmp_path)
+
+
+@app.post("/feedback")
+async def feedback_endpoint(data: dict) -> JSONResponse:
+    """Record user feedback for reinforcement learning."""
+
+    prompt = data.get("prompt", "")
+    choice = int(data.get("choice", 0))
+    reward = float(data.get("reward", 0.0))
+    log_feedback(prompt, choice, reward)
+    return JSONResponse({"status": "ok"})
 
 
 @app.on_event("startup")
