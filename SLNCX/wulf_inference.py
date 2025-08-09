@@ -10,7 +10,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Optional
 
-import torch
+try:  # pragma: no cover - torch is optional at runtime
+    import torch
+except ModuleNotFoundError:  # pragma: no cover - fallback to dynamic weights
+    torch = None
 
 from .nanogpt_model import GPT, GPTConfig
 from utils.dynamic_weights import DynamicWeights
@@ -34,6 +37,9 @@ def _dequantize(tensor_or_dict: object) -> torch.Tensor:
 
 def _load_model(ckpt_path: str) -> GPT:
     """Load a quantised Grok-1 checkpoint."""
+
+    if torch is None:
+        raise ModuleNotFoundError("PyTorch is required for model inference")
 
     ckpt: Dict[str, object] = torch.load(Path(ckpt_path), map_location="cpu")
     config = GPTConfig(**ckpt["config"])
@@ -69,9 +75,13 @@ def generate(
     allow deterministic outputs in tests.
     """
 
+    if torch is None:
+        dw = DynamicWeights()
+        return dw.generate_response(prompt, api_key)
+
     try:
         model = _load_model(ckpt_path)
-    except FileNotFoundError:
+    except (FileNotFoundError, ModuleNotFoundError):
         dw = DynamicWeights()
         return dw.generate_response(prompt, api_key)
 
