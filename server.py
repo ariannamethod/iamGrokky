@@ -66,8 +66,15 @@ from utils.repo_monitor import monitor_repository
 from utils.vision import analyze_image
 from utils.plugins.coder import interpret_code
 from importlib import import_module
-from SLNCX.model import generate as slncx_generate
 import inspect
+
+try:
+    from SLNCX.model import generate as slncx_generate
+except Exception as e:  # pragma: no cover - optional dependency
+    slncx_import_error = e
+
+    def slncx_generate(*_args, **_kwargs):  # type: ignore
+        raise RuntimeError(f"SLNCX unavailable: {slncx_import_error}")
 
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
