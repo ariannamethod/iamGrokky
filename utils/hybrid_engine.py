@@ -166,6 +166,34 @@ class HybridGrokkyEngine:
                 logger.warning("OpenAI get_recent_memory failed: %s", exc, exc_info=True)
         return ""
 
+    async def _safe_xai_call(self, payload: dict, retries: int = 3) -> str:
+        """Safely call the xAI API with retries and error handling."""
+        for attempt in range(retries):
+            try:
+                async with httpx.AsyncClient() as client:
+                    res = await client.post(
+                        "https://api.x.ai/v1/chat/completions",
+                        headers=self.xai_h,
+                        json=payload,
+                    )
+                    res.raise_for_status()
+                    return res.json()["choices"][0]["message"]["content"]
+            except httpx.TimeoutException:
+                logger.warning("xAI timeout, retrying (%d/%d)", attempt + 1, retries)
+                await asyncio.sleep(2 ** attempt)
+            except httpx.HTTPStatusError as e:
+                if "stop" in e.response.text.lower():
+                    payload.pop("stop", None)
+                    logger.warning("Removed unsupported 'stop' parameter and retrying")
+                    continue
+                logger.error("HTTP error from xAI: %s", e)
+                break
+            except Exception as e:
+                logger.error("Unexpected xAI error: %s", e)
+                break
+        from utils.prompt import get_chaos_response
+        return f"🌀 Grokky glitch! {get_chaos_response()}"
+
     async def generate_with_xai(
         self, messages: list, context: str = ""
     ) -> str:
@@ -182,11 +210,4 @@ class HybridGrokkyEngine:
             "temperature": 1.0  # slightly higher temperature for Grok-3
         }
 
-        async with httpx.AsyncClient() as client:
-            res = await client.post(
-                "https://api.x.ai/v1/chat/completions",
-                headers=self.xai_h,
-                json=payload
-            )
-            res.raise_for_status()
-            return res.json()["choices"][0]["message"]["content"]
+        return await self._safe_xai_call(payload)

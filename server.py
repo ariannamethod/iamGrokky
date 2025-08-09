@@ -159,21 +159,28 @@ BOT_ID = None
 BOT_USERNAME = ""
 
 # Инициализация движка выполняется только при явном разрешении
-engine = None
-if os.getenv("ENABLE_VECTOR_ENGINE") == "1":
+
+def initialize_memory_safely():
+    """Attempt to initialize the vector engine and fall back to hybrid."""
+    if os.getenv("ENABLE_VECTOR_ENGINE") == "1":
+        try:
+            eng = VectorGrokkyEngine()
+            logger.info("VectorGrokkyEngine инициализирован успешно")
+            return eng
+        except Exception as e:  # pragma: no cover - network
+            logger.warning("VectorGrokkyEngine init failed: %s", e)
+            logger.warning(traceback.format_exc())
     try:
-        engine = VectorGrokkyEngine()
-        logger.info("VectorGrokkyEngine инициализирован успешно")
-    except (RuntimeError, OSError, ValueError) as e:  # pragma: no cover - network
-        logger.error(f"Ошибка при инициализации VectorGrokkyEngine: {e}")
-        logger.error(traceback.format_exc())
-else:
-    try:
-        engine = HybridGrokkyEngine()
+        eng = HybridGrokkyEngine()
         logger.info("HybridGrokkyEngine инициализирован успешно")
-    except (RuntimeError, OSError, ValueError) as e:  # pragma: no cover - network
+        return eng
+    except Exception as e:  # pragma: no cover - network
         logger.error(f"Ошибка при инициализации HybridGrokkyEngine: {e}")
         logger.error(traceback.format_exc())
+        return None
+
+
+engine = initialize_memory_safely()
 
 dynamic_weights = DynamicWeights([0.5, 0.5])
 rl_trainer = RLTrainer(dynamic_weights)
@@ -871,6 +878,59 @@ async def handle_webhook(request: Request):
 @app.get("/healthz")
 async def healthz() -> PlainTextResponse:
     return PlainTextResponse("OK")
+
+
+async def check_xai_health():
+    if not XAI_API_KEY:
+        return "missing"
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                "https://api.x.ai/v1/models",
+                headers={"Authorization": f"Bearer {XAI_API_KEY}"},
+                timeout=5.0,
+            )
+            res.raise_for_status()
+        return "ok"
+    except Exception as e:  # pragma: no cover - network
+        return f"error: {e}"
+
+
+async def check_pinecone_health():
+    if not (PINECONE_API_KEY and PINECONE_INDEX):
+        return "missing"
+    try:  # pragma: no cover - network
+        from pinecone import Pinecone
+
+        Pinecone(api_key=PINECONE_API_KEY).list_indexes()
+        return "ok"
+    except Exception as e:
+        return f"error: {e}"
+
+
+async def check_openai_health():
+    if not OPENAI_API_KEY:
+        return "missing"
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                "https://api.openai.com/v1/models",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                timeout=5.0,
+            )
+            res.raise_for_status()
+        return "ok"
+    except Exception as e:  # pragma: no cover - network
+        return f"error: {e}"
+
+
+@app.get("/health/detailed")
+async def detailed_health():
+    return {
+        "xai_api": await check_xai_health(),
+        "pinecone": await check_pinecone_health(),
+        "openai": await check_openai_health(),
+    }
 
 
 @app.get("/")
