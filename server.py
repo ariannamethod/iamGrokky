@@ -67,6 +67,7 @@ from utils.vision import analyze_image
 from utils.plugins.coder import interpret_code
 from importlib import import_module
 from SLNCX.model import generate as slncx_generate
+import inspect
 
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
@@ -188,6 +189,12 @@ CHAT_LANG: dict[int, str] = {}
 
 # Background tasks to be cancelled on shutdown
 background_tasks: list[asyncio.Task] = []
+
+
+async def _call_slncx(prompt: str) -> str:
+    if inspect.iscoroutinefunction(slncx_generate):
+        return await slncx_generate(prompt)
+    return await asyncio.to_thread(slncx_generate, prompt)
 
 
 async def verify_api_key(request: Request) -> None:
@@ -387,8 +394,12 @@ async def cmd_slncx(message: Message):
         await message.reply("SLNCX mode on. /slncxoff to exit.")
     else:
         prompt = parts[1]
-        reply = await asyncio.to_thread(slncx_generate, prompt)
-        await reply_split(message, reply)
+        try:
+            reply = await _call_slncx(prompt)
+            await reply_split(message, reply)
+        except Exception as e:  # pragma: no cover - runtime
+            logger.error(f"SLNCX generation failed: {e}")
+            await reply_split(message, f"\U0001F300 SLNCX error: {e}")
 
 
 @dp.message(Command("slncxoff"))
@@ -556,8 +567,12 @@ async def handle_text(message: Message, text: str) -> None:
         return
 
     if SLNCX_MODE.get(message.chat.id):
-        reply = await asyncio.to_thread(slncx_generate, text)
-        await reply_split(message, reply)
+        try:
+            reply = await _call_slncx(text)
+            await reply_split(message, reply)
+        except Exception as e:  # pragma: no cover - runtime
+            logger.error(f"SLNCX generation failed: {e}")
+            await reply_split(message, f"\U0001F300 SLNCX error: {e}")
         return
 
     if not engine:
