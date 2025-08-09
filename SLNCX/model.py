@@ -48,7 +48,7 @@ from pydantic import BaseModel
 from .scripts.fail_log import log_failure
 from .scripts.session_logger import log_session
 from utils.dynamic_weights import DynamicWeights
-from utils.server2 import generate_text
+from .wulf_inference import generate as wulf_generate
 from .train import prepare_data, restore, save_checkpoint, train as train_model  # noqa: F401
 
 WULF_PROMPT = (
@@ -70,12 +70,13 @@ WULF_PROMPT = (
 def generate(prompt: str, ckpt_path: str = "out/ckpt.pt", api_key: Optional[str] = None) -> str:
     """Return a response from the lightweight SLNCX model.
 
-    The prompt is forwarded to the interactive weights server to obtain a
-    response without relying on intermediary helper modules.
+    This delegates text generation to :mod:`SLNCX.wulf_inference`, which loads
+    a quantised checkpoint locally. The user's prompt is prefixed with the
+    ``WULF_PROMPT`` persona before being passed to the inference routine.
     """
 
     full_prompt = f"{WULF_PROMPT}\nUser: {prompt}"
-    return generate_text(full_prompt)
+    return wulf_generate(full_prompt, ckpt_path, api_key)
 
 # ``jax_spmd_mode`` was removed in newer releases of JAX. Guard the update so
 # older versions that still support the flag continue to work without raising an
