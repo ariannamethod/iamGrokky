@@ -66,7 +66,7 @@ from utils.repo_monitor import monitor_repository
 from utils.vision import analyze_image
 from utils.plugins.coder import interpret_code
 from importlib import import_module
-from SLNCX.wulf_integration import generate_response
+from SLNCX.model import generate as slncx_generate
 
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
@@ -387,13 +387,7 @@ async def cmd_slncx(message: Message):
         await message.reply("SLNCX mode on. /slncxoff to exit.")
     else:
         prompt = parts[1]
-        reply = await asyncio.to_thread(
-            generate_response,
-            prompt,
-            "wulf",
-            user_id=str(chat_id),
-            engine=engine,
-        )
+        reply = await asyncio.to_thread(slncx_generate, prompt)
         await reply_split(message, reply)
 
 
@@ -562,13 +556,7 @@ async def handle_text(message: Message, text: str) -> None:
         return
 
     if SLNCX_MODE.get(message.chat.id):
-        reply = await asyncio.to_thread(
-            generate_response,
-            text,
-            "slncx",
-            user_id=str(message.chat.id),
-            engine=engine,
-        )
+        reply = await asyncio.to_thread(slncx_generate, text)
         await reply_split(message, reply)
         return
 

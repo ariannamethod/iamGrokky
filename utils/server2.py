@@ -20,7 +20,38 @@ from logging.handlers import RotatingFileHandler
 from functools import wraps
 from collections import OrderedDict
 
-from flask import Flask, request, jsonify, Response, make_response
+try:
+    from flask import Flask, request, jsonify, Response, make_response
+except Exception:  # pragma: no cover - allow import without Flask
+    class Flask:  # type: ignore
+        def __init__(self, *a, **k):
+            self.logger = logging.getLogger("server2_stub")
+
+        def route(self, *a, **k):
+            def decorator(fn):
+                return fn
+
+            return decorator
+
+        get = post = route
+
+    def jsonify(obj):  # type: ignore
+        return obj
+
+    class Response:  # type: ignore
+        ...
+
+    def make_response(*args, **kwargs):  # type: ignore
+        return (args[0], 200)
+
+    class request:  # type: ignore
+        headers: dict[str, str] = {}
+        remote_addr = ""
+
+        @staticmethod
+        def get_json(force: bool = True):
+            return {}
+
 from openai import OpenAI
 
 app = Flask(__name__)
@@ -38,8 +69,7 @@ app.logger.setLevel(logging.INFO)
 app.logger.addHandler(handler)
 
 if not os.getenv("OPENAI_API_KEY"):
-    app.logger.critical("OPENAI_API_KEY не задан — выход")
-    raise RuntimeError("OPENAI_API_KEY is required")
+    app.logger.warning("OPENAI_API_KEY not set; calls will fail at runtime")
 
 # ────────────────────────────────────────────────────────────────────────────────
 # Конфиг
@@ -748,6 +778,28 @@ def generate_sse():
             f"event: response.error\ndata: {json.dumps({'error':str(e),'req_id':req_id})}\n\n",
             mimetype="text/event-stream"
         )
+
+
+def generate_text(
+    prompt: str,
+    model: Optional[str] = None,
+    temperature: float = 0.3,
+    top_p: float = 0.95,
+) -> str:
+    """Return an answer using the same logic as the HTTP endpoint.
+
+    This helper sanitises the prompt, chooses an appropriate model and
+    invokes :func:`_responses_create`. It is designed for internal use by
+    modules that need the interactive weights logic without spinning up the
+    Flask server.
+    """
+
+    prompt = _sanitize_prompt(prompt)
+    model_name = model or _pick_model(prompt, MODEL_DEFAULT)
+    obj, _usage, _oid = _responses_create(
+        prompt, model=model_name, temperature=temperature, top_p=top_p
+    )
+    return str(obj.get("answer", ""))
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8000"))

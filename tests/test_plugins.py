@@ -20,6 +20,8 @@ def test_plugin_discovery() -> None:
 
 @pytest.mark.asyncio
 async def test_command_routing(monkeypatch) -> None:
+    for mod in ["aiogram", "aiogram.types", "aiogram.enums", "aiogram.filters", "aiogram.exceptions"]:
+        sys.modules.pop(mod, None)
     import server
     importlib.reload(server)
     outputs = []
