@@ -37,27 +37,40 @@ class GrokkyCoder:
     async def _ask(self, prompt: str) -> str:
         conversation = "\n".join(self.history + [prompt])
         try:  # pragma: no cover - network
-            response = await asyncio.to_thread(
-                client.responses.create,
-                model="gpt-4.1",
-                tools=[{"type": "code_interpreter", "container": {"type": "auto"}}],
-                instructions=INSTRUCTIONS,
-                input=conversation,
-            )
-            text = getattr(response, "output_text", "")
-            if not text:
-                parts: List[str] = []
-                for msg in getattr(response, "output", []) or []:
-                    if hasattr(msg, "content"):
-                        for piece in msg.content:
-                            piece_text = getattr(piece, "text", None)
-                            if piece_text:
-                                parts.append(piece_text)
-                    elif isinstance(msg, str):
-                        parts.append(msg)
-                    else:
-                        parts.append(str(msg))
-                text = "".join(parts)
+            if hasattr(client, "responses"):
+                response = await asyncio.to_thread(
+                    client.responses.create,
+                    model="gpt-4.1",
+                    tools=[{"type": "code_interpreter", "container": {"type": "auto"}}],
+                    instructions=INSTRUCTIONS,
+                    input=conversation,
+                )
+                text = getattr(response, "output_text", "")
+                if not text:
+                    parts: List[str] = []
+                    for msg in getattr(response, "output", []) or []:
+                        if hasattr(msg, "content"):
+                            for piece in msg.content:
+                                piece_text = getattr(piece, "text", None)
+                                if piece_text:
+                                    parts.append(piece_text)
+                        elif isinstance(msg, str):
+                            parts.append(msg)
+                        else:
+                            parts.append(str(msg))
+                    text = "".join(parts)
+            else:
+                response = await asyncio.to_thread(
+                    client.chat.completions.create,
+                    model="gpt-4.1",
+                    messages=[
+                        {"role": "system", "content": INSTRUCTIONS},
+                        {"role": "user", "content": conversation},
+                    ],
+                )
+                choice = response.choices[0]
+                message = getattr(choice, "message", {})
+                text = getattr(message, "content", "") or message.get("content", "")
         except Exception as exc:  # pragma: no cover - network
             text = f"Code interpreter error: {exc}"
 

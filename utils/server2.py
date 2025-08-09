@@ -429,20 +429,36 @@ def _detect_red_flags(answer: str) -> list[str]:
 def _responses_create(prompt: str, *, model: Optional[str], temperature: float, top_p: float,
                       check_flags: bool = True) -> Tuple[Dict[str, Any], Dict[str, int], Optional[str]]:
     client = _openai_client()
-    resp = client.responses.create(
-        model=model or MODEL_DEFAULT,
-        input=prompt,
-        temperature=temperature,
-        top_p=top_p,
-        response_format={"type": "json_schema", "json_schema": _response_json_schema()},
-    )
-    usage = _extract_usage(resp)
-    openai_id = None
-    try:
-        openai_id = resp.to_dict_recursive().get("id")
-    except Exception:
-        pass
-    content = getattr(resp, "output_text", "") or json.dumps(resp.to_dict_recursive(), ensure_ascii=False)
+    if hasattr(client, "responses"):
+        resp = client.responses.create(
+            model=model or MODEL_DEFAULT,
+            input=prompt,
+            temperature=temperature,
+            top_p=top_p,
+            response_format={"type": "json_schema", "json_schema": _response_json_schema()},
+        )
+        usage = _extract_usage(resp)
+        openai_id = None
+        try:
+            openai_id = resp.to_dict_recursive().get("id")
+        except Exception:
+            pass
+        content = getattr(resp, "output_text", "") or json.dumps(resp.to_dict_recursive(), ensure_ascii=False)
+    else:
+        resp = client.chat.completions.create(
+            model=model or MODEL_DEFAULT,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+            top_p=top_p,
+        )
+        usage = _extract_usage(resp)
+        openai_id = getattr(resp, "id", None)
+        try:
+            choice = resp.choices[0]
+            message = getattr(choice, "message", {})
+            content = getattr(message, "content", "") or message.get("content", "")
+        except Exception:
+            content = ""
     try:
         obj = json.loads(content)
     except Exception:
