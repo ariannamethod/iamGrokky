@@ -10,10 +10,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Optional
 
-import torch
+try:  # PyTorch is optional for lightweight deployments
+    import torch  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    torch = None  # type: ignore[assignment]
 
 from .nanogpt_model import GPT, GPTConfig
 from utils.dynamic_weights import DynamicWeights
+
+
+def _ensure_torch() -> None:
+    """Raise ``ModuleNotFoundError`` if PyTorch is unavailable."""
+
+    if torch is None:  # pragma: no cover - simple guard
+        raise ModuleNotFoundError("PyTorch is required for Grok inference")
 
 
 def _dequantize(tensor_or_dict: object) -> torch.Tensor:
@@ -25,6 +35,8 @@ def _dequantize(tensor_or_dict: object) -> torch.Tensor:
     returned as-is.
     """
 
+    _ensure_torch()
+
     if isinstance(tensor_or_dict, dict) and "weight" in tensor_or_dict and "scale" in tensor_or_dict:
         weight = tensor_or_dict["weight"].to(torch.float32)
         scale = tensor_or_dict["scale"].to(torch.float32)
@@ -34,6 +46,8 @@ def _dequantize(tensor_or_dict: object) -> torch.Tensor:
 
 def _load_model(ckpt_path: str) -> GPT:
     """Load a quantised Grok-1 checkpoint."""
+
+    _ensure_torch()
 
     ckpt: Dict[str, object] = torch.load(Path(ckpt_path), map_location="cpu")
     config = GPTConfig(**ckpt["config"])
@@ -68,6 +82,10 @@ def generate(
     the sampling temperature.  ``seed`` controls the RNG used for sampling to
     allow deterministic outputs in tests.
     """
+
+    if torch is None:
+        dw = DynamicWeights()
+        return dw.generate_response(prompt, api_key)
 
     try:
         model = _load_model(ckpt_path)
