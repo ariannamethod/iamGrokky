@@ -12,13 +12,13 @@ def app(monkeypatch):
     monkeypatch.setenv("MAX_WEBHOOK_BODY_SIZE", "50")
     utils_pkg = types.ModuleType("utils")
     utils_pkg.__path__ = []  # mark as package
-    sys.modules["utils"] = utils_pkg
+    monkeypatch.setitem(sys.modules, "utils", utils_pkg)
 
     def add_utils_submodule(name, attrs):
         mod = types.ModuleType(f"utils.{name}")
         for key, value in attrs.items():
             setattr(mod, key, value)
-        sys.modules[f"utils.{name}"] = mod
+        monkeypatch.setitem(sys.modules, f"utils.{name}", mod)
         setattr(utils_pkg, name, mod)
 
     add_utils_submodule("dayandnight", {"day_and_night_task": lambda *a, **k: None})
@@ -34,6 +34,7 @@ def app(monkeypatch):
     )
     add_utils_submodule("vector_engine", {"VectorGrokkyEngine": type("VectorGrokkyEngine", (), {})})
     add_utils_submodule("hybrid_engine", {"HybridGrokkyEngine": type("HybridGrokkyEngine", (), {})})
+    add_utils_submodule("plugins", {"load_plugins": lambda: []})
 
     aiogram_pkg = types.ModuleType("aiogram")
     aiogram_pkg.__path__ = []
@@ -67,32 +68,44 @@ def app(monkeypatch):
             return None
 
     aiogram_pkg.Dispatcher = Dispatcher
-    sys.modules["aiogram"] = aiogram_pkg
-    sys.modules["aiogram.types"] = types.SimpleNamespace(
-        Message=type("Message", (), {"reply": lambda self, *a, **k: None}),
-        CallbackQuery=type("CallbackQuery", (), {"data": ""}),
+    monkeypatch.setitem(sys.modules, "aiogram", aiogram_pkg)
+    monkeypatch.setitem(
+        sys.modules,
+        "aiogram.types",
+        types.SimpleNamespace(
+            Message=type("Message", (), {"reply": lambda self, *a, **k: None}),
+            CallbackQuery=type("CallbackQuery", (), {"data": ""}),
+        ),
     )
-    sys.modules["aiogram.enums"] = types.SimpleNamespace(
-        ChatAction=type("ChatAction", (), {})
+    monkeypatch.setitem(
+        sys.modules,
+        "aiogram.enums",
+        types.SimpleNamespace(ChatAction=type("ChatAction", (), {})),
     )
-    sys.modules["aiogram.filters"] = types.SimpleNamespace(
-        Command=type("Command", (), {"__init__": lambda self, *a, **k: None})
+    monkeypatch.setitem(
+        sys.modules,
+        "aiogram.filters",
+        types.SimpleNamespace(
+            Command=type("Command", (), {"__init__": lambda self, *a, **k: None})
+        ),
     )
-    sys.modules["aiogram.exceptions"] = types.SimpleNamespace(
-        TelegramAPIError=Exception
+    monkeypatch.setitem(
+        sys.modules,
+        "aiogram.exceptions",
+        types.SimpleNamespace(TelegramAPIError=Exception),
     )
     sub_module_42 = types.ModuleType("utils.42")
     sub_module_42.handle = lambda *a, **k: None
-    sys.modules["utils.42"] = sub_module_42
+    monkeypatch.setitem(sys.modules, "utils.42", sub_module_42)
     utils_pkg.handle = sub_module_42.handle
 
     sl_pkg = types.ModuleType("SLNCX")
     sl_pkg.__path__ = []
     sys.modules["SLNCX"] = sl_pkg
-    wi_module = types.ModuleType("SLNCX.wulf_integration")
-    wi_module.generate_response = lambda *a, **k: None
-    sys.modules["SLNCX.wulf_integration"] = wi_module
-    setattr(sl_pkg, "wulf_integration", wi_module)
+    model_module = types.ModuleType("SLNCX.model")
+    model_module.generate = lambda *a, **k: ""
+    monkeypatch.setitem(sys.modules, "SLNCX.model", model_module)
+    setattr(sl_pkg, "model", model_module)
 
     import server
     importlib.reload(server)

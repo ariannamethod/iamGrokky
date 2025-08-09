@@ -1,5 +1,5 @@
 import importlib
-
+import sys
 import pytest
 from fastapi.testclient import TestClient
 
@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def app(monkeypatch):
     monkeypatch.setenv("API_KEY", "SECRET")
+    for mod in ["aiogram", "aiogram.types", "aiogram.enums", "aiogram.filters", "aiogram.exceptions"]:
+        sys.modules.pop(mod, None)
     import server
     importlib.reload(server)
 
