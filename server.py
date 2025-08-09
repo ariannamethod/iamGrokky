@@ -65,6 +65,8 @@ from utils.prompt import get_chaos_response
 from utils.repo_monitor import monitor_repository
 from utils.vision import analyze_image
 from utils.plugins.coder import interpret_code
+from utils.grok_chat_manager import GrokChatManager
+from utils.memory_manager import ImprovedMemoryManager
 from importlib import import_module
 import inspect
 
@@ -177,6 +179,8 @@ else:
 
 dynamic_weights = DynamicWeights([0.5, 0.5])
 rl_trainer = RLTrainer(dynamic_weights)
+chat_manager: GrokChatManager | None = None
+memory_manager: ImprovedMemoryManager | None = None
 
 async def rl_trainer_task() -> None:
     while True:
@@ -564,14 +568,15 @@ async def coder_choice(callback: types.CallbackQuery):
             callback.message.chat.id, file, caption="Here is the code output."
         )
 
-
-async def handle_text(message: Message, text: str) -> None:
-    lang = detect_language(text)
-    CHAT_LANG[message.chat.id] = lang
-
-    if CODER_MODE.get(message.chat.id):
-        await handle_coder_prompt(message, text)
+async def telegram_message_handler_fixed(message: Message, text: str) -> None:
+    """Improved handler using chat and memory managers."""
+    if not text:
         return
+    chat_id = str(message.chat.id)
+    if message.chat.type in ["group", "supergroup"]:
+        session_id = f"{chat_id}_{message.from_user.id}"
+    else:
+        session_id = str(message.from_user.id)
 
     if SLNCX_MODE.get(message.chat.id):
         try:
@@ -582,38 +587,6 @@ async def handle_text(message: Message, text: str) -> None:
             await reply_split(message, f"\U0001F300 SLNCX error: {e}")
         return
 
-    if not engine:
-        await reply_split(
-            message,
-            "🌀 Грокки: Мой движок неисправен! Свяжитесь с моим создателем.",
-        )
-        return
-
-    is_group = message.chat.type in ["group", "supergroup"]
-    mention = "grokky" in text.lower() or (
-        BOT_USERNAME and f"@{BOT_USERNAME}" in text.lower()
-    )
-    is_reply_to_bot = (
-        message.reply_to_message
-        and message.reply_to_message.from_user
-        and BOT_ID
-        and message.reply_to_message.from_user.id == BOT_ID
-    )
-    if is_group and not (mention or is_reply_to_bot or "[chaos_pulse]" in text.lower()):
-        logger.info("Сообщение проигнорировано (группа без упоминания)")
-        return
-
-    chat_id = str(message.chat.id)
-    if is_group:
-        memory_id = f"{chat_id}_{message.from_user.id}"
-    else:
-        memory_id = str(message.from_user.id)
-
-    try:
-        await engine.add_memory(memory_id, text, role="user")
-    except (RuntimeError, ValueError) as e:
-        logger.error("Ошибка при сохранении сообщения: %s", e)
-
     urls = URL_RE.findall(text)
     if urls:
         raw_url = urls[0]
@@ -623,8 +596,7 @@ async def handle_text(message: Message, text: str) -> None:
         parsed = urlparse(raw_url)
         host = (parsed.hostname or "").lower()
         invalid = (
-            parsed.scheme not in {"http", "https"}
-            or host in BANNED_DOMAINS
+            parsed.scheme not in {"http", "https"} or host in BANNED_DOMAINS
         )
         if not invalid:
             try:
@@ -637,74 +609,26 @@ async def handle_text(message: Message, text: str) -> None:
         if invalid:
             await reply_split(message, "🚫 Некорректная ссылка.")
             return
-        url = parsed.geturl()
-        summary = await summarize_link(url)
-        memory_context = await engine.search_memory(memory_id, summary or url)
-        prompt = f"Ссылка: {url}\n{summary}"
-        reply = await engine.generate_with_xai(
-            [{"role": "user", "content": prompt}],
-            context=memory_context,
-        )
-        await engine.add_memory(memory_id, reply, role="assistant")
-        await reply_split(message, reply)
-        return
 
-    if "[chaos_pulse]" in text.lower():
-        try:
-            answer = get_chaos_response()
-            await reply_split(message, f"🌀 {answer}")
-            await engine.add_memory(memory_id, answer, role="assistant")
-        except (RuntimeError, ValueError) as e:
-            logger.error("Ошибка CHAOS_PULSE: %s", e)
-            await reply_split(
-                message,
-                "🌀 Грокки: Даже хаос требует порядка. Ошибка при обработке команды.",
-            )
+    if not chat_manager or not memory_manager:
+        await reply_split(message, "🌀 Грокки: Сервис недоступен.")
         return
-
-    await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
     try:
-        if message.reply_to_message and message.reply_to_message.text:
-            quote_context = await engine.search_memory(
-                memory_id,
-                message.reply_to_message.text,
-                limit=10,
-            )
-            log_context = await engine.get_recent_memory("journal", limit=10)
-            context_parts = [c for c in [quote_context, log_context] if c]
-            context = "\n\n".join(context_parts)
-        else:
-            context = await engine.search_memory(memory_id, text)
-
-        reply = await engine.generate_with_xai(
-            [{"role": "user", "content": text}],
-            context=context,
-        )
-
-        final_reply = reply
-
-        await engine.add_memory(memory_id, final_reply, role="assistant")
-        if VOICE_ENABLED.get(message.chat.id):
-            lang = "ru" if any(ch.isalpha() and ord(ch) > 127 for ch in final_reply) else "en"
-            audio_bytes = await synth_voice(final_reply, lang=lang)
-            voice_file = types.BufferedInputFile(audio_bytes, filename="voice.mp3")
-            await bot.send_audio(
-                message.chat.id,
-                voice_file,
-                caption=final_reply,
-                reply_to_message_id=message.message_id,
-            )
-        else:
-            await reply_split(message, final_reply)
-    except (RuntimeError, ValueError, httpx.HTTPError) as e:
+        await memory_manager.save(session_id, text, role="user")
+        chat_manager.add_message(session_id, "user", text)
+        context = await memory_manager.retrieve(session_id, text)
+        reply = await chat_manager.safe_chat_completion(session_id, context=context)
+        chat_manager.add_message(session_id, "assistant", reply)
+        await memory_manager.save(session_id, reply, role="assistant")
+        await reply_split(message, reply)
+    except Exception as e:  # pragma: no cover - runtime
         logger.error("Ошибка при обработке сообщения: %s", e)
-        await reply_split(
-            message,
-            f"🌀 Грокки: Произошла ошибка при генерации ответа: {str(e)[:100]}...",
-        )
+        await reply_split(message, f"🌀 Грокки: {str(e)[:100]}")
 
 
+async def handle_text(message: Message, text: str) -> None:
+    await telegram_message_handler_fixed(message, text)
 async def handle_photo(message: Message) -> None:
     """Analyze photo with OpenAI vision."""
     if not engine:
@@ -750,7 +674,9 @@ async def message_handler(message: Message):
 
 # Запуск сервера
 async def on_startup():
-    global BOT_ID, BOT_USERNAME
+    global BOT_ID, BOT_USERNAME, chat_manager, memory_manager
+    chat_manager = GrokChatManager(XAI_API_KEY)
+    memory_manager = ImprovedMemoryManager(PINECONE_API_KEY, PINECONE_INDEX)
     try:
         me = await bot.get_me()
         BOT_ID = me.id
@@ -871,6 +797,20 @@ async def handle_webhook(request: Request):
 @app.get("/healthz")
 async def healthz() -> PlainTextResponse:
     return PlainTextResponse("OK")
+
+
+@app.get("/health/grok")
+async def grok_health() -> JSONResponse:
+    if not chat_manager:
+        return JSONResponse({"status": "error", "message": "uninitialized"})
+    try:
+        resp = await chat_manager.quick_chat([
+            {"role": "user", "content": "test"}
+        ])
+        status = "ok" if resp else "error"
+        return JSONResponse({"status": status})
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": str(e)})
 
 
 @app.get("/")
