@@ -36,41 +36,9 @@ except Exception:  # pragma: no cover - optional dependency
     CharGen = None  # type: ignore
 
 from utils.dynamic_weights import get_dynamic_knowledge, apply_pulse
-import httpx
+from utils.translation import translate
 
 from . import BasePlugin
-
-
-async def _translate(text: str, lang: str) -> str:
-    """Translate ``text`` to ``lang`` using Google Translate.
-
-    ``lang`` expects a two-letter code (e.g. ``"ru"``). English returns the
-    text unchanged. Any errors fall back to the original text.
-    """
-
-    lang = (lang or "en").split("-")[0].lower()
-    if lang in ("en", ""):
-        return text
-    try:
-        params = {
-            "client": "gtx",
-            "sl": "auto",
-            "tl": lang,
-            "dt": "t",
-            "q": text,
-        }
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                "https://translate.googleapis.com/translate_a/single",
-                params=params,
-                timeout=10,
-            )
-        resp.raise_for_status()
-        data = resp.json()
-        translated = "".join(part[0] for part in data[0])
-        return translated or text
-    except Exception:
-        return text
 
 
 def _append_links(base: str, text: str) -> str:
@@ -282,7 +250,7 @@ async def when(lang: str = "en") -> str:
     if random.random() < 0.01:  # 1% xAI easter egg
         paraphrased += "\nP.S. Grok 3 vibes with Mars! #xAI"
     result = paraphrased
-    return await _translate(result, lang)
+    return translate(result, lang)
 
 async def mars(lang: str = "en") -> str:
     sources = [
@@ -313,7 +281,7 @@ async def mars(lang: str = "en") -> str:
         f"Served /mars: {retell[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
     )
     result = retell
-    return await _translate(result, lang)
+    return translate(result, lang)
 
 async def forty_two(lang: str = "en") -> str:
     base_text = markov.generate(length=10, start="42")
@@ -328,7 +296,7 @@ async def forty_two(lang: str = "en") -> str:
         f"Served /42: {paraphrased[:50]}... (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
     )
     result = paraphrased
-    return await _translate(result, lang)
+    return translate(result, lang)
 
 
 # Главный обработчик
@@ -347,6 +315,7 @@ async def handle(cmd: str, lang: str = "en") -> Dict[str, str]:
         Mapping with the textual ``response`` and the current ``pulse``.
     """
 
+    lang = (lang or "en").split("-")[0].lower()
     cmd = cmd.strip().lower()
     try:
         if cmd == "when":
