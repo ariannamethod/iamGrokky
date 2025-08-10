@@ -904,7 +904,7 @@ async def feedback_endpoint(data: dict) -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
-@app.get("/ui", response_class=HTMLResponse)
+@api_router.get("/ui", response_class=HTMLResponse)
 async def command_ui(request: Request) -> HTMLResponse:
     plugin_cmds = []
     for plugin in PLUGINS:
@@ -925,7 +925,7 @@ async def command_ui(request: Request) -> HTMLResponse:
     )
 
 
-@app.post("/command/{cmd}")
+@api_router.post("/command/{cmd}")
 async def run_command(cmd: str, args: str = "") -> JSONResponse:
     if cmd in STANDARD_COMMANDS:
         if cmd == "help":

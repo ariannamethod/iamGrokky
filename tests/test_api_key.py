@@ -37,3 +37,17 @@ def test_feedback_requires_api_key(app):
     client = TestClient(app)
     response = client.post("/feedback", json={})
     assert response.status_code == 401
+
+
+def test_ui_requires_api_key(app):
+    client = TestClient(app)
+    assert client.get("/ui").status_code == 401
+    resp = client.get("/ui", headers={"X-API-Key": "SECRET"})
+    assert resp.status_code == 200
+
+
+def test_command_requires_api_key(app):
+    client = TestClient(app)
+    assert client.post("/command/help").status_code == 401
+    resp = client.post("/command/help", headers={"X-API-Key": "SECRET"})
+    assert resp.status_code == 200
