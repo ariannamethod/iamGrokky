@@ -152,10 +152,23 @@ dp = Dispatcher()
 PLUGINS = load_plugins()
 for _plugin in PLUGINS:
     for _cmd, _func in _plugin.commands.items():
-        async def _wrapper(message: Message, _func=_func):
+        async def _wrapper(message: Message, _func=_func, _cmd=_cmd):
             args = message.text.split(" ", 1)[1] if message.text and " " in message.text else ""
-            result = await _func(args)
-            await reply_split(message, result)
+            try:
+                result = await _func(args)
+            except Exception as e:  # pragma: no cover - plugin errors
+                logger.error("Plugin '%s' failed: %s", _cmd, e, exc_info=True)
+                await message.reply("⚠️ Plugin error. Please try again later.")
+                return
+            try:
+                await reply_split(message, result)
+            except Exception as e:  # pragma: no cover - reply errors
+                logger.error(
+                    "Failed to send plugin '%s' response: %s", _cmd, e, exc_info=True
+                )
+                await message.reply(
+                    "⚠️ Unable to deliver plugin response. Please try again later."
+                )
         dp.message.register(_wrapper, Command(_cmd))
 handle = import_module("utils.plugins.42").handle
 
