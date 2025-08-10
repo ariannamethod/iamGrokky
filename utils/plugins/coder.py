@@ -31,8 +31,15 @@ class DraftResponse:
 class GrokkyCoder:
     """Stateful helper that analyzes and generates code."""
 
+    MAX_HISTORY = 20
+
     def __init__(self) -> None:
         self.history: List[str] = []
+
+    def _trim_history(self) -> None:
+        """Keep only the most recent history entries."""
+        if len(self.history) > self.MAX_HISTORY:
+            self.history = self.history[-self.MAX_HISTORY:]
 
     async def _ask(self, prompt: str) -> str:
         conversation = "\n".join(self.history + [prompt])
@@ -76,6 +83,7 @@ class GrokkyCoder:
 
         self.history.append(prompt)
         self.history.append(text)
+        self._trim_history()
         return text.strip()
 
     async def analyze(self, code_or_path: str | Path) -> str:
@@ -113,7 +121,6 @@ async def generate_code(request: str) -> DraftResponse:
 
 
 __all__ = ["interpret_code", "generate_code", "GrokkyCoder", "DraftResponse", "CoderPlugin"]
-
 
 
 class CoderPlugin(BasePlugin):
