@@ -57,7 +57,13 @@ from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from utils.metrics import REQUEST_LATENCY, record_tokens
+from utils.metrics import (
+    REQUEST_LATENCY,
+    record_tokens,
+    record_error,
+    record_command_usage,
+    record_data_transfer,
+)
 
 from utils.dayandnight import day_and_night_task
 from utils.mirror import mirror_task
@@ -172,6 +178,7 @@ dynamic_weights = DynamicWeights([0.5, 0.5])
 rl_trainer = RLTrainer(dynamic_weights)
 chat_manager: GrokChatManager | None = None
 memory_manager: ImprovedMemoryManager | None = None
+
 
 async def rl_trainer_task() -> None:
     while True:
@@ -326,7 +333,7 @@ async def reply_split(message: Message, text: str) -> None:
     limit = 4096
     # Reserve space for the prefix added to each chunk.
     chunk_size = limit - 100
-    chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+    chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
     total = len(chunks)
 
     for idx, chunk in enumerate(chunks, start=1):
@@ -420,9 +427,6 @@ async def cmd_clearmemory(message: Message):
         logger.error(f"Ошибка при очистке памяти: {e}")
         logger.error(traceback.format_exc())
         await reply_split(message, "🌀 Произошла ошибка при очистке памяти")
-
-
-
 
 
 @dp.message(Command("file"))
@@ -526,6 +530,7 @@ async def coder_choice(callback: types.CallbackQuery):
             callback.message.chat.id, file, caption="Here is the code output."
         )
 
+
 async def telegram_message_handler_fixed(message: Message, text: str) -> None:
     """Improved handler using chat and memory managers."""
     if not text:
@@ -587,6 +592,8 @@ async def telegram_message_handler_fixed(message: Message, text: str) -> None:
 
 async def handle_text(message: Message, text: str) -> None:
     await telegram_message_handler_fixed(message, text)
+
+
 async def handle_photo(message: Message) -> None:
     """Analyze photo with OpenAI vision."""
     if not engine:
@@ -721,8 +728,12 @@ api_router = APIRouter(dependencies=[Depends(verify_api_key)])
 @app.middleware("http")
 async def _metrics_middleware(request: Request, call_next):
     start = time.perf_counter()
+    req_size = int(request.headers.get("content-length") or 0)
+    record_data_transfer("in", req_size)
     response = await call_next(request)
     duration = time.perf_counter() - start
+    resp_size = int(response.headers.get("content-length") or 0)
+    record_data_transfer("out", resp_size)
     REQUEST_LATENCY.labels(endpoint=request.url.path).observe(duration)
     return response
 
@@ -741,6 +752,7 @@ async def handle_webhook(request: Request):
                 len(request_body),
                 MAX_WEBHOOK_BODY_SIZE,
             )
+            record_error("payload_too_large")
             return PlainTextResponse(status_code=413, content="payload too large")
         logger.info(f"Получены данные вебхука длиной {len(request_body)} байт")
         data = json.loads(request_body)
@@ -750,6 +762,7 @@ async def handle_webhook(request: Request):
     except (json.JSONDecodeError, TelegramAPIError) as e:
         logger.error(f"Ошибка обработки вебхука: {e}")
         logger.error(traceback.format_exc())
+        record_error("webhook")
         return PlainTextResponse(status_code=500, content="error")
 
 
@@ -790,7 +803,9 @@ async def handle_42_api(request: Request):
         data = {}
     cmd = data.get("cmd") or request.query_params.get("cmd", "")
     if cmd not in {"when", "mars", "42"}:
+        record_error("unsupported_command")
         return JSONResponse({"error": "Unsupported command"}, status_code=400)
+    record_command_usage(cmd)
     result = await handle(cmd)
     record_tokens("42", len(str(result)))
     return JSONResponse({"response": result["response"]})
