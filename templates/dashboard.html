@@ -23,10 +23,20 @@
   <pre id="output"></pre>
 
   <script>
+  let apiKey = null;
+  function getApiKey() {
+    if (!apiKey) {
+      apiKey = prompt('API Key', '');
+    }
+    return apiKey;
+  }
   async function runCommand(cmd) {
     const args = prompt('Arguments for /' + cmd, '');
     const url = '/command/' + cmd + (args ? '?args=' + encodeURIComponent(args) : '');
-    const resp = await fetch(url, {method: 'POST'});
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {'X-API-Key': getApiKey()}
+    });
     const data = await resp.json();
     document.getElementById('output').textContent = JSON.stringify(data, null, 2);
   }
