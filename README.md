@@ -14,6 +14,12 @@ pilot seat while modes snap on and off.
 1. Install dependencies: `pip install -r requirements.txt`
 2. Run the server: `python server.py`
 3. Talk to your bot and try `/search cats` to hit the example plugin.
+4. Visit `http://localhost:8080/ui` to browse commands in a simple dashboard.
+
+### Web Dashboard
+
+The `/ui` route serves a small HTML page that lists built-in and plugin commands.
+Click any command to run it directly through the API and see the JSON response.
 
 ### Why Grokky is different
 
