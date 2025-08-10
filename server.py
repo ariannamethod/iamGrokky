@@ -50,7 +50,8 @@ except ImportError:  # pragma: no cover - fallback for tests
             pass
 
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import PlainTextResponse, JSONResponse, Response
+from fastapi.responses import PlainTextResponse, JSONResponse, Response, HTMLResponse
+from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -763,6 +764,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+templates = Jinja2Templates(directory="templates")
+
 # Router with API key verification for public endpoints
 api_router = APIRouter(dependencies=[Depends(verify_api_key)])
 
@@ -874,6 +877,50 @@ async def feedback_endpoint(data: dict) -> JSONResponse:
     reward = float(data.get("reward", 0.0))
     log_feedback(prompt, choice, reward)
     return JSONResponse({"status": "ok"})
+
+
+@app.get("/ui", response_class=HTMLResponse)
+async def command_ui(request: Request) -> HTMLResponse:
+    plugin_cmds = []
+    for plugin in PLUGINS:
+        for _cmd, func in plugin.commands.items():
+            desc = (
+                (func.__doc__ or "").strip()
+                or getattr(plugin, "description", "").strip()
+                or (type(plugin).__doc__ or "").strip()
+            )
+            plugin_cmds.append({"cmd": _cmd, "desc": desc})
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "standard_commands": STANDARD_COMMANDS,
+            "plugin_commands": plugin_cmds,
+        },
+    )
+
+
+@app.post("/command/{cmd}")
+async def run_command(cmd: str, args: str = "") -> JSONResponse:
+    if cmd in STANDARD_COMMANDS:
+        if cmd == "help":
+            lines = [f"/{c} - {d}" for c, d in STANDARD_COMMANDS.items()]
+            for plugin in PLUGINS:
+                for _cmd, func in plugin.commands.items():
+                    desc = (
+                        (func.__doc__ or "").strip()
+                        or getattr(plugin, "description", "").strip()
+                        or (type(plugin).__doc__ or "").strip()
+                    )
+                    line = f"/{_cmd} - {desc}" if desc else f"/{_cmd}"
+                    lines.append(line)
+            return JSONResponse({"result": "\n".join(lines)})
+        return JSONResponse({"error": "unsupported command"}, status_code=400)
+    for plugin in PLUGINS:
+        if cmd in plugin.commands:
+            result = await plugin.commands[cmd](args)
+            return JSONResponse({"result": result})
+    return JSONResponse({"error": "unknown command"}, status_code=404)
 
 
 app.include_router(api_router)

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Grokky Command Dashboard</title>
+</head>
+<body>
+  <h1>Grokky Command Dashboard</h1>
+  <h2>Standard Commands</h2>
+  <ul>
+  {% for cmd, desc in standard_commands.items() %}
+    <li><button onclick="runCommand('{{ cmd }}')">/{{ cmd }}</button> - {{ desc }}</li>
+  {% endfor %}
+  </ul>
+
+  <h2>Plugin Commands</h2>
+  <ul>
+  {% for c in plugin_commands %}
+    <li><button onclick="runCommand('{{ c.cmd }}')">/{{ c.cmd }}</button> - {{ c.desc }}</li>
+  {% endfor %}
+  </ul>
+
+  <pre id="output"></pre>
+
+  <script>
+  async function runCommand(cmd) {
+    const args = prompt('Arguments for /' + cmd, '');
+    const url = '/command/' + cmd + (args ? '?args=' + encodeURIComponent(args) : '');
+    const resp = await fetch(url, {method: 'POST'});
+    const data = await resp.json();
+    document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+  }
+  </script>
+</body>
+</html>
