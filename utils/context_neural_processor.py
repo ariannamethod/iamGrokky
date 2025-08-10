@@ -95,7 +95,7 @@ def log_event(msg: str, log_type: str = "info") -> None:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 _SEED_CORPUS = """
-mars starship optimus robots xai resonance chaos wulf multiplanetary arcadia
+mars starship optimus robots xai resonance chaos multiplanetary arcadia
 42 engines ignite elon musk space humanity survives science fiction reality
 shred void pulse storm nikole spark civilization self sustaining grok xai
 file process data extract summarize chaos tags pulse shred neural cosmos
@@ -111,7 +111,7 @@ class MiniMarkov:
         self.build_chain()
 
     def build_chain(self):
-        keywords = {"mars": 0.3, "starship": 0.3, "xai": 0.2, "chaos": 0.15, "wulf": 0.15}
+        keywords = {"mars": 0.3, "starship": 0.3, "xai": 0.2, "chaos": 0.15}
         ban_ngrams = {"как бы", "в общем", "на деле"}
         for i in range(len(self.words) - self.n):
             state = tuple(self.words[i:i + self.n])
@@ -125,7 +125,7 @@ class MiniMarkov:
 
     def update_chain(self, new_text: str):
         words = re.findall(r'\w+', new_text.lower())
-        keywords = {"mars": 0.3, "starship": 0.3, "xai": 0.2, "chaos": 0.15, "wulf": 0.15}
+        keywords = {"mars": 0.3, "starship": 0.3, "xai": 0.2, "chaos": 0.15}
         ban_ngrams = {"как бы", "в общем", "на деле"}
         for i in range(len(words) - self.n):
             state = tuple(words[i:i + self.n])
@@ -140,7 +140,7 @@ class MiniMarkov:
 
     def generate(self, length: int = 5, start: str = None) -> str:
         if not self.chain:
-            return "No tags, Wulf waits in silence. 🌌"
+            return "No tags, silence. 🌌"
         start_words = start.lower().split() if start else [random.choice(self.words)]
         state = tuple(start_words[-self.n:] if len(start_words) >= self.n else start_words + [random.choice(self.words)] * (self.n - len(start_words)))
         result = []
@@ -301,7 +301,7 @@ markov = MiniMarkov(_SEED_CORPUS, n=3)
 esn = MiniESN()
 cg = (
     CharGen(
-        seed_text="Files pulse with chaos. Mars ignites the void. Wulf shreds.",
+        seed_text="Files pulse with chaos. Mars ignites the void.",
         seed=42,
     )
     if CharGen
@@ -367,7 +367,7 @@ async def paraphrase(text: str, prefix: str = "Summarize this for kids: ") -> st
                 raise ValueError("Paraphrase too short")
             markov.update_chain(paraphrased)
             return paraphrased + random.choice(
-                [" Shredding the cosmos! 🌌", " File pulse ignited! 🚀", " Wulf’s chaos alive! 🌩️"]
+                [" Shredding the cosmos! 🌌", " File pulse ignited! 🚀", " Chaos alive! 🌩️"]
             )
         raise ValueError("No CharGen")
     except (RuntimeError, ValueError) as e:
@@ -379,7 +379,7 @@ async def paraphrase(text: str, prefix: str = "Summarize this for kids: ") -> st
                 paraphrased + " Void pulse activated! 🚀" if paraphrased else text
             )
         except (RuntimeError, ValueError):
-            return text + " Ether’s silent, Wulf persists! 🌌"
+            return text + " Ether’s silent, yet it persists! 🌌"
 
 # FileHandler
 class FileHandler:

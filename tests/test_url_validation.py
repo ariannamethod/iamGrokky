@@ -99,7 +99,9 @@ def _add_stub(module_name, **attrs):
 
 _add_stub("utils.dayandnight", day_and_night_task=_stub_async())
 _add_stub("utils.mirror", mirror_task=_stub_async())
-_add_stub("utils.prompt", get_chaos_response=lambda: "")
+_add_stub(
+    "utils.prompt", get_chaos_response=lambda: "", build_system_prompt=lambda **k: ""
+)
 _add_stub("utils.repo_monitor", monitor_repository=_stub_async())
 _add_stub("utils.plugins.imagine", imagine=lambda prompt: "")
 _add_stub("utils.vision", analyze_image=_stub_async())
@@ -109,7 +111,6 @@ eng_stub = type("Engine", (), {})
 _add_stub("utils.vector_engine", VectorGrokkyEngine=eng_stub)
 _add_stub("utils.hybrid_engine", HybridGrokkyEngine=eng_stub)
 _add_stub("utils.context_neural_processor", parse_and_store_file=_stub_async())
-_add_stub("SLNCX.model", generate=_stub_async())
 
 import server  # noqa: E402
 sys.modules.pop("utils.plugins", None)
