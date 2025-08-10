@@ -1,45 +1,36 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>Grokky Command Dashboard</title>
+  <link rel="stylesheet" href="{{ request.url_for('static', path='style.css') }}">
 </head>
 <body>
-  <h1>Grokky Command Dashboard</h1>
-  <h2>Standard Commands</h2>
-  <ul>
-  {% for cmd, desc in standard_commands.items() %}
-    <li><button onclick="runCommand('{{ cmd }}')">/{{ cmd }}</button> - {{ desc }}</li>
-  {% endfor %}
-  </ul>
-
-  <h2>Plugin Commands</h2>
-  <ul>
-  {% for c in plugin_commands %}
-    <li><button onclick="runCommand('{{ c.cmd }}')">/{{ c.cmd }}</button> - {{ c.desc }}</li>
-  {% endfor %}
-  </ul>
-
+  <h1 id="title">Grokky Command Dashboard</h1>
+  <div class="controls">
+    <label for="lang-select" id="lang-label">Language:</label>
+    <select id="lang-select">
+      <option value="en">English</option>
+      <option value="ru">Русский</option>
+    </select>
+  </div>
+  <div class="command-input">
+    <input id="command" list="commands" placeholder="Enter command" autocomplete="off" />
+    <datalist id="commands">
+      {% for cmd, desc in standard_commands.items() %}
+      <option value="{{ cmd }}" data-desc="{{ desc }}"></option>
+      {% endfor %}
+      {% for c in plugin_commands %}
+      <option value="{{ c.cmd }}" data-desc="{{ c.desc }}"></option>
+      {% endfor %}
+    </datalist>
+    <button id="run-btn">Run</button>
+  </div>
+  <div id="hint"></div>
   <pre id="output"></pre>
-
   <script>
-  let apiKey = null;
-  function getApiKey() {
-    if (!apiKey) {
-      apiKey = prompt('API Key', '');
-    }
-    return apiKey;
-  }
-  async function runCommand(cmd) {
-    const args = prompt('Arguments for /' + cmd, '');
-    const url = '/command/' + cmd + (args ? '?args=' + encodeURIComponent(args) : '');
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {'X-API-Key': getApiKey()}
-    });
-    const data = await resp.json();
-    document.getElementById('output').textContent = JSON.stringify(data, null, 2);
-  }
+    window.commandHints = {{ command_hints | tojson }};
   </script>
+  <script src="{{ request.url_for('static', path='app.js') }}" defer></script>
 </body>
 </html>

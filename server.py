@@ -55,6 +55,7 @@ from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Request, U
 from fastapi.responses import PlainTextResponse, JSONResponse, Response, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -770,6 +771,7 @@ async def on_shutdown():
 # Создание приложения FastAPI и маршруты
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
@@ -925,12 +927,16 @@ async def command_ui(request: Request) -> HTMLResponse:
                 or (type(plugin).__doc__ or "").strip()
             )
             plugin_cmds.append({"cmd": _cmd, "desc": desc})
+    command_hints = {c: d for c, d in STANDARD_COMMANDS.items()}
+    for c in plugin_cmds:
+        command_hints[c["cmd"]] = c["desc"]
     return templates.TemplateResponse(
         "dashboard.html",
         {
             "request": request,
             "standard_commands": STANDARD_COMMANDS,
             "plugin_commands": plugin_cmds,
+            "command_hints": command_hints,
         },
     )
 
