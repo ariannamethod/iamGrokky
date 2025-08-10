@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-DATA_DIR = Path('SLNCX/datasets/dialogues')
+DATA_DIR = Path('datasets/dialogues')
 
 
 def _check_file(path: Path) -> None:

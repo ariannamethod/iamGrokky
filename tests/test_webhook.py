@@ -99,14 +99,6 @@ def app(monkeypatch):
     monkeypatch.setitem(sys.modules, "utils.42", sub_module_42)
     utils_pkg.handle = sub_module_42.handle
 
-    sl_pkg = types.ModuleType("SLNCX")
-    sl_pkg.__path__ = []
-    sys.modules["SLNCX"] = sl_pkg
-    model_module = types.ModuleType("SLNCX.model")
-    model_module.generate = lambda *a, **k: ""
-    monkeypatch.setitem(sys.modules, "SLNCX.model", model_module)
-    setattr(sl_pkg, "model", model_module)
-
     import server
     importlib.reload(server)
 

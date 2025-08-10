@@ -109,7 +109,6 @@ eng_stub = type("Engine", (), {})
 _add_stub("utils.vector_engine", VectorGrokkyEngine=eng_stub)
 _add_stub("utils.hybrid_engine", HybridGrokkyEngine=eng_stub)
 _add_stub("utils.context_neural_processor", parse_and_store_file=_stub_async())
-_add_stub("SLNCX.model", generate=_stub_async())
 
 import server  # noqa: E402
 sys.modules.pop("utils.plugins", None)
