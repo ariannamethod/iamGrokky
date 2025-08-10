@@ -9,6 +9,8 @@ import tempfile
 from urllib.parse import urlparse
 from ipaddress import ip_address
 import time
+import mimetypes
+from pathlib import Path
 
 import httpx
 try:  # pragma: no cover - used only with aiogram installed
@@ -116,6 +118,7 @@ NEWS_MODEL = os.getenv("NEWS_MODEL", "gpt-4o")
 URL_RE = re.compile(r"https?://\S+")
 MAX_URL_LENGTH = int(os.getenv("MAX_URL_LENGTH", "2048"))
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", "10485760"))
+ALLOWED_FILE_EXTENSIONS = {".txt", ".md", ".pdf"}
 BANNED_DOMAINS = {
     d.strip().lower()
     for d in os.getenv("BANNED_DOMAINS", "").split(",")
@@ -512,6 +515,15 @@ async def _process_document(message: Message, document):
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             tmp.write(resp.content)
             tmp_path = tmp.name
+        ext = Path(file.file_path).suffix.lower()
+        if not ext:
+            mime = mimetypes.guess_type(tmp_path)[0]
+            if mime:
+                ext = mimetypes.guess_extension(mime) or ""
+        if ext not in ALLOWED_FILE_EXTENSIONS:
+            allowed = ", ".join(sorted(ALLOWED_FILE_EXTENSIONS))
+            await message.reply(f"Unsupported file type. Allowed: {allowed}")
+            return
         result = await parse_and_store_file(tmp_path)
         await reply_split(message, result[:4000])
     except (httpx.HTTPError, OSError) as e:
