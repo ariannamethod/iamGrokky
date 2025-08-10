@@ -354,6 +354,34 @@ async def reply_split(message: Message, text: str) -> None:
             await bot.send_message(message.chat.id, full_text)
 
 
+STANDARD_COMMANDS = {
+    "help": "show available commands",
+    "voiceon": "speak",
+    "voiceoff": "mute",
+    "voice": "voice commands",
+    "coder": "coder mode",
+    "coderoff": "coder mode off",
+    "status": "status",
+    "clearmemory": "clear memory",
+    "file": "process file",
+}
+
+
+@dp.message(Command("help"))
+async def cmd_help(message: Message):
+    lines = [f"/{cmd} - {desc}" for cmd, desc in STANDARD_COMMANDS.items()]
+    for plugin in PLUGINS:
+        for _cmd, func in plugin.commands.items():
+            desc = (
+                (func.__doc__ or "").strip()
+                or getattr(plugin, "description", "").strip()
+                or (type(plugin).__doc__ or "").strip()
+            )
+            line = f"/{_cmd} - {desc}" if desc else f"/{_cmd}"
+            lines.append(line)
+    await reply_split(message, "\n".join(lines))
+
+
 @dp.message(Command("voiceon"))
 async def cmd_voiceon(message: Message):
     VOICE_ENABLED[message.chat.id] = True
@@ -676,6 +704,7 @@ async def on_startup():
 
     try:
         command_list = [
+            types.BotCommand(command="help", description="help"),
             types.BotCommand(command="voiceon", description="speak"),
             types.BotCommand(command="voiceoff", description="mute"),
             types.BotCommand(command="coderoff", description="coder mode off"),
