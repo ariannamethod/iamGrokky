@@ -1,11 +1,21 @@
-import re
+"""Utilities for detecting text language."""
+
+from langdetect import DetectorFactory, LangDetectException, detect
+
+# Ensure deterministic results from langdetect
+DetectorFactory.seed = 0
 
 
 def detect_language(text: str) -> str:
-    """Detect language from ``text`` using simple heuristics.
+    """Detect the language of ``text``.
 
-    Returns ``"ru"`` if any Cyrillic characters are present, otherwise
-    returns ``"en"``. This lightweight detector avoids heavyweight
-    dependencies while enabling language-aware responses.
+    Uses the :mod:`langdetect` library to return an ISO 639-1 language code.
+    Falls back to ``"en"`` if detection fails.
     """
-    return "ru" if re.search(r"[А-Яа-я]", text) else "en"
+    try:
+        return detect(text)
+    except LangDetectException:
+        return "en"
+
+
+__all__ = ["detect_language"]

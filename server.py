@@ -77,6 +77,8 @@ from utils.vision import analyze_image
 from utils.plugins.coder import interpret_code
 from utils.grok_chat_manager import GrokChatManager
 from utils.memory_manager import ImprovedMemoryManager
+from utils.language import detect_language
+from utils.translation import translate
 from importlib import import_module
 
 # Импортируем наш новый движок
@@ -225,21 +227,6 @@ async def verify_api_key(request: Request) -> None:
     """FastAPI dependency to validate the API key header."""
     if API_KEY and request.headers.get("X-API-Key") != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
-
-
-def detect_language(text: str) -> str:
-    """Very small heuristic language detector."""
-    if re.search("[а-яА-Я]", text):
-        return "ru"
-    if re.search("[äöüßÄÖÜ]", text):
-        return "de"
-    if re.search("[ñáéíóúÑÁÉÍÓÚ]", text):
-        return "es"
-    if re.search("[éàèùâêîôûçœÉÀÈÙÂÊÎÔÛÇŒ]", text):
-        return "fr"
-    if re.search("[a-zA-Z]", text):
-        return "en"
-    return "en"
 
 
 async def synth_voice(text: str, lang: str = "ru") -> bytes:
@@ -601,6 +588,10 @@ async def telegram_message_handler_fixed(message: Message, text: str) -> None:
     else:
         session_id = str(message.from_user.id)
 
+    # Detect and store user's language
+    lang = detect_language(text)
+    CHAT_LANG[message.chat.id] = lang
+
     urls = URL_RE.findall(text)
     if urls:
         raw_url = urls[0]
@@ -644,7 +635,8 @@ async def telegram_message_handler_fixed(message: Message, text: str) -> None:
         )
         chat_manager.add_message(session_id, "assistant", reply)
         await memory_manager.save(session_id, reply, role="assistant")
-        await reply_split(message, reply)
+        translated = translate(reply, lang)
+        await reply_split(message, translated)
     except Exception as e:  # pragma: no cover - runtime
         logger.error("Ошибка при обработке сообщения: %s", e)
         await reply_split(message, f"🌀 Грокки: {str(e)[:100]}")

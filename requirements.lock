@@ -457,6 +457,10 @@ jmp==0.0.4 \
     --hash=sha256:5dfeb0fd7c7a9f72a70fff0aab9d0cbfae32a809c02f4037ff3485ceb33e1730 \
     --hash=sha256:6aa7adbddf2bd574b28c7faf6e81a735eb11f53386447896909c6968dc36807d
     # via dm-haiku
+langdetect==1.0.9 \
+    --hash=sha256:7cbc0746252f19e76f77c0b1690aadf01963be835ef0cd4b56dddf2a8f1dfc2a \
+    --hash=sha256:cbc1fef89f8d062739774bd51eda3da3274006b3661d199c2655f6b3f6d605a0
+    # via -r requirements.txt
 limits==5.4.0 \
     --hash=sha256:1afb03c0624cf004085532aa9524953f2565cf8b0a914e48dda89d172c13ceb7 \
     --hash=sha256:27ebf55118e3c9045f0dbc476f4559b26d42f4b043db670afb8963f36cf07fd9
@@ -1413,6 +1417,7 @@ six==1.17.0 \
     --hash=sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81
     # via
     #   ebooklib
+    #   langdetect
     #   python-dateutil
     #   textract
 slowapi==0.1.9 \
