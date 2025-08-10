@@ -15,6 +15,10 @@ pilot seat while modes snap on and off.
 2. Run the server: `python server.py`
 3. Talk to your bot and try `/search cats` to hit the example plugin.
 
+### Commands page
+
+Visit [http://localhost:8000/commands](http://localhost:8000/commands) to see a list of all loaded plugin commands.
+
 ### Why Grokky is different
 
 The AI entity mixes several engines. Grok 1 handles local inference while remote

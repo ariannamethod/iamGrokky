@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Grokky Commands</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 2rem; }
+h1 { margin-bottom: 1rem; }
+.plugin { margin-bottom: 1.5rem; }
+code { background: #f0f0f0; padding: 0.25rem 0.5rem; border-radius: 4px; }
+</style>
+</head>
+<body>
+<h1>Available Commands</h1>
+{% for plugin in plugins %}
+<div class="plugin">
+  <h2>{{ plugin.name }}{% if plugin.description %} - {{ plugin.description }}{% endif %}</h2>
+  <ul>
+  {% for cmd in plugin.commands %}
+    <li><code>/{{ cmd }}</code></li>
+  {% endfor %}
+  </ul>
+</div>
+{% endfor %}
+</body>
+</html>

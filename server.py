@@ -50,7 +50,8 @@ except ImportError:  # pragma: no cover - fallback for tests
             pass
 
 from fastapi import FastAPI, Request, UploadFile, File, Depends, HTTPException
-from fastapi.responses import PlainTextResponse, JSONResponse, Response
+from fastapi.responses import PlainTextResponse, JSONResponse, Response, HTMLResponse
+from fastapi.templating import Jinja2Templates
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -710,6 +711,7 @@ async def on_shutdown():
 # Создание приложения FastAPI и маршруты
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 app = FastAPI()
+templates = Jinja2Templates(directory="templates")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
@@ -772,6 +774,21 @@ async def grok_health() -> JSONResponse:
 @app.get("/")
 async def root_index() -> PlainTextResponse:
     return PlainTextResponse("Грокки жив и работает!")
+
+
+@app.get("/commands", response_class=HTMLResponse)
+async def commands_page(request: Request) -> HTMLResponse:
+    plugin_data = [
+        {
+            "name": getattr(p, "name", p.__class__.__name__),
+            "description": getattr(p, "description", ""),
+            "commands": list(p.commands.keys()),
+        }
+        for p in PLUGINS
+    ]
+    return templates.TemplateResponse(
+        "commands.html", {"request": request, "plugins": plugin_data}
+    )
 
 
 @app.get("/metrics")
