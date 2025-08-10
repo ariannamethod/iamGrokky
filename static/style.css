@@ -1,0 +1,39 @@
+body {
+  font-family: Arial, sans-serif;
+  max-width: 800px;
+  margin: auto;
+  padding: 1rem;
+  background: #f5f5f5;
+}
+
+h1 {
+  text-align: center;
+}
+
+.command-input {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+#command {
+  flex: 1;
+  padding: 0.5rem;
+}
+
+#run-btn {
+  padding: 0.5rem 1rem;
+}
+
+#hint {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+#output {
+  background: #fff;
+  padding: 1rem;
+  border: 1px solid #ccc;
+  overflow: auto;
+}
