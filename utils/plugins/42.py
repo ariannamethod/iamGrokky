@@ -336,29 +336,26 @@ async def handle(cmd: str, lang: str = "en") -> Dict[str, str]:
 
 
 
-class WhenPlugin(BasePlugin):
-    name = "when"
-    description = "when"
+class FortyTwoPlugin(BasePlugin):
+    """Expose `/when`, `/mars` and `/42` commands to the bot."""
 
-    async def run(self, args: str) -> str:
+    def __init__(self) -> None:  # pragma: no cover - simple assignment
+        super().__init__()
+        self.commands = {
+            "when": self._when,
+            "mars": self._mars,
+            "42": self._forty_two,
+        }
+
+    async def _when(self, args: str) -> str:
         result = await handle("when")
         return result["response"]
 
-
-class MarsPlugin(BasePlugin):
-    name = "mars"
-    description = "why Mars?"
-
-    async def run(self, args: str) -> str:
+    async def _mars(self, args: str) -> str:
         result = await handle("mars")
         return result["response"]
 
-
-class FortyTwoPlugin(BasePlugin):
-    name = "42"
-    description = "answer"
-
-    async def run(self, args: str) -> str:
+    async def _forty_two(self, args: str) -> str:
         result = await handle("42")
         return result["response"]
 
