@@ -875,8 +875,26 @@ async def handle_42_api(request: Request):
 
 @api_router.post("/file")
 async def handle_file_api(request: Request, file: UploadFile = File(...)):
+    filename = file.filename or ""
+    ext = Path(filename).suffix.lower()
+    if not ext:
+        ext = mimetypes.guess_extension(file.content_type or "") or ""
+    if ext not in ALLOWED_FILE_EXTENSIONS:
+        allowed = ", ".join(sorted(ALLOWED_FILE_EXTENSIONS))
+        return JSONResponse(
+            {"error": f"Unsupported file type. Allowed: {allowed}"},
+            status_code=400,
+        )
+
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        return JSONResponse(
+            {"error": f"File too large. Limit is {MAX_FILE_SIZE} bytes"},
+            status_code=400,
+        )
+
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        tmp.write(await file.read())
+        tmp.write(content)
         tmp_path = tmp.name
     try:
         result = await parse_and_store_file(tmp_path)
