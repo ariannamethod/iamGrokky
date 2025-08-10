@@ -3,6 +3,7 @@ import logging
 from typing import Dict, List
 
 import httpx
+from utils.prompt import build_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class GrokChatManager:
         raise RuntimeError("Max retries exceeded")
 
     async def safe_chat_completion(self, session_id: str, context: str = "") -> str:
-        messages = []
+        messages = [{"role": "system", "content": build_system_prompt()}]
         if context:
             messages.append({"role": "system", "content": context})
         messages.extend(self.get_messages(session_id))
@@ -67,5 +68,7 @@ class GrokChatManager:
         return await self._request(payload)
 
     async def quick_chat(self, messages: List[dict]) -> str:
-        payload = {"model": "grok-3", "messages": messages}
+        full_messages = [{"role": "system", "content": build_system_prompt()}]
+        full_messages.extend(messages)
+        payload = {"model": "grok-3", "messages": full_messages}
         return await self._request(payload)
