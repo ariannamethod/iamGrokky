@@ -51,6 +51,7 @@ except ImportError:  # pragma: no cover - fallback for tests
 
 from fastapi import FastAPI, Request, UploadFile, File, Depends, HTTPException
 from fastapi.responses import PlainTextResponse, JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -114,6 +115,11 @@ BANNED_DOMAINS = {
     if d.strip()
 }
 MAX_WEBHOOK_BODY_SIZE = int(os.getenv("MAX_WEBHOOK_BODY_SIZE", "100000"))
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+]
 
 # Проверка ключей API
 XAI_API_KEY = os.getenv("XAI_API_KEY")
@@ -172,6 +178,7 @@ dynamic_weights = DynamicWeights([0.5, 0.5])
 rl_trainer = RLTrainer(dynamic_weights)
 chat_manager: GrokChatManager | None = None
 memory_manager: ImprovedMemoryManager | None = None
+
 
 async def rl_trainer_task() -> None:
     while True:
@@ -326,7 +333,7 @@ async def reply_split(message: Message, text: str) -> None:
     limit = 4096
     # Reserve space for the prefix added to each chunk.
     chunk_size = limit - 100
-    chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+    chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
     total = len(chunks)
 
     for idx, chunk in enumerate(chunks, start=1):
@@ -420,9 +427,6 @@ async def cmd_clearmemory(message: Message):
         logger.error(f"Ошибка при очистке памяти: {e}")
         logger.error(traceback.format_exc())
         await reply_split(message, "🌀 Произошла ошибка при очистке памяти")
-
-
-
 
 
 @dp.message(Command("file"))
@@ -526,6 +530,7 @@ async def coder_choice(callback: types.CallbackQuery):
             callback.message.chat.id, file, caption="Here is the code output."
         )
 
+
 async def telegram_message_handler_fixed(message: Message, text: str) -> None:
     """Improved handler using chat and memory managers."""
     if not text:
@@ -587,6 +592,8 @@ async def telegram_message_handler_fixed(message: Message, text: str) -> None:
 
 async def handle_text(message: Message, text: str) -> None:
     await telegram_message_handler_fixed(message, text)
+
+
 async def handle_photo(message: Message) -> None:
     """Analyze photo with OpenAI vision."""
     if not engine:
@@ -713,6 +720,13 @@ app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.middleware("http")
