@@ -87,7 +87,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 FROM_CLI_SEED: Optional[int] = None
 
 _SEED_CORPUS = """
-mars starship optimus robots xai resonance chaos wulf multiplanetary arcadia
+mars starship optimus robots xai resonance chaos multiplanetary arcadia
 42 engines ignite elon musk space humanity survives science fiction reality
 shred void pulse storm nikole spark civilization self sustaining grok xai
 """
@@ -95,7 +95,7 @@ shred void pulse storm nikole spark civilization self sustaining grok xai
 _42_TEMPLATES = [
     "There are {num} ways to align with Mars’ 42 pulse.",
     "{num} beats echo, but 42 engines roar louder!",
-    "Life’s riddle: {num} or 42? Wulf decides!",
+    "Life’s riddle: {num} or 42? Chaos decides!",
     "{num} sparks fly, yet 42 rules the void!",
     "42 hums the stars, {num}’s my thunderstrike!",
 ]
@@ -152,7 +152,7 @@ class MiniMarkov:
 
     def generate(self, length: int = 10, start: str = None) -> str:
         if not self.chain:
-            return "No chain, Wulf waits."
+            return "No chain, silence."
         start_words = start.lower().split() if start else [random.choice(self.words)]
         state = tuple(start_words[-self.n:] if len(start_words) >= self.n else start_words + [random.choice(self.words)] * (self.n - len(start_words)))
         result = list(state)
@@ -268,7 +268,7 @@ def paraphrase(text: str, prefix: str = "Retell simply: ") -> str:
             return paraphrased + " Void pulse kicks in! 🌩️" if paraphrased else text
     except Exception as e:
         log_event(f"Paraphrase failed: {str(e)}", "error")
-        return text + " Wulf holds the line! 🌌"
+        return text + " Chaos holds the line! 🌌"
 
 # Команды
 async def when(lang: str = "en") -> str:
@@ -317,7 +317,7 @@ async def mars(lang: str = "en") -> str:
 
 async def forty_two(lang: str = "en") -> str:
     base_text = markov.generate(length=10, start="42")
-    paraphrased = paraphrase(base_text, "Fun 42 fact with Wulf edge: ")
+    paraphrased = paraphrase(base_text, "Fun 42 fact with chaotic edge: ")
     if random.random() < 1 / 42:
         paraphrased += (
             "\nP.S. 42 engines - Musk’s Arcadia prophecy! "
@@ -363,7 +363,7 @@ async def handle(cmd: str, lang: str = "en") -> Dict[str, str]:
         }
     except Exception as e:  # pragma: no cover - best effort
         log_event(f"Handle {cmd} failed: {str(e)}", "error")
-        return {"response": f"Error: {str(e)}. Wulf persists!", "pulse": chaos_pulse.get()}
+        return {"response": f"Error: {str(e)}. Chaos persists!", "pulse": chaos_pulse.get()}
 
 
 

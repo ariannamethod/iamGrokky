@@ -23,7 +23,10 @@ def app(monkeypatch):
 
     add_utils_submodule("dayandnight", {"day_and_night_task": lambda *a, **k: None})
     add_utils_submodule("mirror", {"mirror_task": lambda *a, **k: None})
-    add_utils_submodule("prompt", {"get_chaos_response": lambda *a, **k: None})
+    add_utils_submodule(
+        "prompt",
+        {"get_chaos_response": lambda *a, **k: None, "build_system_prompt": lambda **k: ""},
+    )
     add_utils_submodule("repo_monitor", {"monitor_repository": lambda *a, **k: None})
     add_utils_submodule("imagine", {"imagine": lambda *a, **k: None})
     add_utils_submodule("vision", {"analyze_image": lambda *a, **k: None})
@@ -98,14 +101,6 @@ def app(monkeypatch):
     sub_module_42.handle = lambda *a, **k: None
     monkeypatch.setitem(sys.modules, "utils.42", sub_module_42)
     utils_pkg.handle = sub_module_42.handle
-
-    sl_pkg = types.ModuleType("SLNCX")
-    sl_pkg.__path__ = []
-    sys.modules["SLNCX"] = sl_pkg
-    model_module = types.ModuleType("SLNCX.model")
-    model_module.generate = lambda *a, **k: ""
-    monkeypatch.setitem(sys.modules, "SLNCX.model", model_module)
-    setattr(sl_pkg, "model", model_module)
 
     import server
     importlib.reload(server)

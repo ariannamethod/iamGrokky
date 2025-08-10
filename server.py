@@ -61,22 +61,13 @@ from utils.metrics import REQUEST_LATENCY, record_tokens
 
 from utils.dayandnight import day_and_night_task
 from utils.mirror import mirror_task
-from utils.prompt import get_chaos_response
+from utils.prompt import get_chaos_response, build_system_prompt
 from utils.repo_monitor import monitor_repository
 from utils.vision import analyze_image
 from utils.plugins.coder import interpret_code
 from utils.grok_chat_manager import GrokChatManager
 from utils.memory_manager import ImprovedMemoryManager
 from importlib import import_module
-import inspect
-
-try:
-    from SLNCX.model import generate as slncx_generate
-except Exception as e:  # pragma: no cover - optional dependency
-    slncx_import_error = e
-
-    def slncx_generate(*_args, **_kwargs):  # type: ignore
-        raise RuntimeError(f"SLNCX unavailable: {slncx_import_error}")
 
 # Импортируем наш новый движок
 from utils.vector_engine import VectorGrokkyEngine
@@ -191,8 +182,6 @@ async def rl_trainer_task() -> None:
 VOICE_ENABLED = {}
 # Chats currently in coder mode
 CODER_MODE: dict[int, bool] = {}
-# Chats currently in SLNCX mode
-SLNCX_MODE: dict[int, bool] = {}
 # Pending long coder outputs waiting for user choice
 CODER_OUTPUT: dict[tuple[int, int], str] = {}
 # Preferred language per chat
@@ -200,12 +189,6 @@ CHAT_LANG: dict[int, str] = {}
 
 # Background tasks to be cancelled on shutdown
 background_tasks: list[asyncio.Task] = []
-
-
-async def _call_slncx(prompt: str) -> str:
-    if inspect.iscoroutinefunction(slncx_generate):
-        return await slncx_generate(prompt)
-    return await asyncio.to_thread(slncx_generate, prompt)
 
 
 async def verify_api_key(request: Request) -> None:
@@ -395,31 +378,6 @@ async def cmd_coderoff(message: Message):
     await message.reply("Coder mode off.")
 
 
-@dp.message(Command("slncx"))
-async def cmd_slncx(message: Message):
-    """Enable SLNCX mode or run a single prompt."""
-    parts = message.text.split(maxsplit=1)
-    chat_id = message.chat.id
-    if len(parts) == 1:
-        SLNCX_MODE[chat_id] = True
-        await message.reply("SLNCX mode on. /slncxoff to exit.")
-    else:
-        prompt = parts[1]
-        try:
-            reply = await _call_slncx(prompt)
-            await reply_split(message, reply)
-        except Exception as e:  # pragma: no cover - runtime
-            logger.error(f"SLNCX generation failed: {e}")
-            await reply_split(message, f"\U0001F300 SLNCX error: {e}")
-
-
-@dp.message(Command("slncxoff"))
-async def cmd_slncxoff(message: Message):
-    """Disable SLNCX mode."""
-    SLNCX_MODE[message.chat.id] = False
-    await message.reply("SLNCX mode off.")
-
-
 @dp.message(Command("status"))
 async def cmd_status(message: Message):
     status_text = f"🌀 Грокки функционирует! Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
@@ -578,15 +536,6 @@ async def telegram_message_handler_fixed(message: Message, text: str) -> None:
     else:
         session_id = str(message.from_user.id)
 
-    if SLNCX_MODE.get(message.chat.id):
-        try:
-            reply = await _call_slncx(text)
-            await reply_split(message, reply)
-        except Exception as e:  # pragma: no cover - runtime
-            logger.error(f"SLNCX generation failed: {e}")
-            await reply_split(message, f"\U0001F300 SLNCX error: {e}")
-        return
-
     urls = URL_RE.findall(text)
     if urls:
         raw_url = urls[0]
@@ -618,7 +567,16 @@ async def telegram_message_handler_fixed(message: Message, text: str) -> None:
         await memory_manager.save(session_id, text, role="user")
         chat_manager.add_message(session_id, "user", text)
         context = await memory_manager.retrieve(session_id, text)
-        reply = await chat_manager.safe_chat_completion(session_id, context=context)
+        system_prompt = build_system_prompt(
+            chat_id=message.chat.id,
+            is_group=message.chat.type in ["group", "supergroup"],
+            agent_group=AGENT_GROUP,
+        )
+        if context:
+            system_prompt += f"\n\n[Memory]\n{context}"
+        reply = await chat_manager.safe_chat_completion(
+            session_id, context=system_prompt
+        )
         chat_manager.add_message(session_id, "assistant", reply)
         await memory_manager.save(session_id, reply, role="assistant")
         await reply_split(message, reply)
@@ -708,8 +666,6 @@ async def on_startup():
             types.BotCommand(command="voiceon", description="speak"),
             types.BotCommand(command="voiceoff", description="mute"),
             types.BotCommand(command="coderoff", description="coder mode off"),
-            types.BotCommand(command="slncx", description="SLNCX (Grok 1 Rebirth)"),
-            types.BotCommand(command="slncxoff", description="SLNCX-off"),
             types.BotCommand(command="status", description="status"),
             types.BotCommand(command="clearmemory", description="clear memory"),
             types.BotCommand(command="file", description="process file"),
