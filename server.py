@@ -49,7 +49,7 @@ except ImportError:  # pragma: no cover - fallback for tests
         async def reply(self, *args, **kwargs):  # pragma: no cover - stub
             pass
 
-from fastapi import FastAPI, Request, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import PlainTextResponse, JSONResponse, Response
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -714,6 +714,9 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
+# Router with API key verification for public endpoints
+api_router = APIRouter(dependencies=[Depends(verify_api_key)])
+
 
 @app.middleware("http")
 async def _metrics_middleware(request: Request, call_next):
@@ -750,12 +753,12 @@ async def handle_webhook(request: Request):
         return PlainTextResponse(status_code=500, content="error")
 
 
-@app.get("/healthz")
+@api_router.get("/healthz")
 async def healthz() -> PlainTextResponse:
     return PlainTextResponse("OK")
 
 
-@app.get("/health/grok")
+@api_router.get("/health/grok")
 async def grok_health() -> JSONResponse:
     if not chat_manager:
         return JSONResponse({"status": "error", "message": "uninitialized"})
@@ -769,18 +772,18 @@ async def grok_health() -> JSONResponse:
         return JSONResponse({"status": "error", "message": str(e)})
 
 
-@app.get("/")
+@api_router.get("/")
 async def root_index() -> PlainTextResponse:
     return PlainTextResponse("Грокки жив и работает!")
 
 
-@app.get("/metrics")
+@api_router.get("/metrics")
 async def metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-@app.post("/42")
-async def handle_42_api(request: Request, _=Depends(verify_api_key)):
+@api_router.post("/42")
+async def handle_42_api(request: Request):
     try:
         data = await request.json()
     except json.JSONDecodeError:
@@ -793,8 +796,8 @@ async def handle_42_api(request: Request, _=Depends(verify_api_key)):
     return JSONResponse({"response": result["response"]})
 
 
-@app.post("/file")
-async def handle_file_api(request: Request, file: UploadFile = File(...), _=Depends(verify_api_key)):
+@api_router.post("/file")
+async def handle_file_api(request: Request, file: UploadFile = File(...)):
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
@@ -805,7 +808,7 @@ async def handle_file_api(request: Request, file: UploadFile = File(...), _=Depe
         os.unlink(tmp_path)
 
 
-@app.post("/feedback")
+@api_router.post("/feedback")
 async def feedback_endpoint(data: dict) -> JSONResponse:
     """Record user feedback for reinforcement learning."""
 
@@ -814,6 +817,9 @@ async def feedback_endpoint(data: dict) -> JSONResponse:
     reward = float(data.get("reward", 0.0))
     log_feedback(prompt, choice, reward)
     return JSONResponse({"status": "ok"})
+
+
+app.include_router(api_router)
 
 
 @app.on_event("startup")
