@@ -815,7 +815,7 @@ async def parse_and_store_file(
     log_event(
         f"Processed {os.path.basename(path)}: tags={tags}, summary={summary[:50]}..., relevance={relevance:.2f} (pulse={pulse:.2f}, quiver={quiver:.2f}, sense={sense:.2f})"
     )
-    return f"{text}\n\nTags: {tags}\nSummary: {summary}\nRelevance: {relevance:.2f}"
+    return f"Summary: {summary}\nTags: {tags}\nRelevance: {relevance:.2f}"
 
 async def create_repo_snapshot(base_path: str = ".", out_path: str = REPO_SNAPSHOT_PATH) -> None:
     handler = FileHandler()
