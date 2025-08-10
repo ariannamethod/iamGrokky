@@ -31,3 +31,9 @@ def test_api_key_valid(app):
         "/42", headers={"X-API-Key": "SECRET"}, json={"cmd": "42"}
     )
     assert response.status_code == 200
+
+
+def test_feedback_requires_api_key(app):
+    client = TestClient(app)
+    response = client.post("/feedback", json={})
+    assert response.status_code == 401
