@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 def app(monkeypatch):
     monkeypatch.setenv("WEBHOOK_SECRET", "SECRET")
     monkeypatch.setenv("MAX_WEBHOOK_BODY_SIZE", "50")
+    monkeypatch.setenv("ALLOWED_ORIGINS", "http://allowed.com")
     utils_pkg = types.ModuleType("utils")
     utils_pkg.__path__ = []  # mark as package
     monkeypatch.setitem(sys.modules, "utils", utils_pkg)
@@ -148,3 +149,15 @@ def test_webhook_payload_too_large(app):
     )
     assert response.status_code == 413
     assert response.text == "payload too large"
+
+
+def test_cors_disallowed_origin(app):
+    client = TestClient(app)
+    response = client.options(
+        "/webhook",
+        headers={
+            "Origin": "http://evil.com",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert response.status_code == 400

@@ -51,6 +51,7 @@ except ImportError:  # pragma: no cover - fallback for tests
 
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import PlainTextResponse, JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -120,6 +121,11 @@ BANNED_DOMAINS = {
     if d.strip()
 }
 MAX_WEBHOOK_BODY_SIZE = int(os.getenv("MAX_WEBHOOK_BODY_SIZE", "100000"))
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+]
 
 # Проверка ключей API
 XAI_API_KEY = os.getenv("XAI_API_KEY")
@@ -720,6 +726,13 @@ app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Router with API key verification for public endpoints
 api_router = APIRouter(dependencies=[Depends(verify_api_key)])
