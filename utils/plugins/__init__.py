@@ -3,9 +3,12 @@ from __future__ import annotations
 
 from importlib import import_module
 from pathlib import Path
-from typing import Awaitable, Callable, Dict, List
+from typing import Awaitable, Callable, Dict, Iterable, List
 
 CommandHandler = Callable[[str], Awaitable[str]]
+
+
+PLUGIN_ALLOWLIST: Iterable[str] = ["42", "coder", "imagine", "web_search"]
 
 
 class BasePlugin:
@@ -17,13 +20,16 @@ class BasePlugin:
         self.commands = {}
 
 
-def load_plugins() -> List[BasePlugin]:
-    """Discover plugin classes and instantiate them."""
+def load_plugins(allowlist: Iterable[str] | None = None) -> List[BasePlugin]:
+    """Discover plugin classes from an allowlist and instantiate them."""
     plugins: List[BasePlugin] = []
     package = __name__
     base_path = Path(__file__).resolve().parent
+
+    allowed = {name.lower() for name in (allowlist or PLUGIN_ALLOWLIST)}
+
     for path in base_path.glob("[!_]*.py"):
-        if path.name == "__init__.py":
+        if path.name == "__init__.py" or path.stem.lower() not in allowed:
             continue
         module = import_module(f"{package}.{path.stem}")
         for obj in vars(module).values():
@@ -38,4 +44,4 @@ def load_plugins() -> List[BasePlugin]:
     return plugins
 
 
-__all__ = ["BasePlugin", "load_plugins", "CommandHandler"]
+__all__ = ["BasePlugin", "load_plugins", "CommandHandler", "PLUGIN_ALLOWLIST"]
