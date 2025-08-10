@@ -66,6 +66,9 @@ class HelloPlugin(BasePlugin):
 After saving the file, restart the server and send `/hello` in Telegram. Built-in
 plugins include the example `/search` command.
 
+To register a plugin, add its module name to `PLUGIN_ALLOWLIST` in
+`utils/plugins/__init__.py`. Only modules listed there are loaded.
+
 ### The 42 Utility
 
 The script hiding at `utils/plugins/42.py` animates Grokky's playful side. It
