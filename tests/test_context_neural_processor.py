@@ -2,6 +2,10 @@ import os
 import zipfile
 from datetime import datetime
 from pathlib import Path
+import importlib
+import io
+import sys
+import types
 
 import pytest
 from PIL import Image
@@ -135,4 +139,145 @@ async def test_paraphrase_detects_language(monkeypatch):
 
     await cnp.paraphrase("привет мир")
     assert captured["prompt"].startswith("Кратко перескажи для детей: ")
+
+
+@pytest.fixture
+def file_server(monkeypatch):
+    monkeypatch.setenv("MAX_FILE_SIZE", "10")
+
+    utils_pkg = types.ModuleType("utils")
+    utils_pkg.__path__ = []
+    monkeypatch.setitem(sys.modules, "utils", utils_pkg)
+
+    def add(name, attrs):
+        mod = types.ModuleType(f"utils.{name}")
+        for key, value in attrs.items():
+            setattr(mod, key, value)
+        monkeypatch.setitem(sys.modules, f"utils.{name}", mod)
+        setattr(utils_pkg, name, mod)
+
+    add("dayandnight", {"day_and_night_task": lambda *a, **k: None})
+    add("mirror", {"mirror_task": lambda *a, **k: None})
+    add("prompt", {"get_chaos_response": lambda *a, **k: None, "build_system_prompt": lambda **k: ""})
+    add("repo_monitor", {"monitor_repository": lambda *a, **k: None})
+    add("vision", {"analyze_image": lambda *a, **k: None})
+    add("context_neural_processor", {"parse_and_store_file": lambda *a, **k: "ok"})
+    add("vector_engine", {"VectorGrokkyEngine": type("VectorGrokkyEngine", (), {})})
+    add("hybrid_engine", {"HybridGrokkyEngine": type("HybridGrokkyEngine", (), {})})
+    add("grok_chat_manager", {"GrokChatManager": type("GrokChatManager", (), {})})
+    add("memory_manager", {"ImprovedMemoryManager": type("ImprovedMemoryManager", (), {})})
+    add("dynamic_weights", {"DynamicWeights": type("DynamicWeights", (), {"__init__": lambda self, *a, **k: None})})
+    add(
+        "rl_trainer",
+        {
+            "RLTrainer": type(
+                "RLTrainer", (), {"__init__": lambda self, *a, **k: None, "train": lambda self: None}
+            ),
+            "log_feedback": lambda *a, **k: None,
+        },
+    )
+    add("metrics", {"REQUEST_LATENCY": None, "record_tokens": lambda *a, **k: None})
+
+    plugins_mod = types.ModuleType("utils.plugins")
+    plugins_mod.__path__ = []
+    plugins_mod.load_plugins = lambda: []
+    monkeypatch.setitem(sys.modules, "utils.plugins", plugins_mod)
+    setattr(utils_pkg, "plugins", plugins_mod)
+    coder_mod = types.ModuleType("utils.plugins.coder")
+    coder_mod.interpret_code = lambda *a, **k: None
+    monkeypatch.setitem(sys.modules, "utils.plugins.coder", coder_mod)
+    mod42 = types.ModuleType("utils.plugins.42")
+    mod42.handle = lambda *a, **k: None
+    monkeypatch.setitem(sys.modules, "utils.plugins.42", mod42)
+    plugins_mod.coder = coder_mod
+
+    class Router:
+        def __call__(self, *a, **k):
+            def decorator(func):
+                return func
+
+            return decorator
+
+        def register(self, *a, **k):
+            pass
+
+    class Dispatcher:
+        def __init__(self, *a, **k):
+            self.message = Router()
+            self.callback_query = Router()
+
+        async def feed_update(self, *a, **k):
+            pass
+
+    class Bot:
+        def __init__(self, *a, **k):
+            pass
+
+        async def send_message(self, *a, **k):
+            pass
+
+        async def get_file(self, *a, **k):
+            pass
+
+    aiogram_pkg = types.ModuleType("aiogram")
+    aiogram_pkg.__path__ = []
+    aiogram_pkg.Bot = Bot
+    aiogram_pkg.Dispatcher = Dispatcher
+    monkeypatch.setitem(sys.modules, "aiogram", aiogram_pkg)
+    monkeypatch.setitem(
+        sys.modules,
+        "aiogram.types",
+        types.SimpleNamespace(
+            Message=type("Message", (), {"reply": lambda self, *a, **k: None}),
+            CallbackQuery=type("CallbackQuery", (), {"data": ""}),
+            BotCommand=type("BotCommand", (), {"__init__": lambda self, *a, **k: None}),
+            MenuButtonCommands=type("MenuButtonCommands", (), {}),
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "aiogram.enums",
+        types.SimpleNamespace(ChatAction=type("ChatAction", (), {})),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "aiogram.filters",
+        types.SimpleNamespace(Command=type("Command", (), {"__init__": lambda self, *a, **k: None})),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "aiogram.exceptions",
+        types.SimpleNamespace(TelegramAPIError=Exception),
+    )
+
+    import server
+    importlib.reload(server)
+    return server
+
+
+@pytest.mark.asyncio
+async def test_file_upload_too_large(file_server):
+    from starlette.requests import Request
+    from fastapi import UploadFile, HTTPException
+
+    data = b"x" * 20
+    upload = UploadFile(filename="big.txt", file=io.BytesIO(data))
+    request = Request({"type": "http"})
+    with pytest.raises(HTTPException) as exc:
+        await file_server.handle_file_api(request, upload)
+    assert exc.value.status_code == 400
+    assert "file too large" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_file_upload_bad_extension(file_server):
+    from starlette.requests import Request
+    from fastapi import UploadFile, HTTPException
+
+    upload = UploadFile(filename="bad.exe", file=io.BytesIO(b"ok"))
+    request = Request({"type": "http"})
+    with pytest.raises(HTTPException) as exc:
+        await file_server.handle_file_api(request, upload)
+    assert exc.value.status_code == 400
+    assert "unsupported" in exc.value.detail
 

@@ -108,6 +108,31 @@ NEWS_MODEL = os.getenv("NEWS_MODEL", "gpt-4o")
 URL_RE = re.compile(r"https?://\S+")
 MAX_URL_LENGTH = int(os.getenv("MAX_URL_LENGTH", "2048"))
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE", "10485760"))
+ALLOWED_FILE_EXTENSIONS = {
+    ".pdf",
+    ".txt",
+    ".md",
+    ".docx",
+    ".rtf",
+    ".doc",
+    ".odt",
+    ".zip",
+    ".rar",
+    ".tar",
+    ".tar.gz",
+    ".tgz",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".webp",
+    ".html",
+    ".xml",
+    ".json",
+    ".csv",
+    ".yaml",
+}
 BANNED_DOMAINS = {
     d.strip().lower()
     for d in os.getenv("BANNED_DOMAINS", "").split(",")
@@ -795,8 +820,16 @@ async def handle_42_api(request: Request, _=Depends(verify_api_key)):
 
 @app.post("/file")
 async def handle_file_api(request: Request, file: UploadFile = File(...), _=Depends(verify_api_key)):
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_FILE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="unsupported file type")
+    if file.size is not None and file.size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="file too large")
+    data = await file.read(MAX_FILE_SIZE + 1)
+    if len(data) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="file too large")
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        tmp.write(await file.read())
+        tmp.write(data)
         tmp_path = tmp.name
     try:
         result = await parse_and_store_file(tmp_path)
