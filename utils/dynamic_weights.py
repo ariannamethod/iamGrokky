@@ -40,7 +40,7 @@ async def query_gpt4(
 ) -> str:
     """Call the GPT-4o API as a secondary knowledge base.
 
-    The default model is set to ``gpt-4o`` so SLNCX can leverage the latest
+    The default model is ``gpt-4o`` so the utility can leverage the latest
     OpenAI engine when deriving dynamic weights."""
     api_key = api_key or os.getenv("OPENAI_API_KEY")
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
@@ -125,8 +125,7 @@ class DynamicWeights:
         knowledge = get_dynamic_knowledge(prompt, api_key)
         # Simple heuristic: longer knowledge implies a stronger pulse.
         # The denominator is tuned to 300 so that relatively small snippets of
-        # knowledge can already yield noticeable pulse values, enabling the
-        # lightweight SLNCX model to vary its responses.
+        # knowledge can already yield noticeable pulse values for lightweight models.
         pulse = min(len(knowledge) / 300.0, 1.0)
         return max(pulse, 0.0)
 
@@ -174,8 +173,7 @@ class DynamicWeights:
         The method derives a ``pulse`` from ``prompt`` and appends a style hint
         before querying :func:`get_dynamic_knowledge` again. Low pulse values
         yield terse answers while higher pulses encourage more elaborate
-        replies. This enables SLNCX to "speak" without relying on static
-        templates.
+        replies. This enables responses without relying on static templates.
         """
 
         pulse = self.pulse_from_prompt(prompt, api_key)
