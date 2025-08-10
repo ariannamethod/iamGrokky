@@ -716,6 +716,33 @@ app.add_middleware(SlowAPIMiddleware)
 
 
 @app.middleware("http")
+async def _extract_user_id(request: Request, call_next):
+    """Store request body and extract Telegram user ID for rate limiting."""
+    if request.url.path == WEBHOOK_PATH:
+        body = await request.body()
+        request.state.body = body
+        try:
+            data = json.loads(body)
+            user_id = (
+                data.get("message", {})
+                .get("from", {})
+                .get("id")
+                or data.get("from", {}).get("id")
+            )
+            if user_id is not None:
+                request.state.telegram_user_id = str(user_id)
+        except json.JSONDecodeError:
+            pass
+
+        async def receive() -> dict:
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        request._receive = receive  # type: ignore[attr-defined]
+    response = await call_next(request)
+    return response
+
+
+@app.middleware("http")
 async def _metrics_middleware(request: Request, call_next):
     start = time.perf_counter()
     response = await call_next(request)
@@ -724,14 +751,20 @@ async def _metrics_middleware(request: Request, call_next):
     return response
 
 
+def _telegram_user_key(request: Request) -> str:
+    return getattr(request.state, "telegram_user_id", get_remote_address(request))
+
+
 @app.post(WEBHOOK_PATH)
+@limiter.limit("30/minute")
+@limiter.limit("20/minute", key_func=_telegram_user_key)
 async def handle_webhook(request: Request):
     try:
         secret_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
         if WEBHOOK_SECRET and secret_header != WEBHOOK_SECRET:
             return PlainTextResponse(status_code=403, content="forbidden")
 
-        request_body = await request.body()
+        request_body = getattr(request.state, "body", await request.body())
         if len(request_body) > MAX_WEBHOOK_BODY_SIZE:
             logger.warning(
                 "Вебхук отклонен: размер %d байт превышает лимит %d",
@@ -794,6 +827,7 @@ async def handle_42_api(request: Request, _=Depends(verify_api_key)):
 
 
 @app.post("/file")
+@limiter.limit("10/minute")
 async def handle_file_api(request: Request, file: UploadFile = File(...), _=Depends(verify_api_key)):
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         tmp.write(await file.read())
